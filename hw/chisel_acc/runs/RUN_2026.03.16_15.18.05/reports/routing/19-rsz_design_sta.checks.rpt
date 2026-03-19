@@ -1,0 +1,846 @@
+
+===========================================================================
+report_checks -unconstrained
+===========================================================================
+======================= Typical Corner ===================================
+
+Startpoint: io_inScaleA[0] (input port clocked by clock)
+Endpoint: accumulator._2420_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: max
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                          0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (propagated)
+                          4.00    4.00 ^ input external delay
+     1    0.00    0.02    0.01    4.01 ^ io_inScaleA[0] (in)
+                                         io_inScaleA[0] (net)
+                  0.02    0.00    4.01 ^ input9/A (sky130_fd_sc_hd__buf_1)
+     4    0.02    0.19    0.18    4.20 ^ input9/X (sky130_fd_sc_hd__buf_1)
+                                         net9 (net)
+                  0.19    0.00    4.20 ^ scaleAdd._421_/B1 (sky130_fd_sc_hd__o21a_4)
+     4    0.02    0.08    0.20    4.40 ^ scaleAdd._421_/X (sky130_fd_sc_hd__o21a_4)
+                                         scaleAdd._002_ (net)
+                  0.08    0.00    4.40 ^ scaleAdd._428_/B (sky130_fd_sc_hd__xor2_2)
+     2    0.01    0.15    0.18    4.58 ^ scaleAdd._428_/X (sky130_fd_sc_hd__xor2_2)
+                                         scaleAdd._009_ (net)
+                  0.15    0.00    4.58 ^ scaleAdd._429_/A (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.09    0.13    4.71 v scaleAdd._429_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._010_ (net)
+                  0.09    0.00    4.71 v scaleAdd._431_/B (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.29    0.29    5.01 ^ scaleAdd._431_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._012_ (net)
+                  0.29    0.00    5.01 ^ scaleAdd._432_/A (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.20    0.20    5.21 ^ scaleAdd._432_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._013_ (net)
+                  0.20    0.00    5.21 ^ scaleAdd._435_/A (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.28    0.30    5.51 ^ scaleAdd._435_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._016_ (net)
+                  0.28    0.00    5.51 ^ scaleAdd._436_/A (sky130_fd_sc_hd__xnor2_2)
+     2    0.01    0.09    0.14    5.66 v scaleAdd._436_/Y (sky130_fd_sc_hd__xnor2_2)
+                                         scaleAdd._017_ (net)
+                  0.09    0.00    5.66 v scaleAdd._438_/B (sky130_fd_sc_hd__xnor2_2)
+     2    0.01    0.21    0.22    5.87 ^ scaleAdd._438_/Y (sky130_fd_sc_hd__xnor2_2)
+                                         scaleAdd._019_ (net)
+                  0.21    0.00    5.87 ^ scaleAdd._439_/A (sky130_fd_sc_hd__xor2_2)
+     5    0.02    0.29    0.30    6.17 ^ scaleAdd._439_/X (sky130_fd_sc_hd__xor2_2)
+                                         scaleAdd._020_ (net)
+                  0.29    0.00    6.17 ^ scaleAdd._524_/A2 (sky130_fd_sc_hd__a21oi_2)
+     1    0.01    0.08    0.12    6.30 v scaleAdd._524_/Y (sky130_fd_sc_hd__a21oi_2)
+                                         scaleAdd._103_ (net)
+                  0.08    0.00    6.30 v scaleAdd._527_/A1 (sky130_fd_sc_hd__o31ai_4)
+     4    0.02    0.29    0.36    6.65 ^ scaleAdd._527_/Y (sky130_fd_sc_hd__o31ai_4)
+                                         scaleAdd._106_ (net)
+                  0.29    0.00    6.65 ^ scaleAdd._528_/A (sky130_fd_sc_hd__xor2_2)
+     2    0.01    0.14    0.20    6.85 ^ scaleAdd._528_/X (sky130_fd_sc_hd__xor2_2)
+                                         scaleAdd._107_ (net)
+                  0.14    0.00    6.85 ^ scaleAdd._529_/B (sky130_fd_sc_hd__nand2_1)
+     4    0.02    0.12    0.15    7.00 v scaleAdd._529_/Y (sky130_fd_sc_hd__nand2_1)
+                                         scaleAdd._108_ (net)
+                  0.12    0.00    7.00 v scaleAdd._530_/B (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.21    0.24    7.24 ^ scaleAdd._530_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._109_ (net)
+                  0.21    0.00    7.24 ^ scaleAdd._531_/B (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.21    0.25    7.49 ^ scaleAdd._531_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._110_ (net)
+                  0.21    0.00    7.49 ^ scaleAdd._534_/A (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.20    0.24    7.73 ^ scaleAdd._534_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._113_ (net)
+                  0.20    0.00    7.73 ^ scaleAdd._535_/B (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.21    0.25    7.98 ^ scaleAdd._535_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._114_ (net)
+                  0.21    0.00    7.98 ^ scaleAdd._538_/A (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.33    0.24    8.22 ^ scaleAdd._538_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._117_ (net)
+                  0.33    0.00    8.22 ^ scaleAdd._539_/B1 (sky130_fd_sc_hd__a21oi_4)
+     5    0.02    0.09    0.08    8.30 v scaleAdd._539_/Y (sky130_fd_sc_hd__a21oi_4)
+                                         scaleAdd._118_ (net)
+                  0.09    0.00    8.30 v scaleAdd._603_/A2 (sky130_fd_sc_hd__o311ai_2)
+     3    0.01    0.28    0.33    8.63 ^ scaleAdd._603_/Y (sky130_fd_sc_hd__o311ai_2)
+                                         scaleAdd._180_ (net)
+                  0.28    0.00    8.63 ^ scaleAdd._652_/A1 (sky130_fd_sc_hd__a311o_1)
+     4    0.01    0.16    0.31    8.94 ^ scaleAdd._652_/X (sky130_fd_sc_hd__a311o_1)
+                                         scaleAdd._227_ (net)
+                  0.16    0.00    8.94 ^ scaleAdd._688_/A1 (sky130_fd_sc_hd__a311o_1)
+     3    0.02    0.18    0.29    9.23 ^ scaleAdd._688_/X (sky130_fd_sc_hd__a311o_1)
+                                         scaleAdd._261_ (net)
+                  0.18    0.00    9.23 ^ scaleAdd._708_/A1 (sky130_fd_sc_hd__a31oi_4)
+     2    0.01    0.09    0.13    9.36 v scaleAdd._708_/Y (sky130_fd_sc_hd__a31oi_4)
+                                         scaleAdd._279_ (net)
+                  0.09    0.00    9.36 v scaleAdd._711_/A2 (sky130_fd_sc_hd__a211o_1)
+     4    0.01    0.09    0.37    9.73 v scaleAdd._711_/X (sky130_fd_sc_hd__a211o_1)
+                                         accumulator.io_inMant[17] (net)
+                  0.09    0.00    9.73 v accumulator._1204_/A (sky130_fd_sc_hd__or4_4)
+     4    0.01    0.10    0.60   10.33 v accumulator._1204_/X (sky130_fd_sc_hd__or4_4)
+                                         accumulator._0065_ (net)
+                  0.10    0.00   10.33 v accumulator._1206_/B (sky130_fd_sc_hd__or2_4)
+     3    0.01    0.05    0.27   10.61 v accumulator._1206_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0085_ (net)
+                  0.05    0.00   10.61 v accumulator._1207_/A (sky130_fd_sc_hd__or2_4)
+     4    0.01    0.06    0.28   10.88 v accumulator._1207_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0095_ (net)
+                  0.06    0.00   10.88 v accumulator._1240_/A (sky130_fd_sc_hd__and2_4)
+     2    0.01    0.03    0.15   11.03 v accumulator._1240_/X (sky130_fd_sc_hd__and2_4)
+                                         accumulator._0339_ (net)
+                  0.03    0.00   11.03 v accumulator._1241_/C1 (sky130_fd_sc_hd__a311o_1)
+     3    0.01    0.08    0.32   11.35 v accumulator._1241_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0340_ (net)
+                  0.08    0.00   11.35 v accumulator._1255_/A1 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.19   11.54 v accumulator._1255_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0354_ (net)
+                  0.05    0.00   11.54 v accumulator._1257_/A2 (sky130_fd_sc_hd__a211o_1)
+     3    0.01    0.07    0.33   11.87 v accumulator._1257_/X (sky130_fd_sc_hd__a211o_1)
+                                         accumulator._0356_ (net)
+                  0.07    0.00   11.87 v accumulator._1263_/B (sky130_fd_sc_hd__and2_4)
+     5    0.01    0.04    0.19   12.06 v accumulator._1263_/X (sky130_fd_sc_hd__and2_4)
+                                         accumulator._0362_ (net)
+                  0.04    0.00   12.06 v accumulator._1274_/C (sky130_fd_sc_hd__or4_4)
+     2    0.01    0.09    0.50   12.56 v accumulator._1274_/X (sky130_fd_sc_hd__or4_4)
+                                         accumulator._0373_ (net)
+                  0.09    0.00   12.56 v accumulator._1276_/A1 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.20   12.76 v accumulator._1276_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0375_ (net)
+                  0.05    0.00   12.76 v accumulator._1278_/A1 (sky130_fd_sc_hd__a21o_4)
+     2    0.01    0.04    0.21   12.97 v accumulator._1278_/X (sky130_fd_sc_hd__a21o_4)
+                                         accumulator._0377_ (net)
+                  0.04    0.00   12.97 v accumulator._1284_/A2 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.20   13.16 v accumulator._1284_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0383_ (net)
+                  0.05    0.00   13.16 v accumulator._1285_/A1 (sky130_fd_sc_hd__a21o_4)
+     2    0.01    0.04    0.21   13.37 v accumulator._1285_/X (sky130_fd_sc_hd__a21o_4)
+                                         accumulator._0384_ (net)
+                  0.04    0.00   13.37 v accumulator._1290_/A2 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.07    0.22   13.59 v accumulator._1290_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0389_ (net)
+                  0.07    0.00   13.59 v accumulator._1293_/A2 (sky130_fd_sc_hd__a21boi_4)
+     3    0.03    0.24    0.27   13.86 ^ accumulator._1293_/Y (sky130_fd_sc_hd__a21boi_4)
+                                         accumulator._0392_ (net)
+                  0.24    0.00   13.86 ^ accumulator._1302_/A (sky130_fd_sc_hd__xor2_2)
+     3    0.01    0.15    0.20   14.06 ^ accumulator._1302_/X (sky130_fd_sc_hd__xor2_2)
+                                         accumulator._0401_ (net)
+                  0.15    0.00   14.06 ^ rebuffer30/A (sky130_fd_sc_hd__clkbuf_2)
+     1    0.00    0.03    0.13   14.19 ^ rebuffer30/X (sky130_fd_sc_hd__clkbuf_2)
+                                         net87 (net)
+                  0.03    0.00   14.19 ^ rebuffer25/A (sky130_fd_sc_hd__clkbuf_1)
+     1    0.01    0.07    0.10   14.29 ^ rebuffer25/X (sky130_fd_sc_hd__clkbuf_1)
+                                         net82 (net)
+                  0.07    0.00   14.29 ^ accumulator._1303_/A (sky130_fd_sc_hd__buf_6)
+     6    0.03    0.07    0.13   14.42 ^ accumulator._1303_/X (sky130_fd_sc_hd__buf_6)
+                                         accumulator._0402_ (net)
+                  0.07    0.00   14.42 ^ accumulator._1335_/S (sky130_fd_sc_hd__mux2_4)
+     6    0.03    0.08    0.36   14.79 v accumulator._1335_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0432_ (net)
+                  0.08    0.00   14.79 v accumulator._1381_/A (sky130_fd_sc_hd__buf_6)
+     5    0.02    0.03    0.15   14.93 v accumulator._1381_/X (sky130_fd_sc_hd__buf_6)
+                                         accumulator._0478_ (net)
+                  0.03    0.00   14.93 v accumulator._1408_/A2 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.20   15.13 v accumulator._1408_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0505_ (net)
+                  0.05    0.00   15.13 v accumulator._1568_/B (sky130_fd_sc_hd__and3_1)
+     2    0.01    0.05    0.18   15.32 v accumulator._1568_/X (sky130_fd_sc_hd__and3_1)
+                                         accumulator._0665_ (net)
+                  0.05    0.00   15.32 v accumulator._1659_/A (sky130_fd_sc_hd__or2_4)
+     1    0.00    0.04    0.25   15.57 v accumulator._1659_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0756_ (net)
+                  0.04    0.00   15.57 v accumulator._1660_/A1 (sky130_fd_sc_hd__mux2_4)
+     2    0.01    0.06    0.28   15.85 v accumulator._1660_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0757_ (net)
+                  0.06    0.00   15.85 v accumulator._1661_/B (sky130_fd_sc_hd__or2_4)
+     1    0.00    0.05    0.24   16.08 v accumulator._1661_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0758_ (net)
+                  0.05    0.00   16.08 v accumulator._1667_/A1 (sky130_fd_sc_hd__a32o_2)
+     4    0.03    0.09    0.31   16.40 v accumulator._1667_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0764_ (net)
+                  0.09    0.00   16.40 v accumulator._1834_/B (sky130_fd_sc_hd__xnor2_4)
+     3    0.02    0.19    0.21   16.61 ^ accumulator._1834_/Y (sky130_fd_sc_hd__xnor2_4)
+                                         accumulator._0931_ (net)
+                  0.19    0.00   16.61 ^ accumulator._1839_/A2 (sky130_fd_sc_hd__a311o_1)
+     3    0.01    0.13    0.26   16.87 ^ accumulator._1839_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0936_ (net)
+                  0.13    0.00   16.87 ^ accumulator._1842_/A1 (sky130_fd_sc_hd__a311o_1)
+     2    0.01    0.12    0.23   17.11 ^ accumulator._1842_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0939_ (net)
+                  0.12    0.00   17.11 ^ accumulator._1844_/A1 (sky130_fd_sc_hd__a31oi_2)
+     3    0.01    0.10    0.13   17.24 v accumulator._1844_/Y (sky130_fd_sc_hd__a31oi_2)
+                                         accumulator._0941_ (net)
+                  0.10    0.00   17.24 v accumulator._1846_/A1 (sky130_fd_sc_hd__a211o_1)
+     2    0.01    0.07    0.31   17.55 v accumulator._1846_/X (sky130_fd_sc_hd__a211o_1)
+                                         accumulator._0943_ (net)
+                  0.07    0.00   17.55 v accumulator._1847_/A1 (sky130_fd_sc_hd__a311o_1)
+     3    0.01    0.10    0.34   17.89 v accumulator._1847_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0944_ (net)
+                  0.10    0.00   17.89 v accumulator._1855_/A3 (sky130_fd_sc_hd__o311a_4)
+     4    0.02    0.07    0.37   18.26 v accumulator._1855_/X (sky130_fd_sc_hd__o311a_4)
+                                         accumulator._0952_ (net)
+                  0.07    0.00   18.26 v accumulator._1866_/A3 (sky130_fd_sc_hd__o31ai_4)
+     3    0.01    0.21    0.22   18.48 ^ accumulator._1866_/Y (sky130_fd_sc_hd__o31ai_4)
+                                         accumulator._0963_ (net)
+                  0.21    0.00   18.48 ^ accumulator._1867_/B (sky130_fd_sc_hd__nand3b_1)
+     1    0.00    0.07    0.10   18.58 v accumulator._1867_/Y (sky130_fd_sc_hd__nand3b_1)
+                                         accumulator._0964_ (net)
+                  0.07    0.00   18.58 v accumulator._1868_/C1 (sky130_fd_sc_hd__o211a_1)
+     3    0.01    0.07    0.16   18.74 v accumulator._1868_/X (sky130_fd_sc_hd__o211a_1)
+                                         accumulator._0965_ (net)
+                  0.07    0.00   18.74 v accumulator._1871_/A3 (sky130_fd_sc_hd__o41a_4)
+     7    0.02    0.09    0.50   19.24 v accumulator._1871_/X (sky130_fd_sc_hd__o41a_4)
+                                         accumulator._0968_ (net)
+                  0.09    0.00   19.24 v accumulator._1872_/A (sky130_fd_sc_hd__and2_4)
+     5    0.01    0.04    0.18   19.42 v accumulator._1872_/X (sky130_fd_sc_hd__and2_4)
+                                         accumulator._0969_ (net)
+                  0.04    0.00   19.42 v accumulator._2056_/A2 (sky130_fd_sc_hd__a22o_1)
+     4    0.01    0.08    0.28   19.70 v accumulator._2056_/X (sky130_fd_sc_hd__a22o_1)
+                                         accumulator._1153_ (net)
+                  0.08    0.00   19.70 v accumulator._2070_/A2 (sky130_fd_sc_hd__o21ba_1)
+     1    0.00    0.04    0.19   19.88 v accumulator._2070_/X (sky130_fd_sc_hd__o21ba_1)
+                                         accumulator._1167_ (net)
+                  0.04    0.00   19.88 v accumulator._2071_/A1 (sky130_fd_sc_hd__o21ba_1)
+     1    0.00    0.04    0.18   20.07 v accumulator._2071_/X (sky130_fd_sc_hd__o21ba_1)
+                                         accumulator._1168_ (net)
+                  0.04    0.00   20.07 v accumulator._2072_/A2 (sky130_fd_sc_hd__o21ai_1)
+     1    0.00    0.12    0.13   20.20 ^ accumulator._2072_/Y (sky130_fd_sc_hd__o21ai_1)
+                                         accumulator._1169_ (net)
+                  0.12    0.00   20.20 ^ accumulator._2073_/A1 (sky130_fd_sc_hd__a21oi_1)
+     1    0.00    0.08    0.08   20.28 v accumulator._2073_/Y (sky130_fd_sc_hd__a21oi_1)
+                                         accumulator._1170_ (net)
+                  0.08    0.00   20.28 v accumulator._2074_/A1 (sky130_fd_sc_hd__o21ai_1)
+     1    0.00    0.10    0.15   20.43 ^ accumulator._2074_/Y (sky130_fd_sc_hd__o21ai_1)
+                                         accumulator._1171_ (net)
+                  0.10    0.00   20.43 ^ accumulator._2075_/A1 (sky130_fd_sc_hd__a21o_1)
+     1    0.00    0.05    0.13   20.56 ^ accumulator._2075_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._1172_ (net)
+                  0.05    0.00   20.56 ^ accumulator._2076_/A2 (sky130_fd_sc_hd__a21oi_1)
+     1    0.00    0.08    0.07   20.63 v accumulator._2076_/Y (sky130_fd_sc_hd__a21oi_1)
+                                         accumulator._1173_ (net)
+                  0.08    0.00   20.63 v accumulator._2077_/A1 (sky130_fd_sc_hd__o21ai_1)
+     1    0.00    0.11    0.15   20.78 ^ accumulator._2077_/Y (sky130_fd_sc_hd__o21ai_1)
+                                         accumulator._1174_ (net)
+                  0.11    0.00   20.78 ^ accumulator._2078_/A1 (sky130_fd_sc_hd__a21oi_1)
+     1    0.00    0.07    0.08   20.86 v accumulator._2078_/Y (sky130_fd_sc_hd__a21oi_1)
+                                         accumulator._1175_ (net)
+                  0.07    0.00   20.86 v accumulator._2079_/A1 (sky130_fd_sc_hd__o21bai_1)
+     1    0.00    0.12    0.16   21.02 ^ accumulator._2079_/Y (sky130_fd_sc_hd__o21bai_1)
+                                         accumulator._1176_ (net)
+                  0.12    0.00   21.02 ^ accumulator._2082_/A1 (sky130_fd_sc_hd__a21o_2)
+     7    0.04    0.18    0.26   21.28 ^ accumulator._2082_/X (sky130_fd_sc_hd__a21o_2)
+                                         accumulator._1180_ (net)
+                  0.18    0.00   21.28 ^ accumulator._2083_/A (sky130_fd_sc_hd__nand2_4)
+     5    0.02    0.08    0.10   21.38 v accumulator._2083_/Y (sky130_fd_sc_hd__nand2_4)
+                                         accumulator._1181_ (net)
+                  0.08    0.00   21.38 v clone18/A (sky130_fd_sc_hd__clkbuf_16)
+     5    0.02    0.04    0.17   21.55 v clone18/X (sky130_fd_sc_hd__clkbuf_16)
+                                         net75 (net)
+                  0.04    0.00   21.55 v accumulator._2161_/S (sky130_fd_sc_hd__mux2_4)
+     2    0.01    0.05    0.31   21.87 v accumulator._2161_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0096_ (net)
+                  0.05    0.00   21.87 v accumulator._2224_/A0 (sky130_fd_sc_hd__mux2_4)
+     1    0.00    0.05    0.27   22.14 v accumulator._2224_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0159_ (net)
+                  0.05    0.00   22.14 v accumulator._2228_/A0 (sky130_fd_sc_hd__mux2_4)
+     2    0.01    0.05    0.29   22.43 v accumulator._2228_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0163_ (net)
+                  0.05    0.00   22.43 v accumulator._2298_/A0 (sky130_fd_sc_hd__mux2_4)
+     1    0.01    0.05    0.29   22.71 v accumulator._2298_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0232_ (net)
+                  0.05    0.00   22.71 v accumulator._2300_/A3 (sky130_fd_sc_hd__o311a_1)
+     1    0.00    0.05    0.29   23.01 v accumulator._2300_/X (sky130_fd_sc_hd__o311a_1)
+                                         accumulator._0021_ (net)
+                  0.05    0.00   23.01 v accumulator._2420_/D (sky130_fd_sc_hd__dfxtp_1)
+                                 23.01   data arrival time
+
+                         20.00   20.00   clock clock (rise edge)
+                          0.00   20.00   clock source latency
+     1    0.01    0.04    0.03   20.03 ^ clock (in)
+                                         clock (net)
+                  0.04    0.00   20.03 ^ clkbuf_0_clock/A (sky130_fd_sc_hd__clkbuf_16)
+     4    0.03    0.05    0.13   20.15 ^ clkbuf_0_clock/X (sky130_fd_sc_hd__clkbuf_16)
+                                         clknet_0_clock (net)
+                  0.05    0.00   20.15 ^ clkbuf_2_1__f_clock/A (sky130_fd_sc_hd__clkbuf_16)
+    10    0.03    0.05    0.13   20.28 ^ clkbuf_2_1__f_clock/X (sky130_fd_sc_hd__clkbuf_16)
+                                         clknet_2_1__leaf_clock (net)
+                  0.05    0.00   20.29 ^ accumulator._2420_/CLK (sky130_fd_sc_hd__dfxtp_1)
+                         -0.25   20.04   clock uncertainty
+                          0.00   20.04   clock reconvergence pessimism
+                         -0.11   19.92   library setup time
+                                 19.92   data required time
+-----------------------------------------------------------------------------
+                                 19.92   data required time
+                                -23.01   data arrival time
+-----------------------------------------------------------------------------
+                                 -3.08   slack (VIOLATED)
+
+
+
+
+===========================================================================
+report_checks --slack_max -0.01
+============================================================================
+======================= Typical Corner ===================================
+
+Startpoint: io_inScaleA[0] (input port clocked by clock)
+Endpoint: accumulator._2420_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: max
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                          0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (propagated)
+                          4.00    4.00 ^ input external delay
+     1    0.00    0.02    0.01    4.01 ^ io_inScaleA[0] (in)
+                                         io_inScaleA[0] (net)
+                  0.02    0.00    4.01 ^ input9/A (sky130_fd_sc_hd__buf_1)
+     4    0.02    0.19    0.18    4.20 ^ input9/X (sky130_fd_sc_hd__buf_1)
+                                         net9 (net)
+                  0.19    0.00    4.20 ^ scaleAdd._421_/B1 (sky130_fd_sc_hd__o21a_4)
+     4    0.02    0.08    0.20    4.40 ^ scaleAdd._421_/X (sky130_fd_sc_hd__o21a_4)
+                                         scaleAdd._002_ (net)
+                  0.08    0.00    4.40 ^ scaleAdd._428_/B (sky130_fd_sc_hd__xor2_2)
+     2    0.01    0.15    0.18    4.58 ^ scaleAdd._428_/X (sky130_fd_sc_hd__xor2_2)
+                                         scaleAdd._009_ (net)
+                  0.15    0.00    4.58 ^ scaleAdd._429_/A (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.09    0.13    4.71 v scaleAdd._429_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._010_ (net)
+                  0.09    0.00    4.71 v scaleAdd._431_/B (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.29    0.29    5.01 ^ scaleAdd._431_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._012_ (net)
+                  0.29    0.00    5.01 ^ scaleAdd._432_/A (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.20    0.20    5.21 ^ scaleAdd._432_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._013_ (net)
+                  0.20    0.00    5.21 ^ scaleAdd._435_/A (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.28    0.30    5.51 ^ scaleAdd._435_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._016_ (net)
+                  0.28    0.00    5.51 ^ scaleAdd._436_/A (sky130_fd_sc_hd__xnor2_2)
+     2    0.01    0.09    0.14    5.66 v scaleAdd._436_/Y (sky130_fd_sc_hd__xnor2_2)
+                                         scaleAdd._017_ (net)
+                  0.09    0.00    5.66 v scaleAdd._438_/B (sky130_fd_sc_hd__xnor2_2)
+     2    0.01    0.21    0.22    5.87 ^ scaleAdd._438_/Y (sky130_fd_sc_hd__xnor2_2)
+                                         scaleAdd._019_ (net)
+                  0.21    0.00    5.87 ^ scaleAdd._439_/A (sky130_fd_sc_hd__xor2_2)
+     5    0.02    0.29    0.30    6.17 ^ scaleAdd._439_/X (sky130_fd_sc_hd__xor2_2)
+                                         scaleAdd._020_ (net)
+                  0.29    0.00    6.17 ^ scaleAdd._524_/A2 (sky130_fd_sc_hd__a21oi_2)
+     1    0.01    0.08    0.12    6.30 v scaleAdd._524_/Y (sky130_fd_sc_hd__a21oi_2)
+                                         scaleAdd._103_ (net)
+                  0.08    0.00    6.30 v scaleAdd._527_/A1 (sky130_fd_sc_hd__o31ai_4)
+     4    0.02    0.29    0.36    6.65 ^ scaleAdd._527_/Y (sky130_fd_sc_hd__o31ai_4)
+                                         scaleAdd._106_ (net)
+                  0.29    0.00    6.65 ^ scaleAdd._528_/A (sky130_fd_sc_hd__xor2_2)
+     2    0.01    0.14    0.20    6.85 ^ scaleAdd._528_/X (sky130_fd_sc_hd__xor2_2)
+                                         scaleAdd._107_ (net)
+                  0.14    0.00    6.85 ^ scaleAdd._529_/B (sky130_fd_sc_hd__nand2_1)
+     4    0.02    0.12    0.15    7.00 v scaleAdd._529_/Y (sky130_fd_sc_hd__nand2_1)
+                                         scaleAdd._108_ (net)
+                  0.12    0.00    7.00 v scaleAdd._530_/B (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.21    0.24    7.24 ^ scaleAdd._530_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._109_ (net)
+                  0.21    0.00    7.24 ^ scaleAdd._531_/B (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.21    0.25    7.49 ^ scaleAdd._531_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._110_ (net)
+                  0.21    0.00    7.49 ^ scaleAdd._534_/A (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.20    0.24    7.73 ^ scaleAdd._534_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._113_ (net)
+                  0.20    0.00    7.73 ^ scaleAdd._535_/B (sky130_fd_sc_hd__xor2_1)
+     2    0.01    0.21    0.25    7.98 ^ scaleAdd._535_/X (sky130_fd_sc_hd__xor2_1)
+                                         scaleAdd._114_ (net)
+                  0.21    0.00    7.98 ^ scaleAdd._538_/A (sky130_fd_sc_hd__xnor2_1)
+     2    0.01    0.33    0.24    8.22 ^ scaleAdd._538_/Y (sky130_fd_sc_hd__xnor2_1)
+                                         scaleAdd._117_ (net)
+                  0.33    0.00    8.22 ^ scaleAdd._539_/B1 (sky130_fd_sc_hd__a21oi_4)
+     5    0.02    0.09    0.08    8.30 v scaleAdd._539_/Y (sky130_fd_sc_hd__a21oi_4)
+                                         scaleAdd._118_ (net)
+                  0.09    0.00    8.30 v scaleAdd._603_/A2 (sky130_fd_sc_hd__o311ai_2)
+     3    0.01    0.28    0.33    8.63 ^ scaleAdd._603_/Y (sky130_fd_sc_hd__o311ai_2)
+                                         scaleAdd._180_ (net)
+                  0.28    0.00    8.63 ^ scaleAdd._652_/A1 (sky130_fd_sc_hd__a311o_1)
+     4    0.01    0.16    0.31    8.94 ^ scaleAdd._652_/X (sky130_fd_sc_hd__a311o_1)
+                                         scaleAdd._227_ (net)
+                  0.16    0.00    8.94 ^ scaleAdd._688_/A1 (sky130_fd_sc_hd__a311o_1)
+     3    0.02    0.18    0.29    9.23 ^ scaleAdd._688_/X (sky130_fd_sc_hd__a311o_1)
+                                         scaleAdd._261_ (net)
+                  0.18    0.00    9.23 ^ scaleAdd._708_/A1 (sky130_fd_sc_hd__a31oi_4)
+     2    0.01    0.09    0.13    9.36 v scaleAdd._708_/Y (sky130_fd_sc_hd__a31oi_4)
+                                         scaleAdd._279_ (net)
+                  0.09    0.00    9.36 v scaleAdd._711_/A2 (sky130_fd_sc_hd__a211o_1)
+     4    0.01    0.09    0.37    9.73 v scaleAdd._711_/X (sky130_fd_sc_hd__a211o_1)
+                                         accumulator.io_inMant[17] (net)
+                  0.09    0.00    9.73 v accumulator._1204_/A (sky130_fd_sc_hd__or4_4)
+     4    0.01    0.10    0.60   10.33 v accumulator._1204_/X (sky130_fd_sc_hd__or4_4)
+                                         accumulator._0065_ (net)
+                  0.10    0.00   10.33 v accumulator._1206_/B (sky130_fd_sc_hd__or2_4)
+     3    0.01    0.05    0.27   10.61 v accumulator._1206_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0085_ (net)
+                  0.05    0.00   10.61 v accumulator._1207_/A (sky130_fd_sc_hd__or2_4)
+     4    0.01    0.06    0.28   10.88 v accumulator._1207_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0095_ (net)
+                  0.06    0.00   10.88 v accumulator._1240_/A (sky130_fd_sc_hd__and2_4)
+     2    0.01    0.03    0.15   11.03 v accumulator._1240_/X (sky130_fd_sc_hd__and2_4)
+                                         accumulator._0339_ (net)
+                  0.03    0.00   11.03 v accumulator._1241_/C1 (sky130_fd_sc_hd__a311o_1)
+     3    0.01    0.08    0.32   11.35 v accumulator._1241_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0340_ (net)
+                  0.08    0.00   11.35 v accumulator._1255_/A1 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.19   11.54 v accumulator._1255_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0354_ (net)
+                  0.05    0.00   11.54 v accumulator._1257_/A2 (sky130_fd_sc_hd__a211o_1)
+     3    0.01    0.07    0.33   11.87 v accumulator._1257_/X (sky130_fd_sc_hd__a211o_1)
+                                         accumulator._0356_ (net)
+                  0.07    0.00   11.87 v accumulator._1263_/B (sky130_fd_sc_hd__and2_4)
+     5    0.01    0.04    0.19   12.06 v accumulator._1263_/X (sky130_fd_sc_hd__and2_4)
+                                         accumulator._0362_ (net)
+                  0.04    0.00   12.06 v accumulator._1274_/C (sky130_fd_sc_hd__or4_4)
+     2    0.01    0.09    0.50   12.56 v accumulator._1274_/X (sky130_fd_sc_hd__or4_4)
+                                         accumulator._0373_ (net)
+                  0.09    0.00   12.56 v accumulator._1276_/A1 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.20   12.76 v accumulator._1276_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0375_ (net)
+                  0.05    0.00   12.76 v accumulator._1278_/A1 (sky130_fd_sc_hd__a21o_4)
+     2    0.01    0.04    0.21   12.97 v accumulator._1278_/X (sky130_fd_sc_hd__a21o_4)
+                                         accumulator._0377_ (net)
+                  0.04    0.00   12.97 v accumulator._1284_/A2 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.20   13.16 v accumulator._1284_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0383_ (net)
+                  0.05    0.00   13.16 v accumulator._1285_/A1 (sky130_fd_sc_hd__a21o_4)
+     2    0.01    0.04    0.21   13.37 v accumulator._1285_/X (sky130_fd_sc_hd__a21o_4)
+                                         accumulator._0384_ (net)
+                  0.04    0.00   13.37 v accumulator._1290_/A2 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.07    0.22   13.59 v accumulator._1290_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0389_ (net)
+                  0.07    0.00   13.59 v accumulator._1293_/A2 (sky130_fd_sc_hd__a21boi_4)
+     3    0.03    0.24    0.27   13.86 ^ accumulator._1293_/Y (sky130_fd_sc_hd__a21boi_4)
+                                         accumulator._0392_ (net)
+                  0.24    0.00   13.86 ^ accumulator._1302_/A (sky130_fd_sc_hd__xor2_2)
+     3    0.01    0.15    0.20   14.06 ^ accumulator._1302_/X (sky130_fd_sc_hd__xor2_2)
+                                         accumulator._0401_ (net)
+                  0.15    0.00   14.06 ^ rebuffer30/A (sky130_fd_sc_hd__clkbuf_2)
+     1    0.00    0.03    0.13   14.19 ^ rebuffer30/X (sky130_fd_sc_hd__clkbuf_2)
+                                         net87 (net)
+                  0.03    0.00   14.19 ^ rebuffer25/A (sky130_fd_sc_hd__clkbuf_1)
+     1    0.01    0.07    0.10   14.29 ^ rebuffer25/X (sky130_fd_sc_hd__clkbuf_1)
+                                         net82 (net)
+                  0.07    0.00   14.29 ^ accumulator._1303_/A (sky130_fd_sc_hd__buf_6)
+     6    0.03    0.07    0.13   14.42 ^ accumulator._1303_/X (sky130_fd_sc_hd__buf_6)
+                                         accumulator._0402_ (net)
+                  0.07    0.00   14.42 ^ accumulator._1335_/S (sky130_fd_sc_hd__mux2_4)
+     6    0.03    0.08    0.36   14.79 v accumulator._1335_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0432_ (net)
+                  0.08    0.00   14.79 v accumulator._1381_/A (sky130_fd_sc_hd__buf_6)
+     5    0.02    0.03    0.15   14.93 v accumulator._1381_/X (sky130_fd_sc_hd__buf_6)
+                                         accumulator._0478_ (net)
+                  0.03    0.00   14.93 v accumulator._1408_/A2 (sky130_fd_sc_hd__a21o_1)
+     2    0.01    0.05    0.20   15.13 v accumulator._1408_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._0505_ (net)
+                  0.05    0.00   15.13 v accumulator._1568_/B (sky130_fd_sc_hd__and3_1)
+     2    0.01    0.05    0.18   15.32 v accumulator._1568_/X (sky130_fd_sc_hd__and3_1)
+                                         accumulator._0665_ (net)
+                  0.05    0.00   15.32 v accumulator._1659_/A (sky130_fd_sc_hd__or2_4)
+     1    0.00    0.04    0.25   15.57 v accumulator._1659_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0756_ (net)
+                  0.04    0.00   15.57 v accumulator._1660_/A1 (sky130_fd_sc_hd__mux2_4)
+     2    0.01    0.06    0.28   15.85 v accumulator._1660_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0757_ (net)
+                  0.06    0.00   15.85 v accumulator._1661_/B (sky130_fd_sc_hd__or2_4)
+     1    0.00    0.05    0.24   16.08 v accumulator._1661_/X (sky130_fd_sc_hd__or2_4)
+                                         accumulator._0758_ (net)
+                  0.05    0.00   16.08 v accumulator._1667_/A1 (sky130_fd_sc_hd__a32o_2)
+     4    0.03    0.09    0.31   16.40 v accumulator._1667_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0764_ (net)
+                  0.09    0.00   16.40 v accumulator._1834_/B (sky130_fd_sc_hd__xnor2_4)
+     3    0.02    0.19    0.21   16.61 ^ accumulator._1834_/Y (sky130_fd_sc_hd__xnor2_4)
+                                         accumulator._0931_ (net)
+                  0.19    0.00   16.61 ^ accumulator._1839_/A2 (sky130_fd_sc_hd__a311o_1)
+     3    0.01    0.13    0.26   16.87 ^ accumulator._1839_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0936_ (net)
+                  0.13    0.00   16.87 ^ accumulator._1842_/A1 (sky130_fd_sc_hd__a311o_1)
+     2    0.01    0.12    0.23   17.11 ^ accumulator._1842_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0939_ (net)
+                  0.12    0.00   17.11 ^ accumulator._1844_/A1 (sky130_fd_sc_hd__a31oi_2)
+     3    0.01    0.10    0.13   17.24 v accumulator._1844_/Y (sky130_fd_sc_hd__a31oi_2)
+                                         accumulator._0941_ (net)
+                  0.10    0.00   17.24 v accumulator._1846_/A1 (sky130_fd_sc_hd__a211o_1)
+     2    0.01    0.07    0.31   17.55 v accumulator._1846_/X (sky130_fd_sc_hd__a211o_1)
+                                         accumulator._0943_ (net)
+                  0.07    0.00   17.55 v accumulator._1847_/A1 (sky130_fd_sc_hd__a311o_1)
+     3    0.01    0.10    0.34   17.89 v accumulator._1847_/X (sky130_fd_sc_hd__a311o_1)
+                                         accumulator._0944_ (net)
+                  0.10    0.00   17.89 v accumulator._1855_/A3 (sky130_fd_sc_hd__o311a_4)
+     4    0.02    0.07    0.37   18.26 v accumulator._1855_/X (sky130_fd_sc_hd__o311a_4)
+                                         accumulator._0952_ (net)
+                  0.07    0.00   18.26 v accumulator._1866_/A3 (sky130_fd_sc_hd__o31ai_4)
+     3    0.01    0.21    0.22   18.48 ^ accumulator._1866_/Y (sky130_fd_sc_hd__o31ai_4)
+                                         accumulator._0963_ (net)
+                  0.21    0.00   18.48 ^ accumulator._1867_/B (sky130_fd_sc_hd__nand3b_1)
+     1    0.00    0.07    0.10   18.58 v accumulator._1867_/Y (sky130_fd_sc_hd__nand3b_1)
+                                         accumulator._0964_ (net)
+                  0.07    0.00   18.58 v accumulator._1868_/C1 (sky130_fd_sc_hd__o211a_1)
+     3    0.01    0.07    0.16   18.74 v accumulator._1868_/X (sky130_fd_sc_hd__o211a_1)
+                                         accumulator._0965_ (net)
+                  0.07    0.00   18.74 v accumulator._1871_/A3 (sky130_fd_sc_hd__o41a_4)
+     7    0.02    0.09    0.50   19.24 v accumulator._1871_/X (sky130_fd_sc_hd__o41a_4)
+                                         accumulator._0968_ (net)
+                  0.09    0.00   19.24 v accumulator._1872_/A (sky130_fd_sc_hd__and2_4)
+     5    0.01    0.04    0.18   19.42 v accumulator._1872_/X (sky130_fd_sc_hd__and2_4)
+                                         accumulator._0969_ (net)
+                  0.04    0.00   19.42 v accumulator._2056_/A2 (sky130_fd_sc_hd__a22o_1)
+     4    0.01    0.08    0.28   19.70 v accumulator._2056_/X (sky130_fd_sc_hd__a22o_1)
+                                         accumulator._1153_ (net)
+                  0.08    0.00   19.70 v accumulator._2070_/A2 (sky130_fd_sc_hd__o21ba_1)
+     1    0.00    0.04    0.19   19.88 v accumulator._2070_/X (sky130_fd_sc_hd__o21ba_1)
+                                         accumulator._1167_ (net)
+                  0.04    0.00   19.88 v accumulator._2071_/A1 (sky130_fd_sc_hd__o21ba_1)
+     1    0.00    0.04    0.18   20.07 v accumulator._2071_/X (sky130_fd_sc_hd__o21ba_1)
+                                         accumulator._1168_ (net)
+                  0.04    0.00   20.07 v accumulator._2072_/A2 (sky130_fd_sc_hd__o21ai_1)
+     1    0.00    0.12    0.13   20.20 ^ accumulator._2072_/Y (sky130_fd_sc_hd__o21ai_1)
+                                         accumulator._1169_ (net)
+                  0.12    0.00   20.20 ^ accumulator._2073_/A1 (sky130_fd_sc_hd__a21oi_1)
+     1    0.00    0.08    0.08   20.28 v accumulator._2073_/Y (sky130_fd_sc_hd__a21oi_1)
+                                         accumulator._1170_ (net)
+                  0.08    0.00   20.28 v accumulator._2074_/A1 (sky130_fd_sc_hd__o21ai_1)
+     1    0.00    0.10    0.15   20.43 ^ accumulator._2074_/Y (sky130_fd_sc_hd__o21ai_1)
+                                         accumulator._1171_ (net)
+                  0.10    0.00   20.43 ^ accumulator._2075_/A1 (sky130_fd_sc_hd__a21o_1)
+     1    0.00    0.05    0.13   20.56 ^ accumulator._2075_/X (sky130_fd_sc_hd__a21o_1)
+                                         accumulator._1172_ (net)
+                  0.05    0.00   20.56 ^ accumulator._2076_/A2 (sky130_fd_sc_hd__a21oi_1)
+     1    0.00    0.08    0.07   20.63 v accumulator._2076_/Y (sky130_fd_sc_hd__a21oi_1)
+                                         accumulator._1173_ (net)
+                  0.08    0.00   20.63 v accumulator._2077_/A1 (sky130_fd_sc_hd__o21ai_1)
+     1    0.00    0.11    0.15   20.78 ^ accumulator._2077_/Y (sky130_fd_sc_hd__o21ai_1)
+                                         accumulator._1174_ (net)
+                  0.11    0.00   20.78 ^ accumulator._2078_/A1 (sky130_fd_sc_hd__a21oi_1)
+     1    0.00    0.07    0.08   20.86 v accumulator._2078_/Y (sky130_fd_sc_hd__a21oi_1)
+                                         accumulator._1175_ (net)
+                  0.07    0.00   20.86 v accumulator._2079_/A1 (sky130_fd_sc_hd__o21bai_1)
+     1    0.00    0.12    0.16   21.02 ^ accumulator._2079_/Y (sky130_fd_sc_hd__o21bai_1)
+                                         accumulator._1176_ (net)
+                  0.12    0.00   21.02 ^ accumulator._2082_/A1 (sky130_fd_sc_hd__a21o_2)
+     7    0.04    0.18    0.26   21.28 ^ accumulator._2082_/X (sky130_fd_sc_hd__a21o_2)
+                                         accumulator._1180_ (net)
+                  0.18    0.00   21.28 ^ accumulator._2083_/A (sky130_fd_sc_hd__nand2_4)
+     5    0.02    0.08    0.10   21.38 v accumulator._2083_/Y (sky130_fd_sc_hd__nand2_4)
+                                         accumulator._1181_ (net)
+                  0.08    0.00   21.38 v clone18/A (sky130_fd_sc_hd__clkbuf_16)
+     5    0.02    0.04    0.17   21.55 v clone18/X (sky130_fd_sc_hd__clkbuf_16)
+                                         net75 (net)
+                  0.04    0.00   21.55 v accumulator._2161_/S (sky130_fd_sc_hd__mux2_4)
+     2    0.01    0.05    0.31   21.87 v accumulator._2161_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0096_ (net)
+                  0.05    0.00   21.87 v accumulator._2224_/A0 (sky130_fd_sc_hd__mux2_4)
+     1    0.00    0.05    0.27   22.14 v accumulator._2224_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0159_ (net)
+                  0.05    0.00   22.14 v accumulator._2228_/A0 (sky130_fd_sc_hd__mux2_4)
+     2    0.01    0.05    0.29   22.43 v accumulator._2228_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0163_ (net)
+                  0.05    0.00   22.43 v accumulator._2298_/A0 (sky130_fd_sc_hd__mux2_4)
+     1    0.01    0.05    0.29   22.71 v accumulator._2298_/X (sky130_fd_sc_hd__mux2_4)
+                                         accumulator._0232_ (net)
+                  0.05    0.00   22.71 v accumulator._2300_/A3 (sky130_fd_sc_hd__o311a_1)
+     1    0.00    0.05    0.29   23.01 v accumulator._2300_/X (sky130_fd_sc_hd__o311a_1)
+                                         accumulator._0021_ (net)
+                  0.05    0.00   23.01 v accumulator._2420_/D (sky130_fd_sc_hd__dfxtp_1)
+                                 23.01   data arrival time
+
+                         20.00   20.00   clock clock (rise edge)
+                          0.00   20.00   clock source latency
+     1    0.01    0.04    0.03   20.03 ^ clock (in)
+                                         clock (net)
+                  0.04    0.00   20.03 ^ clkbuf_0_clock/A (sky130_fd_sc_hd__clkbuf_16)
+     4    0.03    0.05    0.13   20.15 ^ clkbuf_0_clock/X (sky130_fd_sc_hd__clkbuf_16)
+                                         clknet_0_clock (net)
+                  0.05    0.00   20.15 ^ clkbuf_2_1__f_clock/A (sky130_fd_sc_hd__clkbuf_16)
+    10    0.03    0.05    0.13   20.28 ^ clkbuf_2_1__f_clock/X (sky130_fd_sc_hd__clkbuf_16)
+                                         clknet_2_1__leaf_clock (net)
+                  0.05    0.00   20.29 ^ accumulator._2420_/CLK (sky130_fd_sc_hd__dfxtp_1)
+                         -0.25   20.04   clock uncertainty
+                          0.00   20.04   clock reconvergence pessimism
+                         -0.11   19.92   library setup time
+                                 19.92   data required time
+-----------------------------------------------------------------------------
+                                 19.92   data required time
+                                -23.01   data arrival time
+-----------------------------------------------------------------------------
+                                 -3.08   slack (VIOLATED)
+
+
+
+
+===========================================================================
+ report_check_types -max_slew -max_cap -max_fanout -violators
+============================================================================
+======================= Typical Corner ===================================
+
+
+max slew violations count Typical: 0
+max fanout violations count Typical: 0
+max cap violations count Typical: 0
+
+===========================================================================
+report_parasitic_annotation -report_unannotated
+============================================================================
+Found 11 unannotated drivers.
+ io_inScaleB[0]
+ io_inScaleB[1]
+ io_inScaleB[2]
+ io_inScaleB[3]
+ io_inScaleB[4]
+ io_inScaleB[5]
+ clkload0/Y
+ clkload1/X
+ clkload2/Y
+ scaleAdd._736__56/HI
+ scaleAdd._737__57/HI
+Found 223 partially unannotated drivers.
+ clock
+ io_inA[1]
+ io_inScaleA[1]
+ io_inScaleA[2]
+ io_inScaleA[7]
+ io_inScaleB[6]
+ _02_/X
+ _09_/X
+ _21_/X
+ _23_/X
+ _25_/X
+ _31_/X
+ accumulator._1219_/X
+ accumulator._1287_/X
+ accumulator._1293_/Y
+ accumulator._1295_/X
+ accumulator._1296_/X
+ accumulator._1305_/X
+ accumulator._1306_/X
+ accumulator._1312_/Y
+ accumulator._1313_/X
+ accumulator._1319_/X
+ accumulator._1322_/Y
+ accumulator._1324_/Y
+ accumulator._1327_/Y
+ accumulator._1333_/X
+ accumulator._1369_/X
+ accumulator._1374_/X
+ accumulator._1378_/X
+ accumulator._1384_/X
+ accumulator._1404_/X
+ accumulator._1411_/Y
+ accumulator._1413_/X
+ accumulator._1421_/X
+ accumulator._1426_/Y
+ accumulator._1440_/X
+ accumulator._1455_/X
+ accumulator._1456_/X
+ accumulator._1465_/X
+ accumulator._1467_/X
+ accumulator._1472_/X
+ accumulator._1477_/X
+ accumulator._1488_/X
+ accumulator._1495_/X
+ accumulator._1496_/X
+ accumulator._1501_/X
+ accumulator._1536_/X
+ accumulator._1564_/Y
+ accumulator._1600_/X
+ accumulator._1612_/X
+ accumulator._1614_/Y
+ accumulator._1618_/Y
+ accumulator._1620_/X
+ accumulator._1622_/X
+ accumulator._1624_/Y
+ accumulator._1640_/X
+ accumulator._1643_/X
+ accumulator._1647_/X
+ accumulator._1706_/X
+ accumulator._1715_/X
+ accumulator._1724_/Y
+ accumulator._1728_/X
+ accumulator._1737_/X
+ accumulator._1751_/X
+ accumulator._1756_/X
+ accumulator._1765_/X
+ accumulator._1790_/Y
+ accumulator._1792_/X
+ accumulator._1813_/X
+ accumulator._1821_/X
+ accumulator._1822_/X
+ accumulator._1823_/X
+ accumulator._1824_/X
+ accumulator._1825_/X
+ accumulator._1826_/X
+ accumulator._1837_/X
+ accumulator._1851_/Y
+ accumulator._1862_/X
+ accumulator._1867_/Y
+ accumulator._1872_/X
+ accumulator._1895_/X
+ accumulator._1983_/Y
+ accumulator._1990_/X
+ accumulator._2014_/Y
+ accumulator._2016_/X
+ accumulator._2035_/X
+ accumulator._2040_/Y
+ accumulator._2042_/X
+ accumulator._2043_/X
+ accumulator._2044_/X
+ accumulator._2050_/X
+ accumulator._2051_/X
+ accumulator._2083_/Y
+ accumulator._2098_/X
+ accumulator._2100_/X
+ accumulator._2101_/X
+ accumulator._2102_/X
+ accumulator._2103_/Y
+ accumulator._2107_/Y
+ accumulator._2114_/X
+ accumulator._2115_/X
+ accumulator._2119_/X
+ accumulator._2127_/X
+ accumulator._2128_/Y
+ accumulator._2131_/X
+ accumulator._2136_/X
+ accumulator._2137_/X
+ accumulator._2138_/X
+ accumulator._2139_/X
+ accumulator._2141_/X
+ accumulator._2145_/Y
+ accumulator._2149_/X
+ accumulator._2156_/X
+ accumulator._2163_/X
+ accumulator._2169_/X
+ accumulator._2170_/X
+ accumulator._2174_/X
+ accumulator._2177_/Y
+ accumulator._2187_/X
+ accumulator._2191_/X
+ accumulator._2195_/X
+ accumulator._2196_/X
+ accumulator._2199_/X
+ accumulator._2200_/X
+ accumulator._2207_/X
+ accumulator._2209_/X
+ accumulator._2216_/X
+ accumulator._2224_/X
+ accumulator._2225_/Y
+ accumulator._2226_/X
+ accumulator._2227_/X
+ accumulator._2234_/Y
+ accumulator._2237_/X
+ accumulator._2239_/X
+ accumulator._2241_/X
+ accumulator._2243_/X
+ accumulator._2245_/X
+ accumulator._2246_/X
+ accumulator._2250_/X
+ accumulator._2251_/X
+ accumulator._2252_/Y
+ accumulator._2255_/X
+ accumulator._2256_/X
+ accumulator._2258_/X
+ accumulator._2259_/X
+ accumulator._2260_/X
+ accumulator._2263_/Y
+ accumulator._2268_/X
+ accumulator._2271_/Y
+ accumulator._2274_/X
+ accumulator._2277_/X
+ accumulator._2278_/X
+ accumulator._2287_/Y
+ accumulator._2289_/X
+ accumulator._2296_/X
+ accumulator._2303_/X
+ accumulator._2304_/X
+ accumulator._2306_/X
+ accumulator._2311_/X
+ accumulator._2313_/X
+ accumulator._2314_/X
+ accumulator._2315_/X
+ accumulator._2320_/Y
+ accumulator._2343_/X
+ accumulator._2401_/Q
+ accumulator._2404_/Q
+ accumulator._2409_/Q
+ accumulator._2412_/Q
+ accumulator._2413_/Q
+ accumulator._2414_/Q
+ accumulator._2416_/Q
+ accumulator._2417_/Q
+ accumulator._2420_/Q
+ accumulator._2421_/Q
+ accumulator._2431_/Q
+ clkbuf_0_clock/X
+ clkbuf_2_0__f_clock/X
+ clone18/X
+ clone35/X
+ input13/X
+ input16/X
+ input8/X
+ max_cap55/X
+ operator._13_/X
+ operator._16_/X
+ operator._20_/X
+ operator._23_/Y
+ operator._27_/X
+ operator._28_/X
+ operator._29_/X
+ rebuffer13/X
+ scaleAdd._366_/X
+ scaleAdd._375_/X
+ scaleAdd._378_/Y
+ scaleAdd._387_/X
+ scaleAdd._390_/Y
+ scaleAdd._391_/Y
+ scaleAdd._395_/X
+ scaleAdd._396_/X
+ scaleAdd._421_/X
+ scaleAdd._425_/X
+ scaleAdd._432_/Y
+ scaleAdd._433_/Y
+ scaleAdd._439_/X
+ scaleAdd._442_/X
+ scaleAdd._455_/X
+ scaleAdd._475_/X
+ scaleAdd._478_/X
+ scaleAdd._482_/Y
+ scaleAdd._498_/X
+ scaleAdd._501_/X
+ scaleAdd._503_/X
+ scaleAdd._508_/Y
+ scaleAdd._527_/Y
+ scaleAdd._547_/X
+ scaleAdd._549_/Y
+ scaleAdd._551_/X
+ scaleAdd._562_/Y
+ scaleAdd._625_/X
+ scaleAdd._676_/X
+ scaleAdd._680_/Y
+ scaleAdd._693_/X
+ scaleAdd._741_/Y
+
+===========================================================================
+max slew violation count 0
+max fanout violation count 0
+max cap violation count 0
+============================================================================
+
+===========================================================================
+check_setup -verbose -unconstrained_endpoints -multiple_clock -no_clock -no_input_delay -loops -generated_clocks
+===========================================================================

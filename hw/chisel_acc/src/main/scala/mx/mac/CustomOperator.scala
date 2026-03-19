@@ -65,7 +65,7 @@ object OperatorMain extends App {
   gen(MXFormats.e4m3_e2m1_config)
 
 }
-
+  
 object AllOperatorMain extends App{
   // 遍历所有 A 和 B 的组合 (嵌套循环)
   for {

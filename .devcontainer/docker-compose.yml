@@ -1,0 +1,15 @@
+services:
+  snax_dev:
+    image: my_snax_installed
+    # This is the most stable "keep-alive" command for VS Code
+    command: tail -f /dev/null
+    volumes:
+      - ..:/workspaces/snax_cluster:cached
+    # Link to openlane for network, but let's keep it simple first
+    network_mode: service:openlane
+
+  openlane:
+    image: efabless/openlane:latest
+    command: tail -f /dev/null
+    volumes:
+      - ..:/workspaces/snax_cluster:cached

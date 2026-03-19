@@ -5,8 +5,8 @@ import chisel3._
 /** Dot-product unit that chains:
  *    CustomOperator  →  ScaleAddition  →  ScaleAccumulatorFP32
  *
- *  One call to start/done drives one multiply-scale-accumulate step.
- *  resetAcc resets the FP32 accumulator to zero.
+ *  One validIn pulse drives one multiply-scale-accumulate step.
+ *  init_save_i resets the FP32 accumulator to zero.
  *
  *  @param scfg  ScaleAddConfig that fully describes element types and scale format.
  *               The embedded OperatorConfig is derived automatically.
@@ -17,16 +17,16 @@ class DotProductUnit(val scfg: ScaleAddConfig) extends Module {
 
   val io = IO(new Bundle {
     // --- Data inputs ---
-    val inA      = Input(UInt(scfg.elementTypeA.totalWidth.W))
-    val inB      = Input(UInt(scfg.elementTypeB.totalWidth.W))
+    val op_a_i       = Input(UInt(scfg.elementTypeA.totalWidth.W))
+    val op_b_i       = Input(UInt(scfg.elementTypeB.totalWidth.W))
     // --- Shared scale factors ---
-    val inScaleA = Input(UInt(scfg.stype.totalScaleWidth.W))
-    val inScaleB = Input(UInt(scfg.stype.totalScaleWidth.W))
+    val share_exp_A_i = Input(UInt(scfg.stype.totalScaleWidth.W))
+    val share_exp_B_i = Input(UInt(scfg.stype.totalScaleWidth.W))
     // --- Control ---
-    val start    = Input(Bool())
+    val validIn  = Input(Bool())
     val resetAcc = Input(Bool())
     // --- Output ---
-    val done     = Output(Bool())
+    val validOut = Output(Bool())
     val accOut   = Output(UInt(32.W))
   })
 
@@ -34,8 +34,8 @@ class DotProductUnit(val scfg: ScaleAddConfig) extends Module {
   // Stage 1: CustomOperator — element-wise multiply (A × B)
   // ------------------------------------------------------------------
   val operator = Module(new CustomOperator(OperatorConfig(scfg.elementTypeA, scfg.elementTypeB)))
-  operator.io.inA := io.inA
-  operator.io.inB := io.inB
+  operator.io.inA := io.op_a_i
+  operator.io.inB := io.op_b_i
 
   // ------------------------------------------------------------------
   // Stage 2: ScaleAddition — apply shared scale factors
@@ -44,8 +44,8 @@ class DotProductUnit(val scfg: ScaleAddConfig) extends Module {
   scaleAdd.io.inOpSign      := operator.io.outSign
   scaleAdd.io.inOpExp       := operator.io.outExp
   scaleAdd.io.inOpMant      := operator.io.outMant
-  scaleAdd.io.inShareScaleA := io.inScaleA
-  scaleAdd.io.inShareScaleB := io.inScaleB
+  scaleAdd.io.inShareScaleA := io.share_exp_A_i
+  scaleAdd.io.inShareScaleB := io.share_exp_B_i
 
   // ------------------------------------------------------------------
   // Stage 3: ScaleAccumulatorFP32 — accumulate scaled result into FP32
@@ -54,11 +54,11 @@ class DotProductUnit(val scfg: ScaleAddConfig) extends Module {
   accumulator.io.inSign   := scaleAdd.io.outSign
   accumulator.io.inExp    := scaleAdd.io.outExp
   accumulator.io.inMant   := scaleAdd.io.outMant
-  accumulator.io.start    := io.start
+  accumulator.io.validIn  := io.validIn
   accumulator.io.resetAcc := io.resetAcc
 
-  io.done   := accumulator.io.done
-  io.accOut := accumulator.io.accOut
+  io.validOut := accumulator.io.validOut
+  io.accOut   := accumulator.io.accOut
 }
 
 /** Emit Verilog for the default E4M3 × E2M1 / UE5M3 configuration. */

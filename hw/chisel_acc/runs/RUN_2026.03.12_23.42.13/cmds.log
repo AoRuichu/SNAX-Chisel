@@ -1,0 +1,42 @@
+Thu Mar 12 23:42:17 +0000 2026 - Executing "{openroad -exit -no_init -python /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/odbpy/lefutil.py get_metal_layers -o /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/layers.list /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__nom.tlef}"
+
+Thu Mar 12 23:42:17 +0000 2026 - Executing "{/nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/mergeLef.py -o /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/merged.nom.lef -i /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__nom.tlef {/root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lef/sky130_ef_sc_hd.lef /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef} |& tee /dev/null}"
+
+Thu Mar 12 23:42:17 +0000 2026 - Executing "{/nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/mergeLef.py -o /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/merged.min.lef -i /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__min.tlef {/root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lef/sky130_ef_sc_hd.lef /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef} |& tee /dev/null}"
+
+Thu Mar 12 23:42:18 +0000 2026 - Executing "{/nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/mergeLef.py -o /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/merged.max.lef -i /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/techlef/sky130_fd_sc_hd__max.tlef {/root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lef/sky130_ef_sc_hd.lef /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lef/sky130_fd_sc_hd.lef} |& tee /dev/null}"
+
+Thu Mar 12 23:42:18 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/mergeLib.py --output /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/merged.lib --name sky130A_merged /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib}"
+
+Thu Mar 12 23:42:18 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/libtrim.py --cell-file /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/trimmed.lib.exclude.list --output /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/trimmed.lib /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/merged.lib}"
+
+Thu Mar 12 23:42:18 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/libtrim.py --cell-file /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/cts/cts.lib.exclude.list --output /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/cts/cts.lib /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib}"
+
+Thu Mar 12 23:42:19 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/libtrim.py --cell-file /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/cts/cts-fastest.lib.exclude.list --output /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/cts/cts-fastest.lib /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v95.lib}"
+
+Thu Mar 12 23:42:21 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/libtrim.py --cell-file /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/cts/cts-slowest.lib.exclude.list --output /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/cts/cts-slowest.lib /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_100C_1v60.lib}"
+
+Thu Mar 12 23:42:21 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/new_tracks.py -i /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.tech/openlane/sky130_fd_sc_hd/tracks.info -o /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/routing/config.tracks}"
+
+Thu Mar 12 23:42:21 +0000 2026 - Executing "{echo {OpenLane } > /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/OPENLANE_COMMIT}"
+
+Thu Mar 12 23:42:21 +0000 2026 - Executing "{yosys -c /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/yosys/blackbox.tcl}"
+
+Thu Mar 12 23:42:21 +0000 2026 - Executing "{verilator -Wall --lint-only --Wno-DECLFILENAME --top-module DotProductUnit_E2M1_x_E2M1_scale_UE2M6 /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/blackbox/sky130_fd_sc_hd__blackbox.v ./DotProductUnit_E2M1_x_E2M1_scale_UE2M6_converted.v -Wno-fatal --relative-includes |& tee /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/logs/synthesis/linter.log /dev/null}"
+
+Thu Mar 12 23:42:22 +0000 2026 - Executing "{sed -E {s/^([[:space:]]+)pg_pin(.*)/\1pin\2\n\1    direction : "inout";/g} /root/.volare/volare/sky130/versions/bdc9412b3e468c102d01b7cf6337be06ec6e9c9a/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib > /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/1-sky130_fd_sc_hd__tt_025C_1v80.no_pg.lib}"
+
+Thu Mar 12 23:42:23 +0000 2026 - Executing "{sed -E {s/^([[:space:]]+)pg_pin(.*)/\1pin\2\n\1    direction : "inout";/g} /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/trimmed.lib > /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/tmp/synthesis/1-trimmed.no_pg.lib}"
+
+Thu Mar 12 23:42:23 +0000 2026 - Executing "yosys -c /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/yosys/synth.tcl |& tee /dev/null /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/logs/synthesis/1-synthesis.log"
+
+Thu Mar 12 23:42:23 +0000 2026 - Executing "{yosys -c /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/yosys/synth.tcl |& tee /dev/null /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/logs/synthesis/1-synthesis.log}"
+
+Thu Mar 12 23:42:28 +0000 2026 - Executing "{sed -i.bak -e {s/\(set ::env(CURRENT_NETLIST)\).*/\1 \/workspaces\/snax_cluster\/hw\/chisel_acc\/runs\/RUN_2026.03.12_23.42.13\/results\/synthesis\/DotProductUnit_E2M1_x_E2M1_scale_UE2M6.v/} /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/config.tcl}"
+
+Thu Mar 12 23:42:28 +0000 2026 - Executing "{sed -i.bak /defparam/d /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/results/synthesis/DotProductUnit_E2M1_x_E2M1_scale_UE2M6.v}"
+
+Thu Mar 12 23:42:28 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/write_runtime.py --conclude --seconds --time-in 1773358948 {flow failed}}"
+
+Thu Mar 12 23:42:29 +0000 2026 - Executing "{python3 /nix/store/xpc7xd67rslanlqh566s6jph53bn830w-openlane1-1.1.1/bin/scripts/generate_reports.py -d /workspaces/snax_cluster/hw/chisel_acc --design_name DotProductUnit_E2M1_x_E2M1_scale_UE2M6 --tag RUN_2026.03.12_23.42.13 --output_file /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/reports/metrics.csv --man_report /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13/reports/manufacturability.rpt --run_path /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.12_23.42.13}"
+

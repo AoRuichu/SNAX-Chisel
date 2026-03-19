@@ -1,5 +1,13 @@
 {
-  "image": "ghcr.io/kuleuven-micas/snax:main",
+  "name": "SNAX Full Stack",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "snax_dev",
+  "workspaceFolder": "/workspaces/snax_cluster",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "overrideCommand": true,
   "customizations": {
     "vscode": {
       "extensions": [
@@ -10,5 +18,9 @@
         "ms-vscode.cpptools"
       ]
     }
-  }
+  },
+  "remoteUser": "root",
+  "remoteEnv": {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${containerWorkspaceFolder}"
+}
 }

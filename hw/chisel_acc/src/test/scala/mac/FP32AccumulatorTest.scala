@@ -11,27 +11,29 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
   val mantWidth = scfg.resScaleAddMantWidth  // 14
   val expWidth  = scfg.resScaleAddExpWidth   // 9
 
+  // fracBits mirrors the hardware: element mantissa bits + scale mantissa bits from all multiplications.
+  private def elemFrac(t: ElementType): Int = if (t.name == "INT8") 0 else t.elementWidthMant
+  val fracBits = elemFrac(scfg.elementTypeA) + elemFrac(scfg.elementTypeB) +
+                 2 * scfg.stype.mantScaleWidth  // = 3 + 1 + 6 = 10
+
   // --- Software golden model ---
-  // Input represents: (-1)^sign × inMant × 2^(inExp − mantWidth + 1)
+  // ScaleAddition output convention: value = inMant × 2^(inExp − fracBits)
   def toDouble(sign: Int, exp: Int, mant: Long): Double = {
-    val mag = mant.toDouble * Math.pow(2.0, exp - mantWidth + 1)
+    val mag = mant.toDouble * Math.pow(2.0, exp - fracBits)
     if (sign == 1) -mag else mag
   }
 
   def peekFloat(dut: ScaleAccumulatorFP32): Float =
     intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
 
-  // Drive one full accumulation (3 cycles: Idle→Compute→Done→Idle).
+  // Drive one accumulation step (1 cycle: assert validIn, step, de-assert).
   def driveOne(dut: ScaleAccumulatorFP32, sign: Int, exp: Int, mant: Long): Unit = {
     dut.io.inSign.poke(sign.U)
     dut.io.inExp.poke(exp.S)
     dut.io.inMant.poke(mant.U)
-    dut.io.start.poke(true.B)
-    dut.clock.step()           // sIdle → sCompute
-    dut.io.start.poke(false.B)
-    dut.clock.step()           // sCompute → sDone  (accReg updated)
-    dut.io.done.expect(true.B, "done should be asserted in sDone state")
-    dut.clock.step()           // sDone → sIdle
+    dut.io.validIn.poke(true.B)
+    dut.clock.step()           // accReg updated at posedge; validOut will be true after this
+    dut.io.validIn.poke(false.B)
   }
 
   // --- Test 1: Reset clears the accumulator ---
@@ -39,7 +41,7 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
     println("\n[TEST 1] Reset clears accumulator")
     try {
       test(new ScaleAccumulatorFP32(scfg)) { dut =>
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(false.B)
         dut.io.resetAcc.poke(false.B)
         dut.io.accOut.expect(0.U, "initial accOut should be 0")
 
@@ -56,34 +58,32 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
     }
   }
 
-  // --- Test 2: FSM done-signal timing ---
-  test("FP32Accumulator: FSM done signal timing") {
-    println("\n[TEST 2] FSM done signal timing")
+  // --- Test 2: valid handshake timing ---
+  // validOut is validIn delayed by exactly 1 cycle.
+  test("FP32Accumulator: valid handshake timing") {
+    println("\n[TEST 2] valid handshake timing")
     try {
       test(new ScaleAccumulatorFP32(scfg)) { dut =>
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(false.B)
         dut.io.resetAcc.poke(false.B)
         dut.io.inSign.poke(0.U)
         dut.io.inExp.poke(0.S)
         dut.io.inMant.poke((1L << (mantWidth - 1)).U)
 
-        dut.io.done.expect(false.B, "done should be false in sIdle")
+        dut.io.validOut.expect(false.B, "validOut should be false when validIn=0")
 
-        dut.io.start.poke(true.B)
-        dut.clock.step()                        // → sCompute
-        dut.io.done.expect(false.B, "done should be false in sCompute")
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(true.B)
+        dut.clock.step()                        // accReg updated at posedge
+        dut.io.validIn.poke(false.B)
+        dut.io.validOut.expect(true.B, "validOut should be true one cycle after validIn")
 
-        dut.clock.step()                        // → sDone
-        dut.io.done.expect(true.B, "done should be true in sDone")
-
-        dut.clock.step()                        // → sIdle
-        dut.io.done.expect(false.B, "done should return false after sDone")
+        dut.clock.step()
+        dut.io.validOut.expect(false.B, "validOut should return false when validIn=0")
       }
-      println("[PASSED] FSM done signal timing")
+      println("[PASSED] valid handshake timing")
     } catch {
       case e: Exception =>
-        println(s"[FAILED] FSM done signal timing: ${e.getMessage}")
+        println(s"[FAILED] valid handshake timing: ${e.getMessage}")
         throw e
     }
   }
@@ -93,7 +93,7 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
     println("\n[TEST 3] Accumulate positive values")
     try {
       test(new ScaleAccumulatorFP32(scfg)).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(false.B)
         dut.io.resetAcc.poke(true.B)
         dut.clock.step()
         dut.io.resetAcc.poke(false.B)
@@ -101,8 +101,8 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
         var swAcc    = 0.0f
         val baseMant = 1L << (mantWidth - 1)  // 2^13 = 8192
 
-        // Accumulate 1.0, 2.0, 0.5
-        val inputs = Seq((0, 0), (0, 1), (0, -1))  // (sign, exp) → 1.0, 2.0, 0.5
+        // Accumulate 1.0, 2.0, 0.5  (exponents shifted by -fracBits+mantWidth-1 = -3 vs old convention)
+        val inputs = Seq((0, -3), (0, -2), (0, -4))  // (sign, exp) → 1.0, 2.0, 0.5
         for ((sign, exp) <- inputs) {
           val value = toDouble(sign, exp, baseMant).toFloat
           driveOne(dut, sign, exp, baseMant)
@@ -134,20 +134,20 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
     println("\n[TEST 4] Accumulate negative value")
     try {
       test(new ScaleAccumulatorFP32(scfg)) { dut =>
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(false.B)
         dut.io.resetAcc.poke(true.B)
         dut.clock.step()
         dut.io.resetAcc.poke(false.B)
 
         val baseMant = 1L << (mantWidth - 1)
 
-        // Add +1.0
-        driveOne(dut, 0, 0, baseMant)
+        // Add +1.0  (exp=-3 with fracBits convention: 8192×2^(-3-10)=1.0)
+        driveOne(dut, 0, -3, baseMant)
         val afterFirst = peekFloat(dut)
         println(s"After +1.0: hw=$afterFirst")
 
-        // Add -0.5 (sign=1, exp=-1)
-        driveOne(dut, 1, -1, baseMant)
+        // Add -0.5  (sign=1, exp=-4: 8192×2^(-4-10)=0.5)
+        driveOne(dut, 1, -4, baseMant)
         val afterSecond = peekFloat(dut)
         println(s"After -0.5: hw=$afterSecond")
 
@@ -168,13 +168,13 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
     println("\n[TEST 5] Reset mid-accumulation")
     try {
       test(new ScaleAccumulatorFP32(scfg)) { dut =>
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(false.B)
         dut.io.resetAcc.poke(false.B)
 
         val baseMant = 1L << (mantWidth - 1)
 
         // Accumulate 1.0 so accReg is non-zero
-        driveOne(dut, 0, 0, baseMant)
+        driveOne(dut, 0, -3, baseMant)
         val beforeReset = dut.io.accOut.peek().litValue.toInt
         println(s"Before reset: accOut = 0x${beforeReset.toHexString}")
         assert(beforeReset != 0, "accOut should be non-zero after accumulation")
@@ -186,7 +186,7 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
         dut.io.resetAcc.poke(false.B)
 
         // Accumulate 2.0 after reset
-        driveOne(dut, 0, 1, baseMant)
+        driveOne(dut, 0, -2, baseMant)
         val afterReset = dut.io.accOut.peek().litValue.toInt
         println(s"After reset + add 2.0: accOut = 0x${afterReset.toHexString}")
         assert(afterReset != 0, "accOut should be non-zero after post-reset accumulation")
@@ -204,7 +204,7 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
     println("\n[TEST 6] Repeated accumulation")
     try {
       test(new ScaleAccumulatorFP32(scfg)).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
-        dut.io.start.poke(false.B)
+        dut.io.validIn.poke(false.B)
         dut.io.resetAcc.poke(true.B)
         dut.clock.step()
         dut.io.resetAcc.poke(false.B)
@@ -217,7 +217,7 @@ class FP32AccumulatorTest extends AnyFunSuite with ChiselScalatestTester {
         println("=" * 60)
 
         for (i <- 0 until 10) {
-          val exp   = i - 5   // exponents: -5, -4, ..., 4
+          val exp   = i - 8   // exponents shifted by -3 (fracBits convention): -8..1 → values 2^-5..2^4
           val value = toDouble(0, exp, baseMant).toFloat
           driveOne(dut, 0, exp, baseMant)
           swAcc += value

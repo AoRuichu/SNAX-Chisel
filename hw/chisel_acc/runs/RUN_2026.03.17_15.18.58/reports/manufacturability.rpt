@@ -1,0 +1,19 @@
+Design Name: DotProductUnit_E2M3_x_E3M2_scale_UE5M3
+Run Directory: /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.17_15.18.58
+----------------------------------------
+
+Magic DRC Summary:
+Source: /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.17_15.18.58/reports/signoff/drc.rpt
+Total Magic DRC violations is 0
+----------------------------------------
+
+LVS Summary:
+Source: /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.17_15.18.58/logs/signoff/41-DotProductUnit_E2M3_x_E3M2_scale_UE5M3.lef.lvs.log
+Number of nets: 1723                       |Number of nets: 1723                       
+Design is LVS clean.
+----------------------------------------
+
+Antenna Summary:
+Source: /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.17_15.18.58/logs/signoff/44-arc.log
+Pin violations: 0
+Net violations: 0

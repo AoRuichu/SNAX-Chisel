@@ -1,0 +1,2282 @@
+
+===========================================================================
+report_checks -path_delay min (Hold)
+============================================================================
+======================= Typical Corner ===================================
+
+Startpoint: accumulator._2408_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2408_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2408_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.04    0.34    0.34 v accumulator._2408_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[7] (net)
+                  0.04    0.00    0.34 v accumulator._2182_/A (sky130_fd_sc_hd__nand2_2)
+     1    0.00    0.04    0.05    0.39 ^ accumulator._2182_/Y (sky130_fd_sc_hd__nand2_2)
+                                         accumulator._0117_ (net)
+                  0.04    0.00    0.39 ^ accumulator._2197_/A1 (sky130_fd_sc_hd__a21boi_2)
+     1    0.00    0.03    0.03    0.42 v accumulator._2197_/Y (sky130_fd_sc_hd__a21boi_2)
+                                         accumulator._0009_ (net)
+                  0.03    0.00    0.42 v accumulator._2408_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.42   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2408_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.42   data arrival time
+-----------------------------------------------------------------------------
+                                  0.19   slack (MET)
+
+
+Startpoint: accumulator._2427_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2427_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2427_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.05    0.35    0.35 v accumulator._2427_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[26] (net)
+                  0.05    0.00    0.35 v accumulator._2357_/A1 (sky130_fd_sc_hd__o21ai_2)
+     1    0.00    0.06    0.13    0.48 ^ accumulator._2357_/Y (sky130_fd_sc_hd__o21ai_2)
+                                         accumulator._0290_ (net)
+                  0.06    0.00    0.48 ^ accumulator._2358_/B1 (sky130_fd_sc_hd__a21oi_2)
+     1    0.00    0.02    0.03    0.51 v accumulator._2358_/Y (sky130_fd_sc_hd__a21oi_2)
+                                         accumulator._0028_ (net)
+                  0.02    0.00    0.51 v accumulator._2427_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2427_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  0.27   slack (MET)
+
+
+Startpoint: accumulator._2413_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2413_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2413_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2413_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[12] (net)
+                  0.06    0.00    0.34 ^ accumulator._2242_/A1 (sky130_fd_sc_hd__o221a_2)
+     1    0.00    0.04    0.17    0.51 ^ accumulator._2242_/X (sky130_fd_sc_hd__o221a_2)
+                                         accumulator._0014_ (net)
+                  0.04    0.00    0.51 ^ accumulator._2413_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2413_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  0.28   slack (MET)
+
+
+Startpoint: accumulator._2414_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2414_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2414_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2414_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[13] (net)
+                  0.06    0.00    0.34 ^ accumulator._2249_/A1 (sky130_fd_sc_hd__o221a_2)
+     1    0.00    0.04    0.17    0.51 ^ accumulator._2249_/X (sky130_fd_sc_hd__o221a_2)
+                                         accumulator._0015_ (net)
+                  0.04    0.00    0.51 ^ accumulator._2414_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2414_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  0.28   slack (MET)
+
+
+Startpoint: accumulator._2415_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2415_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2415_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2415_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[14] (net)
+                  0.06    0.00    0.34 ^ accumulator._2257_/A1 (sky130_fd_sc_hd__o221a_2)
+     1    0.00    0.04    0.17    0.51 ^ accumulator._2257_/X (sky130_fd_sc_hd__o221a_2)
+                                         accumulator._0016_ (net)
+                  0.04    0.00    0.51 ^ accumulator._2415_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2415_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  0.28   slack (MET)
+
+
+Startpoint: accumulator._2432_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2432_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2432_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     5    0.01    0.07    0.36    0.36 ^ accumulator._2432_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.state[0] (net)
+                  0.07    0.00    0.36 ^ accumulator._2398_/A1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.16    0.52 ^ accumulator._2398_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0033_ (net)
+                  0.04    0.00    0.52 ^ accumulator._2432_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2432_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  0.28   slack (MET)
+
+
+Startpoint: accumulator._2424_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2424_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2424_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.08    0.36    0.36 ^ accumulator._2424_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[23] (net)
+                  0.08    0.00    0.36 ^ accumulator._2330_/A1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.16    0.52 ^ accumulator._2330_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0025_ (net)
+                  0.04    0.00    0.52 ^ accumulator._2424_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2424_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  0.29   slack (MET)
+
+
+Startpoint: accumulator._2422_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2422_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2422_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2422_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[21] (net)
+                  0.06    0.00    0.34 ^ accumulator._2316_/A1 (sky130_fd_sc_hd__o2111a_2)
+     1    0.00    0.04    0.18    0.52 ^ accumulator._2316_/X (sky130_fd_sc_hd__o2111a_2)
+                                         accumulator._0023_ (net)
+                  0.04    0.00    0.52 ^ accumulator._2422_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2422_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  0.29   slack (MET)
+
+
+Startpoint: accumulator._2417_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2417_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2417_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2417_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[16] (net)
+                  0.06    0.00    0.34 ^ accumulator._2275_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.04    0.11    0.45 ^ accumulator._2275_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0210_ (net)
+                  0.04    0.00    0.45 ^ accumulator._2276_/A2 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.09    0.54 ^ accumulator._2276_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0018_ (net)
+                  0.03    0.00    0.54 ^ accumulator._2417_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.54   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2417_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.54   data arrival time
+-----------------------------------------------------------------------------
+                                  0.31   slack (MET)
+
+
+Startpoint: accumulator._2418_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2418_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2418_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2418_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[17] (net)
+                  0.06    0.00    0.34 ^ accumulator._2282_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.04    0.11    0.45 ^ accumulator._2282_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0217_ (net)
+                  0.04    0.00    0.45 ^ accumulator._2283_/A2 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.09    0.54 ^ accumulator._2283_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0019_ (net)
+                  0.03    0.00    0.54 ^ accumulator._2418_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.54   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2418_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.54   data arrival time
+-----------------------------------------------------------------------------
+                                  0.31   slack (MET)
+
+
+Startpoint: accumulator._2419_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2419_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2419_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2419_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[18] (net)
+                  0.06    0.00    0.34 ^ accumulator._2292_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.04    0.11    0.45 ^ accumulator._2292_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0227_ (net)
+                  0.04    0.00    0.45 ^ accumulator._2293_/A2 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.09    0.54 ^ accumulator._2293_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0020_ (net)
+                  0.03    0.00    0.54 ^ accumulator._2419_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.54   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2419_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.54   data arrival time
+-----------------------------------------------------------------------------
+                                  0.31   slack (MET)
+
+
+Startpoint: accumulator._2426_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2426_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2426_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.02    0.11    0.38    0.38 ^ accumulator._2426_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[25] (net)
+                  0.11    0.00    0.38 ^ accumulator._2346_/A1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.16    0.55 ^ accumulator._2346_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0027_ (net)
+                  0.04    0.00    0.55 ^ accumulator._2426_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.55   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2426_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.55   data arrival time
+-----------------------------------------------------------------------------
+                                  0.31   slack (MET)
+
+
+Startpoint: accumulator._2407_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2407_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2407_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2407_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[6] (net)
+                  0.05    0.00    0.34 ^ accumulator._2180_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.12    0.46 ^ accumulator._2180_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0115_ (net)
+                  0.04    0.00    0.46 ^ accumulator._2181_/A2 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.02    0.09    0.55 ^ accumulator._2181_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0008_ (net)
+                  0.02    0.00    0.55 ^ accumulator._2407_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.55   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2407_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.55   data arrival time
+-----------------------------------------------------------------------------
+                                  0.31   slack (MET)
+
+
+Startpoint: accumulator._2432_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2400_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2432_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     5    0.01    0.07    0.36    0.36 ^ accumulator._2432_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.state[0] (net)
+                  0.07    0.00    0.36 ^ accumulator._1310_/B (sky130_fd_sc_hd__and2b_2)
+     1    0.00    0.03    0.13    0.48 ^ accumulator._1310_/X (sky130_fd_sc_hd__and2b_2)
+                                         accumulator._0408_ (net)
+                  0.03    0.00    0.48 ^ accumulator._1311_/A (sky130_fd_sc_hd__buf_1)
+     1    0.00    0.03    0.06    0.55 ^ accumulator._1311_/X (sky130_fd_sc_hd__buf_1)
+                                         accumulator._0001_ (net)
+                  0.03    0.00    0.55 ^ accumulator._2400_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.55   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2400_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.55   data arrival time
+-----------------------------------------------------------------------------
+                                  0.31   slack (MET)
+
+
+Startpoint: accumulator._2409_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2409_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2409_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2409_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[8] (net)
+                  0.05    0.00    0.34 ^ accumulator._2198_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.12    0.46 ^ accumulator._2198_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0133_ (net)
+                  0.04    0.00    0.46 ^ accumulator._2205_/A1 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.10    0.56 ^ accumulator._2205_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0010_ (net)
+                  0.03    0.00    0.56 ^ accumulator._2409_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.56   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2409_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.56   data arrival time
+-----------------------------------------------------------------------------
+                                  0.33   slack (MET)
+
+
+Startpoint: accumulator._2410_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2410_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2410_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2410_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[9] (net)
+                  0.05    0.00    0.34 ^ accumulator._2206_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.12    0.46 ^ accumulator._2206_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0141_ (net)
+                  0.04    0.00    0.46 ^ accumulator._2214_/A1 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.10    0.56 ^ accumulator._2214_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0011_ (net)
+                  0.03    0.00    0.56 ^ accumulator._2410_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.56   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2410_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.56   data arrival time
+-----------------------------------------------------------------------------
+                                  0.33   slack (MET)
+
+
+Startpoint: accumulator._2412_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2412_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2412_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2412_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[11] (net)
+                  0.05    0.00    0.34 ^ accumulator._2222_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.12    0.46 ^ accumulator._2222_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0157_ (net)
+                  0.04    0.00    0.46 ^ accumulator._2231_/A1 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.10    0.56 ^ accumulator._2231_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0013_ (net)
+                  0.03    0.00    0.56 ^ accumulator._2412_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.56   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2412_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.56   data arrival time
+-----------------------------------------------------------------------------
+                                  0.33   slack (MET)
+
+
+Startpoint: accumulator._2423_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2423_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2423_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2423_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[22] (net)
+                  0.05    0.00    0.34 ^ accumulator._2318_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.12    0.46 ^ accumulator._2318_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0251_ (net)
+                  0.04    0.00    0.46 ^ accumulator._2324_/A2 (sky130_fd_sc_hd__o31a_2)
+     1    0.00    0.03    0.11    0.57 ^ accumulator._2324_/X (sky130_fd_sc_hd__o31a_2)
+                                         accumulator._0024_ (net)
+                  0.03    0.00    0.57 ^ accumulator._2423_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.57   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2423_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.57   data arrival time
+-----------------------------------------------------------------------------
+                                  0.33   slack (MET)
+
+
+Startpoint: accumulator._2420_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2420_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2420_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2420_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[19] (net)
+                  0.05    0.00    0.34 ^ accumulator._2299_/A (sky130_fd_sc_hd__or2_2)
+     1    0.00    0.03    0.09    0.43 ^ accumulator._2299_/X (sky130_fd_sc_hd__or2_2)
+                                         accumulator._0233_ (net)
+                  0.03    0.00    0.43 ^ accumulator._2300_/B1 (sky130_fd_sc_hd__o311a_2)
+     1    0.00    0.03    0.14    0.57 ^ accumulator._2300_/X (sky130_fd_sc_hd__o311a_2)
+                                         accumulator._0021_ (net)
+                  0.03    0.00    0.57 ^ accumulator._2420_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.57   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2420_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.57   data arrival time
+-----------------------------------------------------------------------------
+                                  0.34   slack (MET)
+
+
+Startpoint: accumulator._2416_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2416_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2416_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.05    0.34    0.34 ^ accumulator._2416_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[15] (net)
+                  0.05    0.00    0.34 ^ accumulator._2264_/A (sky130_fd_sc_hd__or2_2)
+     1    0.00    0.03    0.09    0.43 ^ accumulator._2264_/X (sky130_fd_sc_hd__or2_2)
+                                         accumulator._0199_ (net)
+                  0.03    0.00    0.43 ^ accumulator._2265_/B1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.14    0.57 ^ accumulator._2265_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0017_ (net)
+                  0.04    0.00    0.57 ^ accumulator._2416_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.57   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2416_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.57   data arrival time
+-----------------------------------------------------------------------------
+                                  0.34   slack (MET)
+
+
+Startpoint: accumulator._2411_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2411_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2411_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.35    0.35 ^ accumulator._2411_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[10] (net)
+                  0.06    0.00    0.35 ^ accumulator._2215_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.12    0.47 ^ accumulator._2215_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0150_ (net)
+                  0.04    0.00    0.47 ^ accumulator._2221_/A1 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.10    0.58 ^ accumulator._2221_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0012_ (net)
+                  0.03    0.00    0.58 ^ accumulator._2411_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.58   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2411_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.58   data arrival time
+-----------------------------------------------------------------------------
+                                  0.34   slack (MET)
+
+
+Startpoint: accumulator._2429_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2429_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2429_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.06    0.35    0.35 ^ accumulator._2429_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[28] (net)
+                  0.06    0.00    0.35 ^ accumulator._2377_/A (sky130_fd_sc_hd__or2_2)
+     1    0.00    0.03    0.10    0.45 ^ accumulator._2377_/X (sky130_fd_sc_hd__or2_2)
+                                         accumulator._0310_ (net)
+                  0.03    0.00    0.45 ^ accumulator._2378_/B1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.14    0.59 ^ accumulator._2378_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0030_ (net)
+                  0.04    0.00    0.59 ^ accumulator._2429_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.59   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2429_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.59   data arrival time
+-----------------------------------------------------------------------------
+                                  0.35   slack (MET)
+
+
+Startpoint: accumulator._2421_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2421_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2421_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.06    0.34    0.34 ^ accumulator._2421_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[20] (net)
+                  0.06    0.00    0.34 ^ accumulator._2308_/A1 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.11    0.46 ^ accumulator._2308_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0242_ (net)
+                  0.03    0.00    0.46 ^ accumulator._2309_/C1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.13    0.59 ^ accumulator._2309_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0022_ (net)
+                  0.04    0.00    0.59 ^ accumulator._2421_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.59   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2421_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.59   data arrival time
+-----------------------------------------------------------------------------
+                                  0.36   slack (MET)
+
+
+Startpoint: accumulator._2405_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2405_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2405_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.02    0.09    0.37    0.37 ^ accumulator._2405_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[4] (net)
+                  0.09    0.00    0.37 ^ accumulator._2157_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.13    0.50 ^ accumulator._2157_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0092_ (net)
+                  0.04    0.00    0.50 ^ accumulator._2159_/A2 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.02    0.09    0.59 ^ accumulator._2159_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0006_ (net)
+                  0.02    0.00    0.59 ^ accumulator._2405_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.59   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2405_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.59   data arrival time
+-----------------------------------------------------------------------------
+                                  0.36   slack (MET)
+
+
+Startpoint: accumulator._2428_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2428_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2428_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.08    0.36    0.36 ^ accumulator._2428_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[27] (net)
+                  0.08    0.00    0.36 ^ accumulator._2370_/A (sky130_fd_sc_hd__or2_2)
+     1    0.00    0.03    0.10    0.46 ^ accumulator._2370_/X (sky130_fd_sc_hd__or2_2)
+                                         accumulator._0303_ (net)
+                  0.03    0.00    0.46 ^ accumulator._2371_/B1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.14    0.60 ^ accumulator._2371_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0029_ (net)
+                  0.04    0.00    0.60 ^ accumulator._2428_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.60   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2428_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.60   data arrival time
+-----------------------------------------------------------------------------
+                                  0.37   slack (MET)
+
+
+Startpoint: accumulator._2430_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2430_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2430_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.08    0.36    0.36 ^ accumulator._2430_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[29] (net)
+                  0.08    0.00    0.36 ^ accumulator._2386_/A (sky130_fd_sc_hd__or2_2)
+     1    0.00    0.03    0.10    0.46 ^ accumulator._2386_/X (sky130_fd_sc_hd__or2_2)
+                                         accumulator._0319_ (net)
+                  0.03    0.00    0.46 ^ accumulator._2387_/B1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.14    0.60 ^ accumulator._2387_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0031_ (net)
+                  0.04    0.00    0.60 ^ accumulator._2430_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.60   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2430_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.60   data arrival time
+-----------------------------------------------------------------------------
+                                  0.37   slack (MET)
+
+
+Startpoint: accumulator._2406_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2406_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2406_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     7    0.02    0.11    0.39    0.39 ^ accumulator._2406_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[5] (net)
+                  0.11    0.00    0.39 ^ accumulator._2167_/A (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.04    0.14    0.53 ^ accumulator._2167_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0102_ (net)
+                  0.04    0.00    0.53 ^ accumulator._2168_/A2 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.02    0.09    0.62 ^ accumulator._2168_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0007_ (net)
+                  0.02    0.00    0.62 ^ accumulator._2406_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.62   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2406_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.62   data arrival time
+-----------------------------------------------------------------------------
+                                  0.38   slack (MET)
+
+
+Startpoint: accumulator._2399_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2399_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2399_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.02    0.12    0.39    0.39 ^ accumulator._2399_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[31] (net)
+                  0.12    0.00    0.39 ^ accumulator._1308_/B1 (sky130_fd_sc_hd__a21o_2)
+     1    0.00    0.03    0.10    0.49 ^ accumulator._1308_/X (sky130_fd_sc_hd__a21o_2)
+                                         accumulator._0407_ (net)
+                  0.03    0.00    0.49 ^ accumulator._1309_/C1 (sky130_fd_sc_hd__o311a_2)
+     1    0.00    0.03    0.13    0.62 ^ accumulator._1309_/X (sky130_fd_sc_hd__o311a_2)
+                                         accumulator._0000_ (net)
+                  0.03    0.00    0.62 ^ accumulator._2399_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.62   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2399_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.62   data arrival time
+-----------------------------------------------------------------------------
+                                  0.39   slack (MET)
+
+
+Startpoint: accumulator._2425_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2425_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2425_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.02    0.10    0.38    0.38 ^ accumulator._2425_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[24] (net)
+                  0.10    0.00    0.38 ^ accumulator._2334_/A (sky130_fd_sc_hd__or2_2)
+     1    0.00    0.03    0.11    0.48 ^ accumulator._2334_/X (sky130_fd_sc_hd__or2_2)
+                                         accumulator._0267_ (net)
+                  0.03    0.00    0.48 ^ accumulator._2335_/B1 (sky130_fd_sc_hd__o211a_2)
+     1    0.00    0.04    0.14    0.63 ^ accumulator._2335_/X (sky130_fd_sc_hd__o211a_2)
+                                         accumulator._0026_ (net)
+                  0.04    0.00    0.63 ^ accumulator._2425_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.63   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2425_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.02    0.23   library hold time
+                                  0.23   data required time
+-----------------------------------------------------------------------------
+                                  0.23   data required time
+                                 -0.63   data arrival time
+-----------------------------------------------------------------------------
+                                  0.39   slack (MET)
+
+
+Startpoint: accumulator._2402_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2402_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2402_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     5    0.01    0.07    0.36    0.36 ^ accumulator._2402_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[1] (net)
+                  0.07    0.00    0.36 ^ accumulator._2122_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.03    0.11    0.46 ^ accumulator._2122_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0057_ (net)
+                  0.03    0.00    0.46 ^ accumulator._2123_/B (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.03    0.12    0.58 ^ accumulator._2123_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0058_ (net)
+                  0.03    0.00    0.58 ^ accumulator._2124_/A (sky130_fd_sc_hd__buf_1)
+     1    0.00    0.03    0.06    0.64 ^ accumulator._2124_/X (sky130_fd_sc_hd__buf_1)
+                                         accumulator._0003_ (net)
+                  0.03    0.00    0.64 ^ accumulator._2402_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.64   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2402_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.64   data arrival time
+-----------------------------------------------------------------------------
+                                  0.41   slack (MET)
+
+
+Startpoint: accumulator._2403_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2403_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2403_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.08    0.37    0.37 ^ accumulator._2403_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[2] (net)
+                  0.08    0.00    0.37 ^ accumulator._2132_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.03    0.11    0.48 ^ accumulator._2132_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0067_ (net)
+                  0.03    0.00    0.48 ^ accumulator._2133_/B (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.03    0.12    0.59 ^ accumulator._2133_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0068_ (net)
+                  0.03    0.00    0.59 ^ accumulator._2134_/A (sky130_fd_sc_hd__buf_1)
+     1    0.00    0.03    0.06    0.66 ^ accumulator._2134_/X (sky130_fd_sc_hd__buf_1)
+                                         accumulator._0004_ (net)
+                  0.03    0.00    0.66 ^ accumulator._2403_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.66   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2403_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.66   data arrival time
+-----------------------------------------------------------------------------
+                                  0.42   slack (MET)
+
+
+Startpoint: accumulator._2404_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2404_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2404_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.08    0.37    0.37 ^ accumulator._2404_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[3] (net)
+                  0.08    0.00    0.37 ^ accumulator._2142_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.03    0.11    0.48 ^ accumulator._2142_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0077_ (net)
+                  0.03    0.00    0.48 ^ accumulator._2143_/B (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.03    0.12    0.59 ^ accumulator._2143_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0078_ (net)
+                  0.03    0.00    0.59 ^ accumulator._2144_/A (sky130_fd_sc_hd__buf_1)
+     1    0.00    0.03    0.06    0.66 ^ accumulator._2144_/X (sky130_fd_sc_hd__buf_1)
+                                         accumulator._0005_ (net)
+                  0.03    0.00    0.66 ^ accumulator._2404_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.66   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2404_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.66   data arrival time
+-----------------------------------------------------------------------------
+                                  0.42   slack (MET)
+
+
+Startpoint: accumulator._2431_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2431_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2431_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.03    0.15    0.41    0.41 ^ accumulator._2431_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[30] (net)
+                  0.15    0.00    0.41 ^ accumulator._2395_/A1 (sky130_fd_sc_hd__o21a_2)
+     1    0.00    0.03    0.14    0.55 ^ accumulator._2395_/X (sky130_fd_sc_hd__o21a_2)
+                                         accumulator._0328_ (net)
+                  0.03    0.00    0.55 ^ accumulator._2396_/B1 (sky130_fd_sc_hd__o31a_2)
+     1    0.00    0.03    0.11    0.66 ^ accumulator._2396_/X (sky130_fd_sc_hd__o31a_2)
+                                         accumulator._0032_ (net)
+                  0.03    0.00    0.66 ^ accumulator._2431_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.66   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2431_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.66   data arrival time
+-----------------------------------------------------------------------------
+                                  0.42   slack (MET)
+
+
+Startpoint: accumulator._2401_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: accumulator._2401_ (rising edge-triggered flip-flop clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2401_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     5    0.02    0.09    0.37    0.37 ^ accumulator._2401_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[0] (net)
+                  0.09    0.00    0.37 ^ accumulator._2109_/B2 (sky130_fd_sc_hd__a32o_2)
+     1    0.00    0.03    0.11    0.48 ^ accumulator._2109_/X (sky130_fd_sc_hd__a32o_2)
+                                         accumulator._0043_ (net)
+                  0.03    0.00    0.48 ^ accumulator._2110_/B (sky130_fd_sc_hd__and2_2)
+     1    0.00    0.03    0.12    0.59 ^ accumulator._2110_/X (sky130_fd_sc_hd__and2_2)
+                                         accumulator._0044_ (net)
+                  0.03    0.00    0.59 ^ accumulator._2111_/A (sky130_fd_sc_hd__buf_1)
+     1    0.00    0.03    0.06    0.66 ^ accumulator._2111_/X (sky130_fd_sc_hd__buf_1)
+                                         accumulator._0002_ (net)
+                  0.03    0.00    0.66 ^ accumulator._2401_/D (sky130_fd_sc_hd__dfxtp_2)
+                                  0.66   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                                  0.25 ^ accumulator._2401_/CLK (sky130_fd_sc_hd__dfxtp_2)
+                         -0.01    0.24   library hold time
+                                  0.24   data required time
+-----------------------------------------------------------------------------
+                                  0.24   data required time
+                                 -0.66   data arrival time
+-----------------------------------------------------------------------------
+                                  0.42   slack (MET)
+
+
+Startpoint: accumulator._2416_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[15] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2416_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2416_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[15] (net)
+                  0.03    0.00    0.33 v _15_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _15_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[15] (net)
+                  0.09    0.00    0.50 v io_accOut[15] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2420_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[19] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2420_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2420_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[19] (net)
+                  0.03    0.00    0.33 v _19_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _19_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[19] (net)
+                  0.09    0.00    0.50 v io_accOut[19] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2412_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[11] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2412_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2412_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[11] (net)
+                  0.03    0.00    0.33 v _11_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _11_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[11] (net)
+                  0.09    0.00    0.50 v io_accOut[11] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2423_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[22] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2423_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2423_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[22] (net)
+                  0.03    0.00    0.33 v _22_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _22_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[22] (net)
+                  0.09    0.00    0.50 v io_accOut[22] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2407_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[6] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2407_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2407_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[6] (net)
+                  0.03    0.00    0.33 v _06_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _06_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[6] (net)
+                  0.09    0.00    0.50 v io_accOut[6] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2409_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[8] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2409_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2409_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[8] (net)
+                  0.03    0.00    0.33 v _08_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _08_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[8] (net)
+                  0.09    0.00    0.50 v io_accOut[8] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2410_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[9] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2410_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2410_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[9] (net)
+                  0.03    0.00    0.33 v _09_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.16    0.50 v _09_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[9] (net)
+                  0.09    0.00    0.50 v io_accOut[9] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2421_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[20] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2421_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2421_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[20] (net)
+                  0.03    0.00    0.33 v _20_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _20_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[20] (net)
+                  0.09    0.00    0.50 v io_accOut[20] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2413_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[12] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2413_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2413_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[12] (net)
+                  0.03    0.00    0.33 v _12_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _12_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[12] (net)
+                  0.09    0.00    0.50 v io_accOut[12] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2414_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[13] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2414_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2414_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[13] (net)
+                  0.03    0.00    0.33 v _13_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _13_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[13] (net)
+                  0.09    0.00    0.50 v io_accOut[13] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2415_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[14] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2415_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2415_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[14] (net)
+                  0.03    0.00    0.33 v _14_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _14_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[14] (net)
+                  0.09    0.00    0.50 v io_accOut[14] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2417_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[16] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2417_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2417_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[16] (net)
+                  0.03    0.00    0.33 v _16_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _16_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[16] (net)
+                  0.09    0.00    0.50 v io_accOut[16] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2418_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[17] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2418_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2418_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[17] (net)
+                  0.03    0.00    0.33 v _17_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _17_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[17] (net)
+                  0.09    0.00    0.50 v io_accOut[17] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2419_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[18] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2419_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2419_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[18] (net)
+                  0.03    0.00    0.33 v _18_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _18_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[18] (net)
+                  0.09    0.00    0.50 v io_accOut[18] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2422_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[21] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2422_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.03    0.33    0.33 v accumulator._2422_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[21] (net)
+                  0.03    0.00    0.33 v _21_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.50 v _21_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[21] (net)
+                  0.09    0.00    0.50 v io_accOut[21] (out)
+                                  0.50   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.50   data arrival time
+-----------------------------------------------------------------------------
+                                  4.25   slack (MET)
+
+
+Startpoint: accumulator._2429_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[28] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2429_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.04    0.34    0.34 v accumulator._2429_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[28] (net)
+                  0.04    0.00    0.34 v _28_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.51 v _28_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[28] (net)
+                  0.09    0.00    0.51 v io_accOut[28] (out)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  4.26   slack (MET)
+
+
+Startpoint: accumulator._2411_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[10] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2411_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.04    0.34    0.34 v accumulator._2411_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[10] (net)
+                  0.04    0.00    0.34 v _10_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.51 v _10_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[10] (net)
+                  0.09    0.00    0.51 v io_accOut[10] (out)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  4.26   slack (MET)
+
+
+Startpoint: accumulator._2408_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[7] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2408_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.01    0.04    0.34    0.34 v accumulator._2408_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[7] (net)
+                  0.04    0.00    0.34 v _07_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.51 v _07_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[7] (net)
+                  0.09    0.00    0.51 v io_accOut[7] (out)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  4.26   slack (MET)
+
+
+Startpoint: accumulator._2402_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[1] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2402_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     5    0.01    0.04    0.34    0.34 v accumulator._2402_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[1] (net)
+                  0.04    0.00    0.34 v _01_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.51 v _01_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[1] (net)
+                  0.09    0.00    0.51 v io_accOut[1] (out)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  4.26   slack (MET)
+
+
+Startpoint: accumulator._2428_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[27] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2428_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.04    0.34    0.34 v accumulator._2428_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[27] (net)
+                  0.04    0.00    0.34 v _27_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.51 v _27_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[27] (net)
+                  0.09    0.00    0.51 v io_accOut[27] (out)
+                                  0.51   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.51   data arrival time
+-----------------------------------------------------------------------------
+                                  4.26   slack (MET)
+
+
+Startpoint: accumulator._2430_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[29] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2430_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.04    0.35    0.35 v accumulator._2430_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[29] (net)
+                  0.04    0.00    0.35 v _29_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _29_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[29] (net)
+                  0.09    0.00    0.52 v io_accOut[29] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2424_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[23] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2424_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.05    0.35    0.35 v accumulator._2424_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[23] (net)
+                  0.05    0.00    0.35 v _23_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _23_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[23] (net)
+                  0.09    0.00    0.52 v io_accOut[23] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2403_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[2] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2403_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.05    0.35    0.35 v accumulator._2403_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[2] (net)
+                  0.05    0.00    0.35 v _02_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _02_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[2] (net)
+                  0.09    0.00    0.52 v io_accOut[2] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2404_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[3] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2404_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.05    0.35    0.35 v accumulator._2404_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[3] (net)
+                  0.05    0.00    0.35 v _03_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _03_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[3] (net)
+                  0.09    0.00    0.52 v io_accOut[3] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2401_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[0] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2401_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     5    0.01    0.05    0.35    0.35 v accumulator._2401_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[0] (net)
+                  0.05    0.00    0.35 v _00_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _00_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[0] (net)
+                  0.09    0.00    0.52 v io_accOut[0] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2427_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[26] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2427_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.01    0.05    0.35    0.35 v accumulator._2427_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[26] (net)
+                  0.05    0.00    0.35 v _26_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _26_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[26] (net)
+                  0.09    0.00    0.52 v io_accOut[26] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2405_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[4] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2405_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.02    0.05    0.35    0.35 v accumulator._2405_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[4] (net)
+                  0.05    0.00    0.35 v _04_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.52 v _04_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[4] (net)
+                  0.09    0.00    0.52 v io_accOut[4] (out)
+                                  0.52   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.52   data arrival time
+-----------------------------------------------------------------------------
+                                  4.27   slack (MET)
+
+
+Startpoint: accumulator._2425_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[24] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2425_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.02    0.05    0.35    0.35 v accumulator._2425_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[24] (net)
+                  0.05    0.00    0.35 v _24_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.53 v _24_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[24] (net)
+                  0.09    0.00    0.53 v io_accOut[24] (out)
+                                  0.53   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.53   data arrival time
+-----------------------------------------------------------------------------
+                                  4.28   slack (MET)
+
+
+Startpoint: accumulator._2426_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[25] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2426_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.02    0.05    0.36    0.36 v accumulator._2426_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[25] (net)
+                  0.05    0.00    0.36 v _25_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.17    0.53 v _25_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[25] (net)
+                  0.09    0.00    0.53 v io_accOut[25] (out)
+                                  0.53   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.53   data arrival time
+-----------------------------------------------------------------------------
+                                  4.28   slack (MET)
+
+
+Startpoint: accumulator._2406_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[5] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2406_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     7    0.02    0.06    0.36    0.36 v accumulator._2406_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[5] (net)
+                  0.06    0.00    0.36 v _05_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.18    0.54 v _05_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[5] (net)
+                  0.09    0.00    0.54 v io_accOut[5] (out)
+                                  0.54   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.54   data arrival time
+-----------------------------------------------------------------------------
+                                  4.29   slack (MET)
+
+
+Startpoint: accumulator._2399_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[31] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2399_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     4    0.02    0.06    0.36    0.36 v accumulator._2399_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[31] (net)
+                  0.06    0.00    0.36 v _31_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.18    0.54 v _31_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[31] (net)
+                  0.09    0.00    0.54 v io_accOut[31] (out)
+                                  0.54   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.54   data arrival time
+-----------------------------------------------------------------------------
+                                  4.29   slack (MET)
+
+
+Startpoint: accumulator._2431_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_accOut[30] (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2431_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     6    0.03    0.07    0.37    0.37 v accumulator._2431_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.io_accOut[30] (net)
+                  0.07    0.00    0.37 v _30_/A (sky130_fd_sc_hd__buf_2)
+     1    0.03    0.09    0.18    0.55 v _30_/X (sky130_fd_sc_hd__buf_2)
+                                         io_accOut[30] (net)
+                  0.09    0.00    0.55 v io_accOut[30] (out)
+                                  0.55   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.55   data arrival time
+-----------------------------------------------------------------------------
+                                  4.30   slack (MET)
+
+
+Startpoint: accumulator._2400_
+            (rising edge-triggered flip-flop clocked by clock)
+Endpoint: io_done (output port clocked by clock)
+Path Group: clock
+Path Type: min
+
+Fanout     Cap    Slew   Delay    Time   Description
+-----------------------------------------------------------------------------
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                  0.15    0.00    0.00 ^ accumulator._2400_/CLK (sky130_fd_sc_hd__dfxtp_2)
+     3    0.01    0.03    0.33    0.33 v accumulator._2400_/Q (sky130_fd_sc_hd__dfxtp_2)
+                                         accumulator.state[1] (net)
+                  0.03    0.00    0.33 v accumulator._1199_/B (sky130_fd_sc_hd__and2b_2)
+     1    0.00    0.03    0.17    0.50 v accumulator._1199_/X (sky130_fd_sc_hd__and2b_2)
+                                         accumulator._1178_ (net)
+                  0.03    0.00    0.50 v accumulator._1200_/A (sky130_fd_sc_hd__buf_1)
+     2    0.04    0.22    0.22    0.72 v accumulator._1200_/X (sky130_fd_sc_hd__buf_1)
+                                         io_done (net)
+                  0.22    0.00    0.72 v io_done (out)
+                                  0.72   data arrival time
+
+                  0.15    0.00    0.00   clock clock (rise edge)
+                          0.00    0.00   clock network delay (ideal)
+                          0.25    0.25   clock uncertainty
+                          0.00    0.25   clock reconvergence pessimism
+                         -4.00   -3.75   output external delay
+                                 -3.75   data required time
+-----------------------------------------------------------------------------
+                                 -3.75   data required time
+                                 -0.72   data arrival time
+-----------------------------------------------------------------------------
+                                  4.47   slack (MET)
+
+
+
+worst slack corner Typical: 0.1865

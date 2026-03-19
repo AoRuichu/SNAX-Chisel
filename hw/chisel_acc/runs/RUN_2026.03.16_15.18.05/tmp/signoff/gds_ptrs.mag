@@ -1,0 +1,6 @@
+<< properties >>
+string FIXED_BBOX 0 0 41251 43395
+string GDS_END 5052992
+string GDS_FILE /workspaces/snax_cluster/hw/chisel_acc/runs/RUN_2026.03.16_15.18.05/results/signoff/DotProductUnit_E2M1_x_E2M1_scale_UE2M6.magic.gds
+string GDS_START 972752
+<< end >>

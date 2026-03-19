@@ -1,0 +1,12 @@
+
+===========================================================================
+report_clock_skew
+============================================================================
+Clock clock
+   0.31 source latency accumulator._2358_/CLK ^
+  -0.28 target latency accumulator._2364_/CLK ^
+   0.25 clock uncertainty
+  -0.02 CRPR
+--------------
+   0.26 setup skew
+

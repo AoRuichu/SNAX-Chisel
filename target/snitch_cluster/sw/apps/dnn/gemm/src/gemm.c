@@ -39,17 +39,18 @@ int main() {
 
     void *mat_A, *mat_B, *mat_C;
 
+    //Compute L1 buffer sizes
     uint32_t mat_A_size =
         (l1_gemm_l.M * (l1_gemm_l.K + MAT_ROW_PADDING) + MAT_PADDING) *
         l1_gemm_l.dtype;
     uint32_t mat_B_size =
         (l1_gemm_l.K + MAT_ROW_PADDING) * l1_gemm_l.N * l1_gemm_l.dtype;
     uint32_t mat_C_size = l1_gemm_l.M * l1_gemm_l.N * l1_gemm_l.dtype;
-
+    //total buffer size
     uint32_t total_size = mat_A_size + mat_B_size + mat_C_size;
 
     void *ptr;
-
+    //Single-core L1 allocation + sharing
     if (compute_id == 0) {
         ptr = snrt_l1alloc(total_size);
         share_ptr = ptr;
@@ -58,7 +59,7 @@ int main() {
     snrt_cluster_hw_barrier();
 
     ptr = share_ptr;
-
+    //slice the memory 
     mat_A = ptr;
     ptr += (l1_gemm_l.M * (l1_gemm_l.K + MAT_ROW_PADDING) + MAT_PADDING) *
            l1_gemm_l.dtype;
@@ -70,7 +71,7 @@ int main() {
     uint32_t errors = 0;
 
     snrt_global_barrier();
-
+    //copy rom DRAM-> L1
     if (snrt_is_dm_core()) {
         snrt_dma_txid_t txid_A =
             snrt_dma_start_2d(mat_A, l1_gemm_l.A, l1_gemm_l.dtype * l1_gemm_l.K,
@@ -93,6 +94,7 @@ int main() {
         const uint32_t setup_SSR = 1;
 
         if (!l1_gemm_l.TA && !l1_gemm_l.TB) {
+            // case: A, B both not-transposed
             volatile uint32_t A_offset =
                 compute_id * (l1_gemm_l.K + MAT_ROW_PADDING) * l1_gemm_l.dtype;
             volatile uint32_t C_offset =
@@ -109,6 +111,7 @@ int main() {
                           setup_SSR);
             snrt_mcycle();
         } else if (!l1_gemm_l.TA && l1_gemm_l.TB) {
+             // case: A not-transposed, B transposed
             volatile uint32_t A_offset =
                 compute_id * (l1_gemm_l.K + MAT_ROW_PADDING) * l1_gemm_l.dtype;
             volatile uint32_t C_offset =
