@@ -36,13 +36,16 @@ class FP32Adder extends Module {
   val nearM  = Mux(aGreater, valB_M, valA_M)
   val farM   = Mux(aGreater, valA_M, valB_M)
 
-  // Align smaller operand; keep 3 extra precision bits for rounding
-  val absExpDiff   = Mux(aGreater, expDiff.asUInt, (-expDiff).asUInt)
-  val alignedNearM = (nearM << 3) >> absExpDiff
+  // Align smaller operand: 3 guard bits below mantissa, then right-shift
+  val absExpDiff      = Mux(aGreater, expDiff.asUInt, (-expDiff).asUInt)
+  val nearM27         = Cat(nearM, 0.U(3.W))            // 27 bits: 24-bit mantissa + 3 zero guard
+  val alignedNearM    = nearM27 >> absExpDiff
+  // Sticky: any bit of nearM27 shifted past position 0 during alignment
+  val stickyFromAlign = (nearM27 & ((1.U << absExpDiff) - 1.U)(26, 0)).orR
 
   // Add / subtract (28-bit result)
   val isSub  = valA_S ^ valB_S
-  val farM27 = farM << 3
+  val farM27 = Cat(farM, 0.U(3.W))                      // 27 bits: 24-bit mantissa + 3 zero guard
   val resMag: UInt = Mux(
     isSub,
     Cat(0.U(1.W), farM27) - Cat(0.U(1.W), alignedNearM),
@@ -51,14 +54,27 @@ class FP32Adder extends Module {
 
   val resSign = Mux(aGreater, valA_S, valB_S)
 
-  // Normalize
-  val resLZC = PriorityEncoder(resMag.asBools.reverse)
-  val finalM = (resMag << resLZC)(26, 4) // 23 explicit mantissa bits
-  val finalE = farExp.zext - resLZC.asSInt + 1.S
+  // Normalize: left-shift until implicit-1 lands at bit 27
+  val resLZC    = PriorityEncoder(resMag.asBools.reverse)
+  val normShift = resMag << resLZC
+
+  // RNE rounding: bit 27 = implicit-1, [26:4] = mantissa, bit 3 = G, bit 2 = R, [1:0] = S
+  val mant23    = normShift(26, 4)
+  val guardBit  = normShift(3)
+  val roundBit  = normShift(2)
+  val stickyBit = normShift(1, 0).orR || stickyFromAlign
+
+  val roundUp  = guardBit && (mant23(0) || roundBit || stickyBit)
+  val roundedM = mant23 +& roundUp                      // 24 bits; bit 23 = carry out on 0xFFFFFF→0
+
+  // If rounding overflows the mantissa, increment the exponent (mantissa wraps to 0)
+  val mantCarry = roundedM(23)
+  val finalM    = roundedM(22, 0)
+  val finalE    = farExp.zext - resLZC.asSInt + 1.S + mantCarry.zext
 
   // Exact cancellation → zero
   val isZero = resMag === 0.U
-  io.out := Mux(isZero, 0.U(32.W), Cat(resSign, finalE(7, 0), finalM(22, 0)))
+  io.out := Mux(isZero, 0.U(32.W), Cat(resSign, finalE(7, 0), finalM))
 }
 
 // ============================================================
@@ -146,17 +162,23 @@ class ScaleToFP32(val scfg: ScaleAddConfig) extends Module {
  *  @param scfg       ScaleAddConfig describing element and scale types.
  *  @param vectorSize Number of parallel MACs per cycle (>= 1).
  */
-class FusedDotProductUnit(val scfg: ScaleAddConfig, val vectorSize: Int) extends Module {
+class FusedDotProductUnit(val scfg: ScaleAddConfig, val vectorSize: Int, val istest: Boolean) extends Module {
   require(vectorSize >= 1, "vectorSize must be >= 1")
 
   override def desiredName =
-    s"FusedDotProductUnit_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}" +
-    s"_scale_${scfg.stype.name}_vec${vectorSize}"
+    if (!istest)
+      s"BFP_PE"
+    else
+      s"FusedDotProductUnit_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}" +
+      s"_scale_${scfg.stype.name}_vec${vectorSize}"
+
+  private val wA = scfg.elementTypeA.totalWidth
+  private val wB = scfg.elementTypeB.totalWidth
 
   val io = IO(new Bundle {
-    // Vectorized element inputs — one entry per lane
-    val op_a_i        = Input(Vec(vectorSize, UInt(scfg.elementTypeA.totalWidth.W)))
-    val op_b_i        = Input(Vec(vectorSize, UInt(scfg.elementTypeB.totalWidth.W)))
+    // Packed vector inputs: [vectorSize*wA-1:0] ≡ logic [vectorSize-1:0][wA-1:0]
+    val op_a_i        = Input(UInt((vectorSize * wA).W))
+    val op_b_i        = Input(UInt((vectorSize * wB).W))
     // Shared scale factors (broadcast to all lanes)
     val share_exp_A_i = Input(UInt(scfg.stype.totalScaleWidth.W))
     val share_exp_B_i = Input(UInt(scfg.stype.totalScaleWidth.W))
@@ -175,8 +197,8 @@ class FusedDotProductUnit(val scfg: ScaleAddConfig, val vectorSize: Int) extends
 
   for (i <- 0 until vectorSize) {
     val op = Module(new CustomOperator(OperatorConfig(scfg.elementTypeA, scfg.elementTypeB)))
-    op.io.inA := io.op_a_i(i)
-    op.io.inB := io.op_b_i(i)
+    op.io.inA := io.op_a_i((i + 1) * wA - 1, i * wA)
+    op.io.inB := io.op_b_i((i + 1) * wB - 1, i * wB)
 
     val sa = Module(new ScaleAddition(scfg))
     sa.io.inOpSign      := op.io.outSign
@@ -220,8 +242,9 @@ class FusedDotProductUnit(val scfg: ScaleAddConfig, val vectorSize: Int) extends
   // ------------------------------------------------------------------
   // FP32 accumulator register
   // ------------------------------------------------------------------
-  val accReg   = RegInit(0.U(32.W))
-  val validReg = RegInit(false.B)
+  val asyncRstN = (!reset.asBool).asAsyncReset
+  val accReg   = withReset(asyncRstN)(RegInit(0.U(32.W)))
+  val validReg = withReset(asyncRstN)(RegInit(false.B))
 
   val accAdder = Module(new FP32Adder())
   accAdder.io.a := accReg
@@ -252,7 +275,7 @@ object FusedDotProductMain extends App {
   val vectorSize = 8
 
   emitVerilog(
-    new FusedDotProductUnit(scfg, vectorSize),
+    new FusedDotProductUnit(scfg, vectorSize, false),
     Array("--target-dir", s"generated/fused_dot_product/default_vec${vectorSize}")
   )
 }
@@ -273,9 +296,31 @@ object AllFusedDotProductMain extends App {
       s"scale ${stype.name}, vectorSize=$vsize"
     )
     emitVerilog(
-      new FusedDotProductUnit(scfg, vsize),
+      new FusedDotProductUnit(scfg, vsize, false),
       Array("--target-dir",
         s"generated/fused_dot/${typeA.name}_${typeB.name}_${stype.name}_vec${vsize}")
+    )
+  }
+}
+
+object TestFusedDotProductMain extends App {
+  val vectorSizes = Seq(1, 2, 4, 8, 16, 32)
+  val typeA = MXFormats.E5M2
+  val typeB = MXFormats.E2M3
+  val stype = ScaleFormats.UE8M0
+
+  for {
+    vsize <- vectorSizes
+  } {
+    val scfg = ScaleAddConfig(typeA, typeB, stype)
+    println(
+      s"Generating FusedDotProductUnit: ${typeA.name} x ${typeB.name}, " +
+      s"scale ${stype.name}, vectorSize=$vsize"
+    )
+    emitVerilog(
+      new FusedDotProductUnit(scfg, vsize, false),
+      Array("--target-dir",
+        s"generated/test_fused_dot/${typeA.name}_${typeB.name}_${stype.name}_vec${vsize}")
     )
   }
 }
