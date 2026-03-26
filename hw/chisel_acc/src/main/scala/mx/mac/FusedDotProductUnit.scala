@@ -305,8 +305,8 @@ object AllFusedDotProductMain extends App {
 
 object TestFusedDotProductMain extends App {
   val vectorSizes = Seq(1, 2, 4, 8, 16, 32)
-  val typeA = MXFormats.E5M2
-  val typeB = MXFormats.E2M3
+  val typeA = MXFormats.INT8
+  val typeB = MXFormats.E2M1
   val stype = ScaleFormats.UE8M0
 
   for {

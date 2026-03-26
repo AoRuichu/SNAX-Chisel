@@ -50,72 +50,74 @@
   `endif // not def ENABLE_INITIAL_MEM_
 `endif // not def SYNTHESIS
 
-module CustomOperator_E5M2_to_E2M3(	// src/main/scala/mx/mac/CustomOperator.scala:6:7
+module CustomOperator_INT8_to_E2M1(	// src/main/scala/mx/mac/CustomOperator.scala:6:7
   input  [7:0] io_inA,	// src/main/scala/mx/mac/CustomOperator.scala:10:14
-  input  [5:0] io_inB,	// src/main/scala/mx/mac/CustomOperator.scala:10:14
+  input  [3:0] io_inB,	// src/main/scala/mx/mac/CustomOperator.scala:10:14
   output       io_outSign,	// src/main/scala/mx/mac/CustomOperator.scala:10:14
-  output [6:0] io_outExp,	// src/main/scala/mx/mac/CustomOperator.scala:10:14
-               io_outMant	// src/main/scala/mx/mac/CustomOperator.scala:10:14
+  output [3:0] io_outExp,	// src/main/scala/mx/mac/CustomOperator.scala:10:14
+  output [8:0] io_outMant	// src/main/scala/mx/mac/CustomOperator.scala:10:14
 );
 
-  wire [5:0] adjExpA = io_inA[6:2] == 5'h0 ? 6'h32 : {1'h0, io_inA[6:2]} - 6'hF;	// src/main/scala/mx/mac/CustomOperator.scala:23:19, :25:29, :35:{20,26}, :37:{26,31}
-  wire [2:0] adjExpB = io_inB[4:3] == 2'h0 ? 3'h0 : {1'h0, io_inB[4:3]} - 3'h1;	// src/main/scala/mx/mac/CustomOperator.scala:23:19, :25:29, :37:26, :39:{20,26}, :41:31
-  assign io_outSign = io_inA[7] ^ io_inB[5];	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :19:17, :46:23
-  assign io_outExp = {adjExpA[5], adjExpA} + {{4{adjExpB[2]}}, adjExpB};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :35:20, :39:20, :44:25
-  assign io_outMant =
-    {4'h0, |(io_inA[6:2]), io_inA[1:0]} * {3'h0, |(io_inB[4:3]), io_inB[2:0]};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :23:19, :24:19, :25:29, :39:20, :47:27
+  wire [2:0] adjExpB = io_inB[2:1] == 2'h0 ? 3'h0 : {1'h0, io_inB[2:1]} - 3'h1;	// src/main/scala/mx/mac/CustomOperator.scala:23:19, :25:29, :39:{20,26}, :41:{26,31}
+  assign io_outSign = io_inA[7] ^ io_inB[3];	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :19:17, :46:23
+  assign io_outExp = {adjExpB[2], adjExpB};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :37:31, :39:20, :44:25
+  assign io_outMant = {2'h0, io_inA[6:0]} * {7'h0, |(io_inB[2:1]), io_inB[0]};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :21:19, :23:19, :24:19, :25:29, :47:27
 endmodule
 
-module ScaleAddition_E5M2_to_E2M3_scale_UE8M0(	// src/main/scala/mx/mac/ScaleAddition.scala:10:7
+module ScaleAddition_INT8_to_E2M1_scale_UE8M0(	// src/main/scala/mx/mac/ScaleAddition.scala:10:7
   input         io_inOpSign,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
-  input  [6:0]  io_inOpExp,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
-                io_inOpMant,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
+  input  [3:0]  io_inOpExp,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
+  input  [8:0]  io_inOpMant,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
   input  [7:0]  io_inShareScaleA,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
                 io_inShareScaleB,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
   output        io_outSign,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
   output [11:0] io_outExp,	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
-  output [8:0]  io_outMant	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
+  output [10:0] io_outMant	// src/main/scala/mx/mac/ScaleAddition.scala:14:14
 );
 
   wire [9:0]  _scaleExpSum_T_2 =
     {2'h0, io_inShareScaleA} + {2'h0, io_inShareScaleB} - 10'hFE;	// src/main/scala/mx/mac/ScaleAddition.scala:47:{36,54}, :51:38
   wire [10:0] ExpAdd =
-    {_scaleExpSum_T_2[9], _scaleExpSum_T_2} + {{4{io_inOpExp[6]}}, io_inOpExp};	// src/main/scala/mx/mac/ScaleAddition.scala:47:54, :50:28
+    {_scaleExpSum_T_2[9], _scaleExpSum_T_2} + {{7{io_inOpExp[3]}}, io_inOpExp};	// src/main/scala/mx/mac/ScaleAddition.scala:47:54, :50:28
   assign io_outSign = io_inOpSign;	// src/main/scala/mx/mac/ScaleAddition.scala:10:7
   assign io_outExp = {ExpAdd[10], ExpAdd};	// src/main/scala/mx/mac/ScaleAddition.scala:10:7, :50:28, :54:14
   assign io_outMant = {2'h0, io_inOpMant};	// src/main/scala/mx/mac/ScaleAddition.scala:10:7, :51:38
 endmodule
 
-module ScaleToFP32_E5M2_x_E2M3_UE8M0(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:89:7
+module ScaleToFP32_INT8_x_E2M1_UE8M0(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:89:7
   input         io_inSign,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:14
   input  [11:0] io_inExp,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:14
-  input  [8:0]  io_inMant,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:14
+  input  [10:0] io_inMant,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:14
   output [31:0] io_out	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:14
 );
 
   wire [3:0]  lzc =
-    io_inMant[8]
+    io_inMant[10]
       ? 4'h0
-      : io_inMant[7]
+      : io_inMant[9]
           ? 4'h1
-          : io_inMant[6]
+          : io_inMant[8]
               ? 4'h2
-              : io_inMant[5]
+              : io_inMant[7]
                   ? 4'h3
-                  : io_inMant[4]
+                  : io_inMant[6]
                       ? 4'h4
-                      : io_inMant[3]
+                      : io_inMant[5]
                           ? 4'h5
-                          : io_inMant[2] ? 4'h6 : io_inMant[1] ? 4'h7 : 4'h8;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:109:47
-  wire [23:0] shiftedMant = {15'h0, io_inMant} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:110:31
-  wire [11:0] _adjustedExp_T_4 = io_inExp - {8'h0, lzc} + 12'h82;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:129:{30,41}, :134:21
+                          : io_inMant[4]
+                              ? 4'h6
+                              : io_inMant[3]
+                                  ? 4'h7
+                                  : io_inMant[2] ? 4'h8 : io_inMant[1] ? 4'h9 : 4'hA;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:109:47
+  wire [25:0] shiftedMant = {15'h0, io_inMant} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:110:31
+  wire [11:0] _adjustedExp_T_4 = io_inExp - {8'h0, lzc} + 12'h88;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:129:{30,41}, :134:21
   assign io_out =
     {io_inSign,
      $signed(_adjustedExp_T_4) > 12'shFE
        ? 8'hFF
        : $signed(_adjustedExp_T_4) < 12'sh1 ? 8'h0 : _adjustedExp_T_4[7:0],
-     shiftedMant[7:0],
-     15'h0};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:89:7, :110:31, :120:30, :129:41, :130:33, :131:33, :133:21, :134:{21,63}, :136:16
+     shiftedMant[9:0],
+     13'h0};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:89:7, :110:31, :120:30, :129:41, :130:33, :131:33, :133:21, :134:{21,63}, :136:16
 endmodule
 
 module FP32Adder(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:16:7
@@ -211,7 +213,7 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
   input          clock,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
                  reset,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
   input  [127:0] io_op_a_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:178:14
-  input  [95:0]  io_op_b_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:178:14
+  input  [63:0]  io_op_b_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:178:14
   input  [7:0]   io_share_exp_A_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:178:14
                  io_share_exp_B_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:178:14
   input          io_validIn,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:178:14
@@ -239,115 +241,115 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
   wire [31:0] _conv_15_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_15_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_15_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_15_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_15_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_15_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_15_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_15_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_15_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_15_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_14_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_14_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_14_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_14_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_14_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_14_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_14_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_14_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_14_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_14_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_13_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_13_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_13_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_13_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_13_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_13_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_13_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_13_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_13_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_13_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_12_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_12_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_12_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_12_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_12_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_12_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_12_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_12_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_12_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_12_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_11_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_11_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_11_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_11_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_11_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_11_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_11_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_11_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_11_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_11_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_10_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_10_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_10_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_10_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_10_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_10_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_10_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_10_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_10_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_10_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_9_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_9_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_9_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_9_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_9_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_9_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_9_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_9_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_9_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_9_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_8_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_8_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_8_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_8_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_8_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_8_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_8_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_8_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_8_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_8_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_7_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_7_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_7_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_7_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_7_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_7_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_7_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_7_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_7_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_7_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_6_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_6_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_6_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_6_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_6_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_6_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_6_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_6_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_6_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_6_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_5_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_5_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_5_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_5_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_5_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_5_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_5_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_5_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_5_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_5_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_4_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_4_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_4_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_4_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_4_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_4_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_4_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_4_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_4_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_4_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_3_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_3_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_3_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_3_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_3_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_3_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_3_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_3_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_3_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_3_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_2_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_2_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_2_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_2_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_2_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_2_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_2_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_2_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_2_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_2_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_1_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_1_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_1_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_1_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_1_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_1_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_1_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_1_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_1_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_1_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire [31:0] _conv_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
   wire        _sa_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire [11:0] _sa_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
-  wire [8:0]  _sa_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  wire [10:0] _sa_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
   wire        _op_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
-  wire [6:0]  _op_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [3:0]  _op_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  wire [8:0]  _op_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
   wire        _asyncRstN_T = ~reset;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:245:20
   reg  [31:0] accReg;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:246:46
   reg         validReg;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:247:46
@@ -389,14 +391,14 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
       `FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     `endif // FIRRTL_AFTER_INITIAL
   `endif // ENABLE_INITIAL_REG_
-  CustomOperator_E5M2_to_E2M3 op (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[7:0]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[5:0]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[3:0]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_io_outSign),
     .io_outExp  (_op_io_outExp),
     .io_outMant (_op_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -406,20 +408,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_io_outExp),
     .io_outMant       (_sa_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[15:8]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[11:6]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[7:4]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_1_io_outSign),
     .io_outExp  (_op_1_io_outExp),
     .io_outMant (_op_1_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_1_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_1_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_1_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -429,20 +431,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_1_io_outExp),
     .io_outMant       (_sa_1_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_1_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_1_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_1_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_1_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[23:16]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[17:12]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[11:8]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_2_io_outSign),
     .io_outExp  (_op_2_io_outExp),
     .io_outMant (_op_2_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_2_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_2_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_2_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -452,20 +454,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_2_io_outExp),
     .io_outMant       (_sa_2_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_2_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_2_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_2_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_2_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[31:24]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[23:18]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[15:12]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_3_io_outSign),
     .io_outExp  (_op_3_io_outExp),
     .io_outMant (_op_3_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_3_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_3_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_3_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -475,20 +477,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_3_io_outExp),
     .io_outMant       (_sa_3_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_3_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_3_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_3_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_3_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_4 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_4 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[39:32]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[29:24]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[19:16]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_4_io_outSign),
     .io_outExp  (_op_4_io_outExp),
     .io_outMant (_op_4_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_4 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_4 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_4_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_4_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_4_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -498,20 +500,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_4_io_outExp),
     .io_outMant       (_sa_4_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_4 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_4 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_4_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_4_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_4_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_4_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_5 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_5 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[47:40]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[35:30]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[23:20]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_5_io_outSign),
     .io_outExp  (_op_5_io_outExp),
     .io_outMant (_op_5_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_5 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_5 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_5_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_5_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_5_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -521,20 +523,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_5_io_outExp),
     .io_outMant       (_sa_5_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_5 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_5 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_5_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_5_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_5_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_5_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_6 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_6 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[55:48]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[41:36]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[27:24]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_6_io_outSign),
     .io_outExp  (_op_6_io_outExp),
     .io_outMant (_op_6_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_6 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_6 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_6_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_6_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_6_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -544,20 +546,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_6_io_outExp),
     .io_outMant       (_sa_6_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_6 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_6 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_6_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_6_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_6_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_6_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_7 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_7 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[63:56]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[47:42]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[31:28]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_7_io_outSign),
     .io_outExp  (_op_7_io_outExp),
     .io_outMant (_op_7_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_7 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_7 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_7_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_7_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_7_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -567,20 +569,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_7_io_outExp),
     .io_outMant       (_sa_7_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_7 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_7 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_7_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_7_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_7_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_7_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_8 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_8 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[71:64]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[53:48]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[35:32]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_8_io_outSign),
     .io_outExp  (_op_8_io_outExp),
     .io_outMant (_op_8_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_8 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_8 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_8_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_8_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_8_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -590,20 +592,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_8_io_outExp),
     .io_outMant       (_sa_8_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_8 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_8 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_8_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_8_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_8_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_8_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_9 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_9 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[79:72]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[59:54]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[39:36]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_9_io_outSign),
     .io_outExp  (_op_9_io_outExp),
     .io_outMant (_op_9_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_9 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_9 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_9_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_9_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_9_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -613,20 +615,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_9_io_outExp),
     .io_outMant       (_sa_9_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_9 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_9 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_9_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_9_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_9_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_9_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_10 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_10 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[87:80]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[65:60]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[43:40]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_10_io_outSign),
     .io_outExp  (_op_10_io_outExp),
     .io_outMant (_op_10_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_10 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_10 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_10_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_10_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_10_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -636,20 +638,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_10_io_outExp),
     .io_outMant       (_sa_10_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_10 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_10 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_10_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_10_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_10_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_10_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_11 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_11 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[95:88]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[71:66]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[47:44]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_11_io_outSign),
     .io_outExp  (_op_11_io_outExp),
     .io_outMant (_op_11_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_11 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_11 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_11_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_11_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_11_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -659,20 +661,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_11_io_outExp),
     .io_outMant       (_sa_11_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_11 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_11 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_11_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_11_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_11_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_11_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_12 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_12 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[103:96]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[77:72]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[51:48]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_12_io_outSign),
     .io_outExp  (_op_12_io_outExp),
     .io_outMant (_op_12_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_12 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_12 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_12_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_12_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_12_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -682,20 +684,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_12_io_outExp),
     .io_outMant       (_sa_12_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_12 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_12 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_12_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_12_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_12_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_12_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_13 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_13 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[111:104]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[83:78]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[55:52]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_13_io_outSign),
     .io_outExp  (_op_13_io_outExp),
     .io_outMant (_op_13_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_13 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_13 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_13_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_13_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_13_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -705,20 +707,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_13_io_outExp),
     .io_outMant       (_sa_13_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_13 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_13 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_13_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_13_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_13_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_13_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_14 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_14 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[119:112]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[89:84]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[59:56]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_14_io_outSign),
     .io_outExp  (_op_14_io_outExp),
     .io_outMant (_op_14_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_14 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_14 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_14_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_14_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_14_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -728,20 +730,20 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_14_io_outExp),
     .io_outMant       (_sa_14_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_14 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_14 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_14_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_14_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_14_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_out    (_conv_14_io_out)
   );
-  CustomOperator_E5M2_to_E2M3 op_15 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
+  CustomOperator_INT8_to_E2M1 op_15 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inA     (io_op_a_i[127:120]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:200:27
-    .io_inB     (io_op_b_i[95:90]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
+    .io_inB     (io_op_b_i[63:60]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:201:27
     .io_outSign (_op_15_io_outSign),
     .io_outExp  (_op_15_io_outExp),
     .io_outMant (_op_15_io_outMant)
   );
-  ScaleAddition_E5M2_to_E2M3_scale_UE8M0 sa_15 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
+  ScaleAddition_INT8_to_E2M1_scale_UE8M0 sa_15 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inOpSign      (_op_15_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpExp       (_op_15_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
     .io_inOpMant      (_op_15_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:199:20
@@ -751,7 +753,7 @@ module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:165:7
     .io_outExp        (_sa_15_io_outExp),
     .io_outMant       (_sa_15_io_outMant)
   );
-  ScaleToFP32_E5M2_x_E2M3_UE8M0 conv_15 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
+  ScaleToFP32_INT8_x_E2M1_UE8M0 conv_15 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:210:22
     .io_inSign (_sa_15_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inExp  (_sa_15_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20
     .io_inMant (_sa_15_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:203:20

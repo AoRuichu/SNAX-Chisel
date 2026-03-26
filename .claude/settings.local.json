@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(sbt \"testOnly mx.mac.DotProductUnitTest\")"
+      "Bash(sbt \"testOnly mx.mac.DotProductUnitTest\")",
+      "Bash(sbt \"compile\")",
+      "Bash(sbt \"runMain mx.requant.RequantFP8Main\")",
+      "Bash(find /workspaces/snax_cluster/hw/chisel_acc -name *.hjson)",
+      "Bash(python3 -c \":*)",
+      "Bash(sbt \"testOnly mx.mac.ScaleToFP32Test\")",
+      "Bash(find /workspaces/snax_cluster/target/snitch_cluster/sw/apps/snax-mx/ -name *.c -o -name *.h -o -name *.py)",
+      "Bash(find /workspaces/snax_cluster -name *.py -newer /workspaces/snax_cluster/hw/chisel_acc/orchestrator.py)",
+      "Bash(grep -rn \"10\\\\.000000\\\\|16\\\\.000000\\\\|12\\\\.000000\\\\|expected\\\\|MISMATCH\" /workspaces/snax_cluster/hw/chisel_acc/ --include=*.scala)",
+      "Bash(sbt \"testOnly mx.mac.FusedDotProductUnitTest -- -z \"\"Reset clears\"\"\")"
     ]
   }
 }
