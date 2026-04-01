@@ -10,7 +10,15 @@
       "Bash(find /workspaces/snax_cluster/target/snitch_cluster/sw/apps/snax-mx/ -name *.c -o -name *.h -o -name *.py)",
       "Bash(find /workspaces/snax_cluster -name *.py -newer /workspaces/snax_cluster/hw/chisel_acc/orchestrator.py)",
       "Bash(grep -rn \"10\\\\.000000\\\\|16\\\\.000000\\\\|12\\\\.000000\\\\|expected\\\\|MISMATCH\" /workspaces/snax_cluster/hw/chisel_acc/ --include=*.scala)",
-      "Bash(sbt \"testOnly mx.mac.FusedDotProductUnitTest -- -z \"\"Reset clears\"\"\")"
+      "Bash(sbt \"testOnly mx.mac.FusedDotProductUnitTest -- -z \"\"Reset clears\"\"\")",
+      "Bash(sbt \"runMain mx.mac.TestFusedDotProductMain\")",
+      "Bash(sbt \"testOnly mx.mac.FusedDotProductUnitTest\")",
+      "Bash(git stash:*)",
+      "Bash(sbt \"testOnly mx.mac.FusedDotProductUnitTest -- -z \"\"multi-block accumulation\"\" -z \"\"subnormal inputs\"\"\")",
+      "Bash(sbt \"testOnly mx.mac.FusedDotProductUnitTest -- -z \"\"Subnormal scale\"\" -z \"\"subnormal inputs\"\"\")",
+      "Bash(find /workspaces/snax_cluster/hw/chisel_acc/test_run_dir -name *.sv)",
+      "Bash(find /workspaces/snax_cluster/hw/chisel_acc/test_run_dir/FusedDotProductUnit_All_type_combinations_with_subnormal_inputs__full_sweep_vec4 -name ScaleAddition*UE7M1*)",
+      "Bash(find /workspaces/snax_cluster/hw/chisel_acc/test_run_dir -name *.lo.fir -path *subnormal*)"
     ]
   }
 }

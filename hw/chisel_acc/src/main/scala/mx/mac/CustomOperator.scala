@@ -18,7 +18,12 @@ class CustomOperator(val cfg: OperatorConfig) extends Module {
   def getExtendedMantissa(in:UInt, etype:ElementType):(UInt,UInt,UInt) = {
     val sign= in(etype.totalWidth-1)
     if(etype.name == "INT8"){
-      (sign,0.U,in(etype.elementWidthMant-1,0))
+      // MXINT8 sign-magnitude encoding (matches Python MXINT8 convention):
+      //   bit[7]   = sign
+      //   bits[6:0] = magnitude (unsigned), value = ±magnitude × 2^-6
+      // No conversion needed — bits[6:0] are directly the magnitude.
+      val magnitude = in(etype.elementWidthMant-1, 0)
+      (sign, 0.U, magnitude)
     }else{
       val exp = in(etype.elementWidthMant+etype.elementWidthExp-1,etype.elementWidthMant)
       val mant= in(etype.elementWidthMant-1,0)
@@ -30,15 +35,16 @@ class CustomOperator(val cfg: OperatorConfig) extends Module {
   val(signA,expA,fullMantA) = getExtendedMantissa(io.inA,cfg.elementTypeA)
   val(signB,expB,fullMantB) = getExtendedMantissa(io.inB,cfg.elementTypeB)
 
-  
-  //扩展位宽防止溢出
-  val adjExpA = Mux(expA === 0.U && cfg.elementTypeA.elementWidthExp.U > 0.U, 
+  // 扩展位宽防止溢出，加上各格式的隐含缩放指数（INT8 为 −6）
+  val adjExpA = Mux(expA === 0.U && cfg.elementTypeA.elementWidthExp.U > 0.U,
                     1.S - cfg.elementTypeA.bias.S, //subnormal fixed to 1-bias
-                    expA.zext - cfg.elementTypeA.bias.S)
-                    
-  val adjExpB = Mux(expB === 0.U && cfg.elementTypeB.elementWidthExp.U > 0.U, 
-                    1.S - cfg.elementTypeB.bias.S, 
-                    expB.zext - cfg.elementTypeB.bias.S)
+                    expA.zext - cfg.elementTypeA.bias.S) +
+                cfg.elementTypeA.implicitScaleExp.S
+
+  val adjExpB = Mux(expB === 0.U && cfg.elementTypeB.elementWidthExp.U > 0.U,
+                    1.S - cfg.elementTypeB.bias.S,
+                    expB.zext - cfg.elementTypeB.bias.S) +
+                cfg.elementTypeB.implicitScaleExp.S
 
   //+& means keep the carry bit
   val exp_sum = adjExpA +& adjExpB

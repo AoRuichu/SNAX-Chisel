@@ -3,6 +3,8 @@ project/*
 !project/build.properties
 target
 out
+generated
+test_run_dir
 
 # Files
 src/snax_streamer_gemmX_shell_wrapper.sv
