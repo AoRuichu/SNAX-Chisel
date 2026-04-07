@@ -2,7 +2,7 @@
 """Generate MXINT8 × E2M1 / UE8M0 test vectors for FusedDotProductUnitTest.
 
 Configuration:
-  elementTypeA = MXINT8 (sign-magnitude, implicit scale 2^-6)
+  elementTypeA = MXINT8 (2's complement, implicit scale 2^-6)
   elementTypeB = fp4_e2m1
   scaleType    = UE8M0
   block_size   = 32
@@ -49,10 +49,9 @@ scale_f_b   = scale_shared_b[0]
 
 # ── software golden model ─────────────────────────────────────────────────────
 def decode_mxint8(raw: int) -> float:
-    """sign-magnitude: bit[7]=sign, bits[6:0]=magnitude; value = ±mag × 2^-6"""
-    sign = (raw >> 7) & 1
-    mag  = raw & 0x7F
-    return (-mag if sign else mag) * (2.0 ** -6)
+    """2's complement: signed 8-bit integer; value = signed_int × 2^-6"""
+    signed_val = raw if raw < 128 else raw - 256
+    return signed_val * (2.0 ** -6)
 
 def decode_ue8m0(raw: int) -> float:
     return 2.0 ** (raw - 127)

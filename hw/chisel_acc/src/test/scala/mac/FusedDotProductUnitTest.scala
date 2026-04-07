@@ -25,11 +25,10 @@ class FusedDotProductUnitTest extends AnyFunSuite with ChiselScalatestTester {
   /** Decode raw bit-pattern → Double (MX element format). */
   def decodeElement(raw: Int, t: ElementType): Double = {
     if (t.name == "INT8") {
-      // MXINT8 sign-magnitude: bit[7]=sign, bits[6:0]=magnitude (unsigned).
-      // value = ±magnitude × 2^implicitScaleExp (= 2^-6).
-      val signBit   = (raw >> 7) & 1
-      val magnitude = raw & 0x7F
-      (if (signBit == 1) -magnitude else magnitude).toDouble * Math.pow(2, t.implicitScaleExp)
+      // MXINT8 2's complement: treat as signed 8-bit integer.
+      // value = signed_int × 2^implicitScaleExp (= 2^-6).
+      val signedVal = if ((raw & 0x80) != 0) raw - 256 else raw
+      signedVal.toDouble * Math.pow(2, t.implicitScaleExp)
     } else {
       val sign = if (((raw >> (t.totalWidth - 1)) & 1) == 1) -1.0 else 1.0
       val exp  = (raw >> t.elementWidthMant) & ((1 << t.elementWidthExp) - 1)
@@ -61,11 +60,10 @@ class FusedDotProductUnitTest extends AnyFunSuite with ChiselScalatestTester {
     val sign   = if (value < 0) 1 else 0
     val absVal = math.abs(value)
     if (t.name == "INT8") {
-      // MXINT8 sign-magnitude: bit[7]=sign, bits[6:0]=magnitude.
+      // MXINT8 2's complement: encode as signed 8-bit integer.
       // magnitude = round(|value| / 2^implicitScaleExp), clamped to [0, 127].
-      val sign      = if (value < 0) 1 else 0
       val magnitude = math.round(absVal / Math.pow(2, t.implicitScaleExp)).toInt.min(127)
-      (sign << 7) | magnitude
+      if (sign == 0) magnitude else (-magnitude) & 0xFF
     } else {
       val expUnbiased = math.floor(math.log(absVal) / math.log(2)).toInt
       val expBiased   = expUnbiased + t.bias
@@ -116,11 +114,12 @@ class FusedDotProductUnitTest extends AnyFunSuite with ChiselScalatestTester {
   }
 
   def swFusedProductWithTrace(cfg: ScaleAddConfig)(
-    as: Seq[Int], bs: Seq[Int], scaleA: Int, scaleB: Int, cycleIdx: Int
+    as: Seq[Int], bs: Seq[Int], scaleA: Int, scaleB: Int, cycleIdx: Int,
+    verbose: Boolean = false
   ): Float = {
     val sA = decodeScale(scaleA, cfg.stype)
     val sB = decodeScale(scaleB, cfg.stype)
-    
+
     val details = as.zip(bs).zipWithIndex.map { case ((a, b), lane) =>
       val dA = decodeElement(a, cfg.elementTypeA)
       val dB = decodeElement(b, cfg.elementTypeB)
@@ -131,15 +130,14 @@ class FusedDotProductUnitTest extends AnyFunSuite with ChiselScalatestTester {
     val dotSum = details.map(_._3).sum
     val finalCycleVal = (dotSum * sA * sB).toFloat
 
-    // 仅在出问题前后打印，或者通过配置开启
-    //if (cycleIdx == 5) {
-      // log(f"--- Cycle $cycleIdx Trace (sA=$sA%.4e, sB=$sB%.4e) ---")
-      // details.zipWithIndex.foreach { case ((dA, dB, p), lane) =>
-      //   log(f"  Lane $lane: A=$dA%10.4f | B=$dB%10.4f | P=$p%10.4f")
-      // }
-      // log(f"  DotSum=$dotSum%10.4f | FinalCycleVal=$finalCycleVal%10.4f")
-    //}
-    
+    if (verbose) {
+      log(f"--- Cycle $cycleIdx SW Trace (sA=$sA%.4e, sB=$sB%.4e) ---")
+      details.zipWithIndex.foreach { case ((dA, dB, p), lane) =>
+        log(f"  Lane $lane: A=$dA%10.4f (raw=0x${as(lane)}%02x) | B=$dB%10.4f (raw=0x${bs(lane)}%02x) | P=$p%10.4f")
+      }
+      log(f"  DotSum=$dotSum%10.4f | FinalCycleVal=$finalCycleVal%10.4f")
+    }
+
     finalCycleVal
   }
   //手动计算预期的exp和mant
@@ -229,7 +227,8 @@ class FusedDotProductUnitTest extends AnyFunSuite with ChiselScalatestTester {
 def runCycles(
   dut: FusedDotProductUnit, cfg: ScaleAddConfig,
   cycles: Seq[(Seq[Int], Seq[Int], Int, Int)],
-  header: String = ""
+  header: String = "",
+  verbose: Boolean = false
 ): Unit = {
   if (header.nonEmpty) {
     log("=" * 70)
@@ -243,7 +242,7 @@ def runCycles(
     val decSB = decodeScale(sB, cfg.stype)
 
     // 1. 使用带 trace 的软件模型
-    val swCycleVal = swFusedProductWithTrace(cfg)(as, bs, sA, sB, i)
+    val swCycleVal = swFusedProductWithTrace(cfg)(as, bs, sA, sB, i, verbose)
     
     // 2. 模拟硬件
     driveOne(dut, cfg, as, bs, sA, sB)
@@ -265,27 +264,27 @@ def runCycles(
     // 在打印行中加入 Scale 信息
     val line = f"Cycle $i%2d | sA=${decSA}%10.4e | sB=${decSB}%10.4e | cycleVal=$swCycleVal%12.4e | SW=$swAcc%12.4e | HW=$hw%12.4e"
     
-    if (isFail) {
-      log(f"--- Cycle $i All Lanes Trace ---")
-    
-      // 3. 循环拉出所有 Lane 的硬件值
+    if (isFail || verbose) {
+      val tag = if (isFail) "FAIL" else "VERBOSE"
+      log(f"--- Cycle $i%2d [$tag] HW All Lanes Trace ---")
+
       for (laneIdx <- 0 until dut.vectorSize) {
         val hwLaneFP32Raw = dut.io.debug.get.all_lanes_fp32(laneIdx).peek().litValue.toInt
         val hwLaneFP32    = java.lang.Float.intBitsToFloat(hwLaneFP32Raw)
-        
-        val hwLaneMant    = dut.io.debug.get.all_lanes_sa_mant(laneIdx).peek().litValue   
-        
-        // 打印每一路的数据
-        // 注意：这里的 SW_L 预期值需要你根据 as(laneIdx) 和 bs(laneIdx) 手动算一下或者从软件模型里传出来
+        val hwLaneMant    = dut.io.debug.get.all_lanes_sa_mant(laneIdx).peek().litValue
         log(f"  Lane $laneIdx%1d: HW_Mant=0x$hwLaneMant%x | HW_FP32=$hwLaneFP32%.6f")
       }
 
       log(f"  [SUMMARY] SW_CycleSum=$swCycleVal%.6f | HW_CycleSum=$hwCycleVal%.6f")
       log(f"  [ACCUM  ] SW_Acc=$swAcc%.6f | HW_Acc=$hwAcc%.6f")
 
-      logErr(line)
-      logErr(f"      BITS: SW=0x${java.lang.Float.floatToIntBits(swAcc).toHexString} | " +
-             f"HW=0x${java.lang.Float.floatToIntBits(hw).toHexString}")
+      if (isFail) {
+        logErr(line)
+        logErr(f"      BITS: SW=0x${java.lang.Float.floatToIntBits(swAcc).toHexString} | " +
+               f"HW=0x${java.lang.Float.floatToIntBits(hw).toHexString}")
+      } else {
+        log(line)
+      }
     } else {
       log(line)
     }
@@ -328,7 +327,7 @@ def runCycles(
     val maxAbs = values.map(math.abs).max.max(1e-38)   // guard against log(0)
 
     // Scale exponent selection:
-    //   INT8 (MXINT8 sign-magnitude): match Python _find_shared_exp for 'mxint8':
+    //   INT8 (MXINT8 2's complement): match Python _find_shared_exp for 'mxint8':
     //     scaleExp = floor(log2(maxAbs))
     //     This maps maxAbs into (1, 2], normalised value quantised by MXINT8 (range ≈ ±1.984);
     //     values in (1.984, 2) will saturate to magnitude=127, exactly as Python does.
@@ -842,7 +841,8 @@ def runCycles(
     def randElement(t: ElementType): Int = {
       val sign = rng.nextInt(2)
       if (t.name == "INT8") {
-        (sign << 7) | (1 + rng.nextInt(15)) // magnitude 1..15
+        val mag = 1 + rng.nextInt(15)  // magnitude 1..15
+        if (sign == 0) mag else (-mag) & 0xFF  // 2's complement encoding
       } else {
         val expRange = 1 << t.elementWidthExp
         val expLo    = (t.bias + 1).max(1).min(expRange - 1)
@@ -1192,12 +1192,14 @@ def runCycles(
   //     sign=0 → positive, sign=1 → negative.
   //
   //   INT8: no subnormal concept — returns small magnitudes {1, 2, 1, 2}
-  //   (sign=1 sets the INT8 sign bit to get negative values).
+  //   (sign=1 encodes negative values in 2's complement: -1=0xFF, -2=0xFE).
   // -----------------------------------------------------------------------
   def vec4Subnormals(t: ElementType, sign: Int = 0): Seq[Int] = {
     val signBit = sign << (t.totalWidth - 1)
     if (t.name == "INT8") {
-      Seq(signBit | 1, signBit | 2, signBit | 1, signBit | 2)
+      // 2's complement: positive small → 1,2; negative small → 0xFF(-1), 0xFE(-2)
+      if (sign == 0) Seq(1, 2, 1, 2)
+      else           Seq(0xFF, 0xFE, 0xFF, 0xFE)
     } else {
       val minSub = 1                              // exp=0, mant=1
       val maxSub = (1 << t.elementWidthMant) - 1  // exp=0, mant=all-1s
@@ -1361,12 +1363,15 @@ def runCycles(
         (subA_neg, subB_pos, scaleRaw, scaleRaw),  // A- × B+
       )
 
+      // 当 scale 为 E7M1 (UE7M1) 时打印详细 lane 信息，便于 debug
+      val verboseThisRun = st.name == "UE7M1"
+
       try {
         test(new FusedDotProductUnit(cfg, vsize, true)) { dut =>
           initDut(dut)
           dut.io.resetAcc.poke(true.B); dut.clock.step()
           dut.io.resetAcc.poke(false.B)
-          runCycles(dut, cfg, cycles, label)
+          runCycles(dut, cfg, cycles, label, verbose = verboseThisRun)
         }
         log(s"[OK] $label")
         passed += 1
@@ -1452,7 +1457,7 @@ def runCycles(
   //
   //  Vectors generated by gen_int8_e2m1_test.py using quantize_mx_v2
   //  with dtype='mxint8', scale_format='UE8M0', block_size=32, seed=9999.
-  //  Raw encodings are sign-magnitude MXINT8 (bit[7]=sign, bits[6:0]=magnitude)
+  //  Raw encodings are 2's complement MXINT8 (signed 8-bit integer)
   //  and 4-bit E2M1 in a uint8.  Expected result: 22.406250.
   // -----------------------------------------------------------------------
   test("FusedDotProductUnit: Python-generated MXINT8 x E2M1 / UE8M0 hardcoded (vec=4, 16 cycles)") {
@@ -1462,6 +1467,8 @@ def runCycles(
       val vsize = 4
 
       // Generated by gen_int8_e2m1_test.py (quantize_mx_v2, seed=9999)
+      // INT8 raw encodings are 2's complement (hardware format).
+      // Converted from original sign-magnitude output of gen_int8_e2m1_test.py.
 
       val rawScaleA_0 = 0x77  // scale_A = 3.906250e-03
       val rawScaleB_0 = 0x75  // scale_B = 9.765625e-04
@@ -1469,10 +1476,10 @@ def runCycles(
       val rawScaleB_1 = 0x74  // scale_B = 4.882812e-04
 
       val encA_0: Seq[Int] = Seq(
-        0x8E, 0x85, 0x87, 0x15, 0x49, 0xA7, 0xA5, 0x9A,
-        0x31, 0x10, 0xB8, 0x95, 0x10, 0x29, 0x1B, 0xC3,
-        0x92, 0x85, 0x8C, 0x1F, 0x85, 0x34, 0x02, 0x30,
-        0x82, 0x9B, 0xA7, 0xA4, 0x89, 0x2C, 0x87, 0x20)
+        0xF2, 0xFB, 0xF9, 0x15, 0x49, 0xD9, 0xDB, 0xE6,
+        0x31, 0x10, 0xC8, 0xEB, 0x10, 0x29, 0x1B, 0xBD,
+        0xEE, 0xFB, 0xF4, 0x1F, 0xFB, 0x34, 0x02, 0x30,
+        0xFE, 0xE5, 0xD9, 0xDC, 0xF7, 0x2C, 0xF9, 0x20)
       val encB_0: Seq[Int] = Seq(
         0x09, 0x01, 0x00, 0x0A, 0x08, 0x00, 0x0B, 0x04,
         0x0B, 0x04, 0x0D, 0x08, 0x0C, 0x01, 0x02, 0x0D,
@@ -1480,10 +1487,10 @@ def runCycles(
         0x03, 0x00, 0x02, 0x0E, 0x09, 0x01, 0x09, 0x0A)
 
       val encA_1: Seq[Int] = Seq(
-        0x1A, 0x12, 0x9E, 0xAA, 0x03, 0x98, 0x82, 0x23,
-        0xA3, 0x26, 0x93, 0x77, 0xAA, 0x87, 0x29, 0x92,
-        0x19, 0xA8, 0x16, 0xA6, 0x08, 0xA9, 0x8D, 0x3B,
-        0xA5, 0x08, 0x10, 0x8A, 0x85, 0x92, 0xA0, 0x80)
+        0x1A, 0x12, 0xE2, 0xD6, 0x03, 0xE8, 0xFE, 0x23,
+        0xDD, 0x26, 0xED, 0x77, 0xD6, 0xF9, 0x29, 0xEE,
+        0x19, 0xD8, 0x16, 0xDA, 0x08, 0xD7, 0xF3, 0x3B,
+        0xDB, 0x08, 0x10, 0xF6, 0xFB, 0xEE, 0xE0, 0x00)
       val encB_1: Seq[Int] = Seq(
         0x0F, 0x0D, 0x01, 0x02, 0x00, 0x02, 0x09, 0x0E,
         0x0F, 0x0B, 0x04, 0x01, 0x03, 0x07, 0x09, 0x0B,
@@ -1538,3 +1545,4 @@ def runCycles(
     }
   }
 }
+                       

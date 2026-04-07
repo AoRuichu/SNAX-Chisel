@@ -18,11 +18,10 @@ class CustomOperator(val cfg: OperatorConfig) extends Module {
   def getExtendedMantissa(in:UInt, etype:ElementType):(UInt,UInt,UInt) = {
     val sign= in(etype.totalWidth-1)
     if(etype.name == "INT8"){
-      // MXINT8 sign-magnitude encoding (matches Python MXINT8 convention):
-      //   bit[7]   = sign
-      //   bits[6:0] = magnitude (unsigned), value = ±magnitude × 2^-6
-      // No conversion needed — bits[6:0] are directly the magnitude.
-      val magnitude = in(etype.elementWidthMant-1, 0)
+      //2sComplement version
+      val raw7 = in(etype.elementWidthMant-1, 0)
+      val negMag = (~raw7 + 1.U)(etype.elementWidthMant-1, 0)  // 7-bit 2's complement negate
+      val magnitude = Mux(sign.asBool, negMag, raw7)
       (sign, 0.U, magnitude)
     }else{
       val exp = in(etype.elementWidthMant+etype.elementWidthExp-1,etype.elementWidthMant)

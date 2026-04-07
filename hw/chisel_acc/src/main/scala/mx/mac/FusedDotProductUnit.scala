@@ -70,11 +70,15 @@ class FP32Adder extends Module {
   // If rounding overflows the mantissa, increment the exponent (mantissa wraps to 0)
   val mantCarry = roundedM(23)
   val finalM    = roundedM(22, 0)
-  val finalE    = farExp.zext - resLZC.asSInt + 1.S + mantCarry.zext
+  val finalE_wide = farExp.zext - resLZC.asSInt + 1.S + mantCarry.zext
 
-  // Exact cancellation → zero
-  val isZero = resMag === 0.U
-  io.out := Mux(isZero, 0.U(32.W), Cat(resSign, finalE(7, 0), finalM))
+  // Underflow (denormal result) → flush to zero; overflow → clamp to Infinity
+  val isZero        = resMag === 0.U || finalE_wide <= 0.S
+  val isExpOverflow = finalE_wide >= 255.S
+
+  io.out := Mux(isZero,        0.U(32.W),
+             Mux(isExpOverflow, Cat(resSign, 255.U(8.W), 0.U(23.W)),
+                                Cat(resSign, finalE_wide.asUInt(7, 0), finalM)))
 }
 
 // ============================================================
@@ -138,8 +142,8 @@ class ScaleToFP32(val scfg: ScaleAddConfig) extends Module {
   val finalExp = Mux(isOverflow,  255.U(8.W),
                  Mux(isUnderflow, 0.U(8.W), adjustedExp.asUInt(7, 0)))
 
-  // 5. 零值强制清零
-  io.out := Mux(isZero, 0.U(32.W), Cat(io.inSign, finalExp, finalMant))
+  // 5. 零值强制清零；下溢（次正规结果）同样清零（FTZ）
+  io.out := Mux(isZero || isUnderflow, 0.U(32.W), Cat(io.inSign, finalExp, finalMant))
 }
 
 // ============================================================

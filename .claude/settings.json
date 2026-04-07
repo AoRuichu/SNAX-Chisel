@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\(runs/|\\\\.bloop/|__pycache__|\\\\.pyc|\\\\.pyo|sv2v-Linux|\\\\.log$|\\\\.csv$|_converted\\\\.v|Backend/OpenRAM_output|Backend/\\\\.ipynb_checkpoints|target/|/out/\\)\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
+    ]
+  }
+}

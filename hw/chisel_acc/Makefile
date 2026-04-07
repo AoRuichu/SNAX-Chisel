@@ -51,3 +51,18 @@ $(DR_GENERATED_FILES): $(DR_SCALA_SOURCES)
 
 clean:
 	rm -f -r $(GEMMX_GENERATED_FILES) $(DR_GENERATED_FILES) $(CHISEL_GENERATED_DIR)
+
+clean-data:
+	rm -f -r $(MK_CUR_DIR)runs/
+	rm -f -r $(MK_CUR_DIR)target/
+	rm -f -r $(MK_CUR_DIR)out/
+	rm -f -r $(MK_CUR_DIR)test_run_dir/
+	rm -f -r $(MK_CUR_DIR).bloop/
+	rm -f -r $(MK_CUR_DIR)__pycache__/
+	rm -f    $(MK_CUR_DIR)*.pyc $(MK_CUR_DIR)*.pyo
+	rm -f    $(MK_CUR_DIR)*.log
+	rm -f    $(MK_CUR_DIR)*.csv
+	rm -f    $(MK_CUR_DIR)*_converted.v
+	rm -f -r $(MK_CUR_DIR)Backend/OpenRAM_output/
+	rm -f -r $(MK_CUR_DIR)Backend/.ipynb_checkpoints/
+	rm -f -r $(MK_CUR_DIR)project/target/

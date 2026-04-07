@@ -361,12 +361,21 @@ class MXINT8:
         self.exponent = int(exponent)  # 7-bit magnitude field
 
     def pack(self):
-        bits = (self.sign << 7) | self.exponent
+        # 2's complement encoding: positive → as-is, negative → negate
+        if self.sign:
+            bits = (-self.exponent) & 0xFF
+        else:
+            bits = self.exponent
         return np.uint8(bits)
 
     def unpack(self, value):
-        self.sign = (value >> 7) & 0x1
-        self.exponent = value & 0x7F
+        val = int(value)
+        if val >= 128:  # negative in 2's complement
+            self.sign = 1
+            self.exponent = 256 - val  # magnitude
+        else:
+            self.sign = 0
+            self.exponent = val
         return self
 
     def to_float(self):

@@ -171,8 +171,9 @@ def custom_operator(inA: int, inB: int,
     def get_extended_mantissa(inp: int, etype: ElementType):
         sign = (inp >> (etype.totalWidth - 1)) & 1
         if etype.name == "INT8":
-            # sign-magnitude: bits[6:0] = magnitude
-            magnitude = inp & _mask(etype.elementWidthMant)
+            # 2's complement: negate lower 7 bits when sign bit is set (mirrors hardware)
+            raw7 = inp & _mask(etype.elementWidthMant)
+            magnitude = (-raw7) & _mask(etype.elementWidthMant) if sign else raw7
             return sign, 0, magnitude
         else:
             exp  = (inp >> etype.elementWidthMant) & _mask(etype.elementWidthExp)
@@ -507,6 +508,443 @@ def float_to_fp32_bits(f: float) -> int:
     """Convert a Python float to its 32-bit FP32 bit pattern."""
     return struct.unpack('I', struct.pack('f', f))[0]
 
+def _round_half_up(x: float) -> int:
+    """Round-half-up, matching Scala/Java math.round() semantics.
+    Python's built-in round() uses banker's rounding (round-half-to-even),
+    which differs from Java's round-half-up for x.5 values."""
+    import math
+    return int(math.floor(x + 0.5))
+
+
+# ============================================================
+# MX encode / decode helpers  (mirrors Scala test helpers)
+# ============================================================
+
+def decode_element(raw: int, etype: ElementType) -> float:
+    """Decode a raw MX element bit-pattern to float64.  Matches Scala decodeElement."""
+    import math
+    if etype.name == "INT8":
+        # 2's complement: treat as signed 8-bit integer
+        signed_val = raw if raw < 128 else raw - 256
+        val = signed_val * (2 ** etype.implicitScaleExp)
+    else:
+        sign  = -1.0 if ((raw >> (etype.totalWidth - 1)) & 1) else 1.0
+        exp   = (raw >> etype.elementWidthMant) & _mask(etype.elementWidthExp)
+        mant  = raw & _mask(etype.elementWidthMant)
+        if exp == 0:
+            val = sign * (mant / (1 << etype.elementWidthMant)) * (2 ** (1 - etype.bias))
+        else:
+            val = sign * (1.0 + mant / (1 << etype.elementWidthMant)) * (2 ** (exp - etype.bias))
+    return val
+
+
+def decode_scale(raw: int, stype: ScaleType) -> float:
+    """Decode a raw MX scale bit-pattern to float64.  Matches Scala decodeScale."""
+    import math
+    exp_bits  = (raw >> stype.mantScaleWidth) & _mask(stype.expScaleWidth)
+    if stype.mantScaleWidth == 0:
+        return 2.0 ** (exp_bits - stype.bias)
+    mant_bits = raw & _mask(stype.mantScaleWidth)
+    implicit1 = 1.0 if exp_bits > 0 else 0.0
+    eff_exp   = (exp_bits - stype.bias) if exp_bits > 0 else (1 - stype.bias)
+    return (implicit1 + mant_bits / (1 << stype.mantScaleWidth)) * (2.0 ** eff_exp)
+
+
+def encode_element(value: float, etype: ElementType) -> int:
+    """Encode a float64 to MX element raw bits.  Matches Scala encodeElement.
+    Uses round-half-up (_round_half_up) to match Java/Scala math.round() semantics."""
+    import math
+    if value == 0.0:
+        return 0
+    sign   = 1 if value < 0 else 0
+    abs_v  = abs(value)
+    if etype.name == "INT8":
+        magnitude = min(_round_half_up(abs_v / (2 ** etype.implicitScaleExp)), 127)
+        return magnitude if sign == 0 else (-magnitude) & 0xFF  # 2's complement
+    else:
+        exp_unbiased = int(math.floor(math.log2(abs_v)))
+        exp_biased   = exp_unbiased + etype.bias
+        if exp_biased <= 0:
+            mant_int = min(_round_half_up(abs_v / (2 ** (1 - etype.bias)) * (1 << etype.elementWidthMant)),
+                          (1 << etype.elementWidthMant) - 1)
+            return (sign << (etype.totalWidth - 1)) | mant_int
+        else:
+            exp_clamped = min(exp_biased, (1 << etype.elementWidthExp) - 1)
+            mant_int    = max(0, min(_round_half_up((abs_v / (2 ** exp_unbiased) - 1.0) * (1 << etype.elementWidthMant)),
+                                     (1 << etype.elementWidthMant) - 1))
+            return (sign << (etype.totalWidth - 1)) | (exp_clamped << etype.elementWidthMant) | mant_int
+
+
+def encode_scale(value: float, stype: ScaleType) -> int:
+    """Encode a positive float64 to MX scale raw bits.  Matches Scala encodeScale."""
+    import math
+    exp_unbiased = int(math.floor(math.log2(value)))
+    exp_biased   = max(0, min(exp_unbiased + stype.bias, (1 << stype.expScaleWidth) - 1))
+    if stype.mantScaleWidth == 0:
+        return exp_biased
+    mant_int = max(0, min(_round_half_up((value / (2 ** exp_unbiased) - 1.0) * (1 << stype.mantScaleWidth)),
+                           (1 << stype.mantScaleWidth) - 1))
+    return (exp_biased << stype.mantScaleWidth) | mant_int
+
+
+def max_elem_repr(etype: ElementType) -> float:
+    """Maximum representable (positive) value for an ElementType."""
+    if etype.name == "INT8":
+        return ((1 << (etype.totalWidth - 1)) - 1) * (2 ** etype.implicitScaleExp)
+    max_exp_biased = (1 << etype.elementWidthExp) - 2
+    max_mant       = (1 << etype.elementWidthMant) - 1
+    import math
+    return (1.0 + max_mant / (1 << etype.elementWidthMant)) * (2 ** (max_exp_biased - etype.bias))
+
+
+def quantize_block(values: List[float], etype: ElementType, stype: ScaleType) -> Tuple[List[int], int]:
+    """
+    MX block quantization: find shared scale, encode all elements.
+    Matches Scala quantizeBlock exactly.
+    """
+    import math
+    max_abs = max(abs(v) for v in values)
+    max_abs = max(max_abs, 1e-38)
+    if etype.name == "INT8":
+        scale_exp = int(math.floor(math.log2(max_abs)))
+    else:
+        ideal_scale = max_abs / max_elem_repr(etype)
+        ideal_scale = max(ideal_scale, 1e-38)
+        scale_exp   = int(math.ceil(math.log2(ideal_scale)))
+    min_scale_exp = -stype.bias
+    max_scale_exp = (1 << stype.expScaleWidth) - 1 - stype.bias
+    clamped_exp   = max(min_scale_exp, min(max_scale_exp, scale_exp))
+    raw_scale     = encode_scale(2.0 ** clamped_exp, stype)
+    decoded_scale = decode_scale(raw_scale, stype)
+    raw_elems     = [encode_element(v / decoded_scale, etype) for v in values]
+    return raw_elems, raw_scale
+
+
+def pack_elements(elems: List[int], width: int) -> int:
+    """Pack element raw values into a single integer (element 0 at LSB)."""
+    result = 0
+    mask   = _mask(width)
+    for i, v in enumerate(elems):
+        result |= (v & mask) << (i * width)
+    return result
+
+
+# ============================================================
+# Accumulation test runner  (mirrors Scala runCycles)
+# ============================================================
+
+def sw_cycle_val(as_raw: List[int], bs_raw: List[int], scale_a: int, scale_b: int,
+                 scfg: ScaleAddConfig) -> float:
+    """
+    Software golden model for one cycle: simple float64 dot-product + scale.
+    Matches Scala swFusedProduct (returns float32).
+    """
+    sA = decode_scale(scale_a, scfg.stype)
+    sB = decode_scale(scale_b, scfg.stype)
+    products = [decode_element(a, scfg.elementTypeA) * decode_element(b, scfg.elementTypeB)
+                for a, b in zip(as_raw, bs_raw)]
+    return float(struct.unpack('f', struct.pack('f', sum(products) * sA * sB))[0])
+
+
+def run_accumulation_test(
+    test_name: str,
+    scfg: ScaleAddConfig,
+    vector_size: int,
+    cycles: List[Tuple[List[int], List[int], int, int]],
+    tol_pct: float = 0.10,
+    tol_abs: float = 1e-5,
+    verbose: bool = True,
+) -> bool:
+    """
+    Bit-exact accumulation test matching Scala's runCycles.
+
+    cycles: list of (as_list, bs_list, raw_scale_a, raw_scale_b)
+
+    Runs fused_dot_product_unit cycle-by-cycle (acc_reg threading),
+    compares the hardware-exact FP32 accumulator against the SW golden
+    (simple float32 running sum, same as Scala), and reports per-cycle results.
+
+    Returns True if all cycles pass within tolerance.
+    """
+    if verbose:
+        print("=" * 70)
+        print(f"[TEST] {test_name}")
+        print("=" * 70)
+
+    acc_reg  = 0          # FP32 bit pattern of running accumulator
+    sw_acc   = 0.0        # SW golden (float32, same as Scala swAcc)
+    all_pass = True
+
+    for i, (as_raw, bs_raw, sA, sB) in enumerate(cycles):
+        wA      = scfg.elementTypeA.totalWidth
+        wB      = scfg.elementTypeB.totalWidth
+        op_a    = pack_elements(as_raw, wA)
+        op_b    = pack_elements(bs_raw, wB)
+
+        # Bit-exact Python/hardware simulation
+        new_acc, reduced_sum, lane_fp32 = fused_dot_product_unit(
+            op_a, op_b, sA, sB, scfg, vector_size,
+            acc_reg=acc_reg, valid_in=True, reset_acc=False,
+        )
+        acc_reg = new_acc
+
+        # SW golden (same as Scala: simple float32 accumulation)
+        cycle_val = sw_cycle_val(as_raw, bs_raw, sA, sB, scfg)
+        sw_acc    = struct.unpack('f', struct.pack('f', sw_acc + cycle_val))[0]
+
+        hw_f   = fp32_bits_to_float(acc_reg)
+        tol    = abs(sw_acc) * tol_pct + tol_abs
+        passed = abs(hw_f - sw_acc) <= tol
+
+        if not passed:
+            all_pass = False
+
+        if verbose:
+            status = "OK  " if passed else "FAIL"
+            print(f"  Cycle {i:2d} [{status}]  HW=0x{acc_reg:08X} ({hw_f:+.6e})  "
+                  f"SW={sw_acc:+.6e}  diff={abs(hw_f - sw_acc):.2e}  tol={tol:.2e}")
+            if not passed:
+                print(f"           *** MISMATCH at cycle {i}: hw={hw_f} expected={sw_acc} ***")
+
+    if verbose:
+        result_str = "PASSED" if all_pass else "FAILED"
+        print(f"[{result_str}] {test_name}\n")
+
+    return all_pass
+
+
+# ============================================================
+# Accumulation tests  (mirror Scala FusedDotProductUnitTest)
+# ============================================================
+
+def _default_scfg():
+    return ScaleAddConfig(MXFormats.E4M3, MXFormats.E2M1, ScaleFormats.UE5M3)
+
+
+def test9_vec4_multicycle_4x1():
+    """Test 9: vec=4 multi-cycle (4 cycles × all-ones → 16.0) — E4M3×E2M1/UE5M3"""
+    scfg  = _default_scfg()
+    e4m3_1  = encode_element(1.0, MXFormats.E4M3)
+    e2m1_1  = encode_element(1.0, MXFormats.E2M1)
+    ue5m3_1 = encode_scale(1.0, ScaleFormats.UE5M3)
+    cycles = [(
+        [e4m3_1] * 4, [e2m1_1] * 4, ue5m3_1, ue5m3_1
+    )] * 4
+    return run_accumulation_test("Test 9: vec=4 multi-cycle (4×1.0 → 16.0)", scfg, 4, cycles)
+
+
+def test10_vec4_mixed_multicycle():
+    """Test 10: vec=4 mixed-value multi-cycle — E4M3×E2M1/UE5M3"""
+    scfg     = _default_scfg()
+    e4m3_1   = encode_element(1.0,  MXFormats.E4M3)
+    e4m3_n1  = encode_element(-1.0, MXFormats.E4M3)
+    e4m3_2   = encode_element(2.0,  MXFormats.E4M3)
+    e4m3_1p5 = encode_element(1.5,  MXFormats.E4M3)
+    e2m1_1   = encode_element(1.0,  MXFormats.E2M1)
+    e2m1_2   = encode_element(2.0,  MXFormats.E2M1)
+    ue5m3_1  = encode_scale(1.0, ScaleFormats.UE5M3)
+    ue5m3_2  = encode_scale(2.0, ScaleFormats.UE5M3)
+    cycles = [
+        # cycle 0: [1, 2, -1, 1] × [1,1,1,1] scale 1×1 → sum = 3.0
+        ([e4m3_1, e4m3_2, e4m3_n1, e4m3_1], [e2m1_1]*4, ue5m3_1, ue5m3_1),
+        # cycle 1: [1,1,1,1] × [2,2,2,2] scale 1×1 → sum = 8.0
+        ([e4m3_1]*4, [e2m1_2]*4, ue5m3_1, ue5m3_1),
+        # cycle 2: [-1,-1,-1,-1] × [1,1,1,1] scale 2×1 → sum = -8.0
+        ([e4m3_n1]*4, [e2m1_1]*4, ue5m3_2, ue5m3_1),
+        # cycle 3: [1,1.5,-1,2] × [1,1,1,1] scale 1×1 → sum = 3.5
+        ([e4m3_1, e4m3_1p5, e4m3_n1, e4m3_2], [e2m1_1]*4, ue5m3_1, ue5m3_1),
+    ]
+    return run_accumulation_test("Test 10: vec=4 mixed-value multi-cycle", scfg, 4, cycles)
+
+
+def test11_e5m2_e4m3_ue8m0():
+    """Test 11: E5M2×E4M3/UE8M0 vec=4 3-cycle mixed"""
+    cfg = ScaleAddConfig(MXFormats.E5M2, MXFormats.E4M3, ScaleFormats.UE8M0)
+    raw_cycles = [
+        ([1.0, 2.0, -1.0, 1.5], [1.0, 1.0,  2.0, 1.0], 1.0, 1.0),
+        ([1.0, 1.0,  1.0, 1.0], [2.0, 1.0, -1.0, 2.0], 2.0, 1.0),
+        ([2.0, 1.5,  1.0,-1.0], [1.0, 2.0,  1.0, 1.0], 1.0, 2.0),
+    ]
+    cycles = [([encode_element(v, cfg.elementTypeA) for v in a],
+               [encode_element(v, cfg.elementTypeB) for v in b],
+               encode_scale(sA, cfg.stype), encode_scale(sB, cfg.stype))
+              for a, b, sA, sB in raw_cycles]
+    return run_accumulation_test("Test 11: E5M2×E4M3/UE8M0 vec=4 3-cycle mixed", cfg, 4, cycles)
+
+
+def test12_e3m2_e2m3_ue6m2():
+    """Test 12: E3M2×E2M3/UE6M2 vec=4 4-cycle fractional mantissa"""
+    cfg = ScaleAddConfig(MXFormats.E3M2, MXFormats.E2M3, ScaleFormats.UE6M2)
+    raw_cycles = [
+        ([1.0,  1.25, -1.5, 2.0],  [1.0,  1.0,  1.0, 1.0],  1.0, 1.0),
+        ([1.5,  1.0,   1.0, 1.0],  [1.25, 1.0, -1.0, 1.5],  1.0, 1.5),
+        ([2.0, -1.0,   1.5, 1.0],  [1.0,  2.0,  1.0, 1.0],  1.5, 1.0),
+        ([-1.0, 1.0,  -1.0, 1.0],  [1.0,  1.0,  1.5, 1.0],  2.0, 2.0),
+    ]
+    cycles = [([encode_element(v, cfg.elementTypeA) for v in a],
+               [encode_element(v, cfg.elementTypeB) for v in b],
+               encode_scale(sA, cfg.stype), encode_scale(sB, cfg.stype))
+              for a, b, sA, sB in raw_cycles]
+    return run_accumulation_test("Test 12: E3M2×E2M3/UE6M2 vec=4 4-cycle fractional", cfg, 4, cycles)
+
+
+def test17_e5m2_e5m2_ue8m0():
+    """Test 17: E5M2×E5M2/UE8M0 vec=4 6-cycle"""
+    cfg = ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE8M0)
+    # Pre-encode constants exactly as Scala does
+    def e(v):  return encode_element(v, MXFormats.E5M2)
+    def s(v):  return encode_scale(v, ScaleFormats.UE8M0)
+    cycles = [
+        ([e(1.5),  e(-0.75), e(2.0),   e(-1.5) ], [e(-0.5), e(1.75),  e(-1.0),  e(0.75)], s(2.0), s(1.0)),
+        ([e(0.75), e(1.0),   e(-1.5),  e(0.5)  ], [e(2.0),  e(-1.5),  e(0.75),  e(-1.0)], s(1.0), s(0.5)),
+        ([e(-2.0), e(1.5),   e(0.75),  e(-1.0) ], [e(1.0),  e(-0.75), e(1.5),   e(2.0) ], s(0.5), s(2.0)),
+        ([e(1.75), e(-0.5),  e(-1.0),  e(1.5)  ], [e(-1.5), e(1.0),   e(2.0),   e(-0.75)],s(4.0), s(1.0)),
+        ([e(-0.75),e(2.0),   e(1.0),   e(-1.75)], [e(0.75), e(-2.0),  e(1.5),   e(1.0) ], s(1.0), s(4.0)),
+        ([e(1.0),  e(-1.0),  e(1.5),   e(-2.0) ], [e(-1.0), e(1.5),   e(-0.75), e(1.0) ], s(2.0), s(2.0)),
+    ]
+    return run_accumulation_test("Test 17: E5M2×E5M2/UE8M0 vec=4 6-cycle", cfg, 4, cycles)
+
+
+def test18_mx_block_e5m2_e4m3():
+    """Test 18: MX block-quantized 32-element dot product, E5M2×E4M3/UE8M0 vec=8 4 cycles"""
+    cfg       = ScaleAddConfig(MXFormats.E5M2, MXFormats.E4M3, ScaleFormats.UE8M0)
+    vsize     = 8
+    block_size= 32
+    rawA = [ 3.2, -1.6,  0.8,  4.0, -2.4,  1.2, -0.6,  3.6,
+             2.0, -3.0,  1.5, -0.5,  2.5, -1.0,  0.4,  1.8,
+            -2.2,  0.9, -1.4,  3.1, -0.7,  2.8, -1.1,  0.3,
+             1.7, -2.9,  0.6, -1.3,  2.1, -0.8,  1.9, -3.5]
+    rawB = [ 1.0,  2.0, -1.0,  0.5,  1.5, -0.5,  2.0, -1.0,
+             0.75,-1.25, 1.5,  2.0, -0.75, 1.0, -2.0,  0.5,
+             2.0, -1.0,  0.5, -1.5,  1.0,  0.25,-1.0,  2.0,
+            -0.5,  1.5, -2.0,  1.0,  0.5, -1.5,  1.0, -0.25]
+    enc_a, raw_sA = quantize_block(rawA, cfg.elementTypeA, cfg.stype)
+    enc_b, raw_sB = quantize_block(rawB, cfg.elementTypeB, cfg.stype)
+    cycles = [(enc_a[c*vsize:(c+1)*vsize], enc_b[c*vsize:(c+1)*vsize], raw_sA, raw_sB)
+              for c in range(block_size // vsize)]
+    return run_accumulation_test(
+        "Test 18: MX block-quantized E5M2×E4M3/UE8M0 vec=8 4-cycle", cfg, vsize, cycles)
+
+
+def test19_mx_block_e5m2_e2m1():
+    """Test 19: MX block-quantized 32-element dot product, E5M2×E2M1/UE8M0 vec=8 4 cycles"""
+    cfg        = ScaleAddConfig(MXFormats.E5M2, MXFormats.E2M1, ScaleFormats.UE8M0)
+    vsize      = 8
+    block_size = 32
+    rawA = [ 3.2, -1.6,  0.8,  4.0, -2.4,  1.2, -0.6,  3.6,
+             2.0, -3.0,  1.5, -0.5,  2.5, -1.0,  0.4,  1.8,
+            -2.2,  0.9, -1.4,  3.1, -0.7,  2.8, -1.1,  0.3,
+             1.7, -2.9,  0.6, -1.3,  2.1, -0.8,  1.9, -3.5]
+    rawB = [ 1.0,  2.0, -1.0,  0.5,  1.5, -0.5,  2.0, -1.0,
+             0.75,-1.25, 1.5,  2.0, -0.75, 1.0, -2.0,  0.5,
+             2.0, -1.0,  0.5, -1.5,  1.0,  0.25,-1.0,  2.0,
+            -0.5,  1.5, -2.0,  1.0,  0.5, -1.5,  1.0, -0.25]
+    enc_a, raw_sA = quantize_block(rawA, cfg.elementTypeA, cfg.stype)
+    enc_b, raw_sB = quantize_block(rawB, cfg.elementTypeB, cfg.stype)
+    cycles = [(enc_a[c*vsize:(c+1)*vsize], enc_b[c*vsize:(c+1)*vsize], raw_sA, raw_sB)
+              for c in range(block_size // vsize)]
+    return run_accumulation_test(
+        "Test 19: MX block-quantized E5M2×E2M1/UE8M0 vec=8 4-cycle", cfg, vsize, cycles)
+
+
+class _JavaRandom:
+    """
+    Pure-Python reimplementation of java.util.Random (the same PRNG that
+    scala.util.Random wraps) so that test 20 generates bit-identical data
+    to the Scala hardware test.
+
+    Implements nextDouble() and nextGaussian() using the same algorithm as
+    the JDK source, including Box-Muller transform with StrictMath semantics.
+    """
+    _MASK48 = (1 << 48) - 1
+    _MULT   = 0x5DEECE66D
+    _ADD    = 0xB
+
+    def __init__(self, seed: int):
+        self._seed          = (seed ^ self._MULT) & self._MASK48
+        self._have_next     = False
+        self._next_gaussian = 0.0
+
+    def _next(self, bits: int) -> int:
+        self._seed = (self._seed * self._MULT + self._ADD) & self._MASK48
+        return self._seed >> (48 - bits)
+
+    def next_double(self) -> float:
+        return (((self._next(26) << 27) + self._next(27)) / (1 << 53))
+
+    def next_gaussian(self) -> float:
+        """Box-Muller, identical to java.util.Random.nextGaussian()."""
+        import math
+        if self._have_next:
+            self._have_next = False
+            return self._next_gaussian
+        while True:
+            v1 = 2.0 * self.next_double() - 1.0
+            v2 = 2.0 * self.next_double() - 1.0
+            s  = v1 * v1 + v2 * v2
+            if 0.0 < s < 1.0:
+                break
+        multiplier          = math.sqrt(-2.0 * math.log(s) / s)
+        self._next_gaussian = v2 * multiplier
+        self._have_next     = True
+        return v1 * multiplier
+
+
+def test20_e5m2_e2m1_multiblock_32cycles():
+    """Test 20: E5M2×E2M1/UE8M0 multi-block accumulation (vec=8, 32 cycles).
+    Uses _JavaRandom(1234) to replicate scala.util.Random(1234).nextGaussian()
+    and produce bit-identical data to the Scala hardware test."""
+    cfg        = ScaleAddConfig(MXFormats.E5M2, MXFormats.E2M1, ScaleFormats.UE8M0)
+    vsize      = 8
+    block_size = 32
+    rng        = _JavaRandom(1234)
+
+    all_cycles = []
+    for _ in range(8):
+        a_vals = [rng.next_gaussian() * 2.0 for _ in range(block_size)]
+        b_vals = [rng.next_gaussian() * 1.5 for _ in range(block_size)]
+        enc_a, raw_sA = quantize_block(a_vals, cfg.elementTypeA, cfg.stype)
+        enc_b, raw_sB = quantize_block(b_vals, cfg.elementTypeB, cfg.stype)
+        for c in range(block_size // vsize):
+            s = c * vsize
+            all_cycles.append((enc_a[s:s+vsize], enc_b[s:s+vsize], raw_sA, raw_sB))
+
+    return run_accumulation_test(
+        "Test 20: E5M2×E2M1/UE8M0 multi-block 32-cycle", cfg, vsize, all_cycles)
+
+
+def run_all_tests() -> None:
+    """Run all accumulation tests and print a summary."""
+    tests = [
+        test9_vec4_multicycle_4x1,
+        test10_vec4_mixed_multicycle,
+        test11_e5m2_e4m3_ue8m0,
+        test12_e3m2_e2m3_ue6m2,
+        test17_e5m2_e5m2_ue8m0,
+        test18_mx_block_e5m2_e4m3,
+        test19_mx_block_e5m2_e2m1,
+        test20_e5m2_e2m1_multiblock_32cycles,
+    ]
+    results = []
+    for fn in tests:
+        try:
+            passed = fn()
+        except Exception as exc:
+            print(f"  EXCEPTION in {fn.__name__}: {exc}")
+            passed = False
+        results.append((fn.__name__, passed))
+
+    print("\n" + "=" * 70)
+    print("SUMMARY")
+    print("=" * 70)
+    for name, ok in results:
+        print(f"  {'PASS' if ok else 'FAIL'}  {name}")
+    total  = len(results)
+    passed = sum(1 for _, ok in results if ok)
+    print(f"\n{passed}/{total} tests passed.")
+    if passed < total:
+        raise SystemExit(1)
+
 
 # ============================================================
 # Self-test / usage example
@@ -530,8 +968,8 @@ if __name__ == "__main__":
     # ----------------------------------------------------------------
     # Single-cycle test
     # ----------------------------------------------------------------
-    # INT8 encoding: sign-magnitude, bit[7]=sign, bits[6:0]=magnitude
-    #   0x01 → sign=0, mag=1  →  value = 1 × 2^-6 = 0.015625
+    # INT8 encoding: 2's complement (signed 8-bit integer)
+    #   0x01 → +1  →  value = 1 × 2^-6 = 0.015625
     # E2M1 encoding: 4 bits, exp=2b, mant=1b, bias=1
     #   0x05 = 0b0101 → sign=0, exp=0b10=2, mant=0b1=1 → 2^(2-1) × 1.5 = 3.0
     # UE8M0 scale: 0x7F = 2^(127-127) = 1.0
@@ -590,3 +1028,9 @@ if __name__ == "__main__":
         match = "OK" if result == expected_bits else f"MISMATCH (expected 0x{expected_bits:08X})"
         print(f"  {fp32_bits_to_float(a_bits)} + {fp32_bits_to_float(b_bits)}"
               f" = {result_f:.6g}  [{match}]")
+
+    # ----------------------------------------------------------------
+    # Run all accumulation tests
+    # ----------------------------------------------------------------
+    print()
+    run_all_tests()
