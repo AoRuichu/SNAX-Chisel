@@ -1,0 +1,27 @@
+
+# Yosys synthesis script — TSMC28 HPC+ (NLDM TT 0.9V 25C)
+# CONFIG : INT8_E2M1_UE8M0_vec16
+# RTL    : /users/students/r0927191/Documents/chisel/SNAX-Chisel/hw/chisel_acc/generated/fused_dot/INT8_E2M1_UE8M0_vec16/BFP_PE.sv
+
+# ── Read & elaborate ──────────────────────────────────────────────────────────
+read_verilog -sv /users/students/r0927191/Documents/chisel/SNAX-Chisel/hw/chisel_acc/generated/fused_dot/INT8_E2M1_UE8M0_vec16/BFP_PE.sv
+hierarchy -check -top BFP_PE
+
+# ── Synthesis ─────────────────────────────────────────────────────────────────
+synth -top BFP_PE
+
+# ── Technology mapping ────────────────────────────────────────────────────────
+# dfflibmap uses Yosys read_liberty (works fine for this lib)
+dfflibmap -liberty /users/micas/micas/design/tsmc28hpcplus/standard_cell_libraries/tcbn28hpcplusbwp30p140-set/tcbn28hpcplusbwp30p140_190a_FE/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp30p140_180a/tcbn28hpcplusbwp30p140tt0p9v25c.lib
+# abc -liberty fails on TSMC28 pg_pin entries (falls back to 13-gate built-in).
+# Use pre-generated genlib from yosys-abc instead.
+abc -genlib /users/students/r0927191/Documents/chisel/SNAX-Chisel/hw/chisel_acc/Backend/tsmc28hpcplus_tt0p9v25c.genlib
+
+# ── Clean up ──────────────────────────────────────────────────────────────────
+clean
+
+# ── Reports ───────────────────────────────────────────────────────────────────
+tee -o ./runs/260406-212507_INT8_E2M1_UE8M0_vec16/reports/area.rpt stat -liberty /users/micas/micas/design/tsmc28hpcplus/standard_cell_libraries/tcbn28hpcplusbwp30p140-set/tcbn28hpcplusbwp30p140_190a_FE/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp30p140_180a/tcbn28hpcplusbwp30p140tt0p9v25c.lib
+
+# ── Write netlist ─────────────────────────────────────────────────────────────
+write_verilog -noattr ./runs/260406-212507_INT8_E2M1_UE8M0_vec16/results/BFP_PE_netlist.v
