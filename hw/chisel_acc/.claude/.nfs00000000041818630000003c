@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /pdk)",
+      "Bash(ls /eda)",
+      "Bash(ls /cad)",
+      "Read(//home/**)",
+      "Read(//users/students/**)",
+      "Bash(/esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys-filterlib --help)",
+      "Read(//esat/micas_raid/users/h05d4a_students/conda-env/bin/**)",
+      "Bash(/esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys-filterlib /dev/stdin)",
+      "Bash(timeout 30 /esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys-abc)",
+      "Bash(timeout 60 /esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys-abc)",
+      "Read(//tmp/**)",
+      "Bash(timeout 60 /esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys /tmp/test_dfflibmap.ys)",
+      "Bash(python3 -c ':*)",
+      "Bash(python3)",
+      "Bash(/esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys-abc)",
+      "Bash(timeout 120 /esat/micas_raid/users/h05d4a_students/conda-env/bin/yosys /tmp/test_genlib2.ys)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(git pull:*)",
+      "Bash(python3 -c \"import json; nb=json.load\\(open\\('/users/students/r0927191/Documents/chisel/SNAX-Chisel/hw/chisel_acc/Backend/BFP_PE_synth.ipynb'\\)\\); print\\(nb['nbformat'], nb['nbformat_minor']\\); print\\(nb['metadata']\\)\")"
+    ]
+  }
+}
