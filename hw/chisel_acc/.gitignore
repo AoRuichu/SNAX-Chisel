@@ -27,6 +27,7 @@ sv2v-Linux.zip
 # Log and result files
 *.log
 *.csv
+!Backend/*.csv
 
 # Intermediate converted files
 *_converted.v
