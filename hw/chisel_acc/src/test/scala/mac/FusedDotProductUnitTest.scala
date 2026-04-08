@@ -258,7 +258,7 @@ def runCycles(
     val hw = peekFloat(dut)
     
     // 4. 容差判断
-    val tol = math.abs(swAcc) * 0.10f + 1e-5f 
+    val tol = math.abs(swAcc) * 0.02f + 1e-5f 
     val isFail = math.abs(hw - swAcc) > tol
 
     // 在打印行中加入 Scale 信息
@@ -324,30 +324,43 @@ def runCycles(
    *  @return        (encoded elements, encoded shared scale)
    */
   def quantizeBlock(values: Seq[Double], et: ElementType, st: ScaleType): (Seq[Int], Int) = {
+    //取所有值的最大值，.max(1e-38)防止全零输入导致后续 log(0) = -∞
     val maxAbs = values.map(math.abs).max.max(1e-38)   // guard against log(0)
 
-    // Scale exponent selection:
-    //   INT8 (MXINT8 2's complement): match Python _find_shared_exp for 'mxint8':
-    //     scaleExp = floor(log2(maxAbs))
-    //     This maps maxAbs into (1, 2], normalised value quantised by MXINT8 (range ≈ ±1.984);
-    //     values in (1.984, 2) will saturate to magnitude=127, exactly as Python does.
-    //   FP types: scaleExp = ceil(log2(maxAbs / maxElemRepr)) so no saturation occurs.
-    val scaleExp =
-      if (et.name == "INT8")
-        math.floor(math.log(maxAbs) / math.log(2)).toInt
-      else {
-        val idealScale = maxAbs / maxElemRepr(et)
-        math.ceil(math.log(idealScale.max(1e-38)) / math.log(2)).toInt
-      }
+
     // Clamp to what the scale type can actually represent
     val minScaleExp  = -(st.bias)
     val maxScaleExp  = (1 << st.expScaleWidth) - 1 - st.bias
-    val clampedExp   = scaleExp.max(minScaleExp).min(maxScaleExp)
-    val scaleDouble  = math.pow(2.0, clampedExp)
 
     // Encode the scale and decode back so element quantization uses the
     // same rounding as the hardware will see.
-    val rawScale    = encodeScale(scaleDouble, st)
+    //
+    // For UE8M0 (mantScaleWidth==0), scale must be a pure power of 2
+    // (no mantissa bits to exploit).
+    // For mantissa-bearing scale formats, find the smallest representable
+    // scale value >= idealScale (ceiling semantics) for all element types
+    // including INT8, so that no element saturates while fully utilising
+    // the mantissa bits.  INT8's implicit scale (2^-6) is already folded
+    // into maxElemRepr, so the idealScale formula is uniform.
+    val rawScale =
+      if (st.mantScaleWidth == 0) {
+        // Pure power-of-2 scale: derive exponent from maxAbs / maxElemRepr
+        val scaleExp  = math.ceil(math.log((maxAbs / maxElemRepr(et)).max(1e-38)) / math.log(2)).toInt
+        val clampedExp = scaleExp.max(minScaleExp).min(maxScaleExp)
+        encodeScale(math.pow(2.0, clampedExp), st)
+      } else {
+        val idealScale  = (maxAbs / maxElemRepr(et)).max(math.pow(2.0, minScaleExp))
+        val expUnbiased = math.floor(math.log(idealScale) / math.log(2)).toInt
+        val mantRaw     = math.ceil(
+          (idealScale / math.pow(2.0, expUnbiased) - 1.0) * (1 << st.mantScaleWidth)
+        ).toInt
+        // If ceiling mantissa overflows, carry into the exponent
+        val (adjExp, adjMant) =
+          if (mantRaw > (1 << st.mantScaleWidth) - 1) (expUnbiased + 1, 0)
+          else (expUnbiased, mantRaw)
+        val expBiased = (adjExp + st.bias).max(0).min((1 << st.expScaleWidth) - 1)
+        (expBiased << st.mantScaleWidth) | adjMant
+      }
     val decodedScale = decodeScale(rawScale, st)
 
     val rawElems = values.map(v => encodeElement(v / decodedScale, et))

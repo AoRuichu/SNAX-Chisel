@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2025 KU Leuven.
+# Copyright 2026 KU Leuven.
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -36,6 +36,9 @@ Public API:
 """
 
 import numpy as np
+
+FP32_EXPONENT_BIAS = 127
+FP32_MIN_NORMAL = 2 ** (-FP32_EXPONENT_BIAS + 1)
 
 # ---------------------------------------------------------------------------
 # Format classes
@@ -361,21 +364,24 @@ class MXINT8:
         self.exponent = int(exponent)  # 7-bit magnitude field
 
     def pack(self):
-        # 2's complement encoding: positive → as-is, negative → negate
-        if self.sign:
-            bits = (-self.exponent) & 0xFF
+        if self.sign == 0:
+        # 正数：直接输出 magnitude，最高位为 0
+            return np.uint8(self.exponent)
         else:
-            bits = self.exponent
-        return np.uint8(bits)
+            # 负数：对 magnitude 取补码
+            # 特殊情况：-0 → 0
+            if self.exponent == 0:
+                return np.uint8(0)
+            return np.uint8((~self.exponent + 1) & 0xFF)
 
     def unpack(self, value):
-        val = int(value)
-        if val >= 128:  # negative in 2's complement
-            self.sign = 1
-            self.exponent = 256 - val  # magnitude
+        value = int(value) & 0xFF
+        self.sign = (value >> 7) & 0x1
+        if self.sign:
+            # 负数：二进制补码 → 幅度（与 pack() 对称）
+            self.exponent = (256 - value) & 0x7F
         else:
-            self.sign = 0
-            self.exponent = val
+            self.exponent = value & 0x7F
         return self
 
     def to_float(self):
@@ -421,16 +427,22 @@ class ScaleFormat:
             self.bias = 0
             self.max_val = 255.0 / 128.0        # 255 × 2^(-7)
             self.saturate_raw = 255
+            self.min_raw = 1
+            self.min_val = 1.0 / 128.0          # raw=1 → 1/128
         elif mbits == 0:                        # E8M0：OCP MX 标准，raw=255=NaN
             self.bias = 127
             self.max_val = 2.0 ** 127
             self.saturate_raw = 254             # raw=255 reserved for NaN
+            self.min_raw = 0
+            self.min_val = 2.0 ** (-self.bias)  # raw=0 → 2^(0-127)
         else:                                   # E7M1 ~ E1M7：全1指数有效，无 NaN
             self.bias     = (1 << (ebits - 1)) - 1
             max_exp_b     = (1 << ebits) - 1    # all-ones exponent is VALID (not NaN)
             max_mant      = (1 << mbits)  - 1
             self.max_val  = (2.0 ** (max_exp_b - self.bias)) * (1.0 + max_mant / (2 ** mbits))
             self.saturate_raw = (max_exp_b << mbits) | max_mant  # always 0xFF = 255
+            self.min_raw = 1
+            self.min_val = (2.0 ** (1 - self.bias)) / (2 ** mbits)  # raw=1：次正规 mant=1
 
     def _raw_to_float(self, raw: int) -> float:
         """将 8-bit 无符号 raw 值解码为 float。"""
@@ -451,10 +463,10 @@ class ScaleFormat:
         Returns:
             (quantized_float, raw_uint8): 量化后的 float 值和 8-bit 原始编码
         """
-        if ideal_scale <= 0.0:
-            return 0.0, 0
+        if ideal_scale <= self.min_val:
+            return self.min_val, self.min_raw
 
-        if ideal_scale >= self.max_val:         # 饱和（含上溢保护）
+        if ideal_scale >= self.max_val:         
             sat_float = self._raw_to_float(self.saturate_raw)
             return sat_float, self.saturate_raw
 
@@ -531,15 +543,6 @@ _EMAX = {
     'fp6_e2m3': 2,    # max unbiased exp = 3 - 1
     'fp4_e2m1': 2,    # max unbiased exp = 3 - 1
     'mxint8':   0,    # values in [-1.984, 1.984]; shared_exp = floor(log2(max_abs))
-}
-
-_AMAX = {
-    'fp8_e4m3': 57344,
-    'fp8_e5m2': 448,
-    'fp6_e3m2': 7.5,
-    'fp6_e2m3': 28.0,
-    'fp4_e2m1': 6.0,
-    'mxint8':   1.984375,
 }
 
 # Logical bit width of each element format (before any bit-packing)
@@ -686,6 +689,9 @@ def _compute_block_scale(block: np.ndarray, dtype: str, scale_fmt: ScaleFormat) 
 
     For FP element formats:
         ideal_scale = 2^((log2(max_abs)) - EMAX_elem)
+    For int8:
+        ideal_scale = max_abs / 127
+
     Returns:
         (scale_float, scale_raw): quantized scale as float and raw 8-bit encoding
     """
@@ -698,7 +704,7 @@ def _compute_block_scale(block: np.ndarray, dtype: str, scale_fmt: ScaleFormat) 
         # if scale_fmt == 'UE8M0':
         #     ideal_scale = 2.0 ** (float(np.floor(np.log2(max_abs + 1e-30))) - _EMAX[dtype])
         # else:
-        ideal_scale = 2.0 ** (float(np.log2(max_abs + 1e-30)) - _EMAX[dtype])
+            ideal_scale = 2.0 ** (float(np.log2(max_abs + FP32_MIN_NORMAL)) - _EMAX[dtype])
     return scale_fmt.quantize(ideal_scale)
 
 
