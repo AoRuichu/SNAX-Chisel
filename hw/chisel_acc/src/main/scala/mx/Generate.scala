@@ -2,6 +2,7 @@ package mx
 
 import chisel3._
 import mx.mac._
+import mx.requant.{RequantConfig, RequantFP8}
 
 /**
  * 通过命令行参数控制 FusedDotProductUnit 生成。
@@ -33,13 +34,13 @@ object GenerateFusedDotProduct extends App {
   val vectorSize = getArg("--vec",    "8").toInt
 
   val elementA = MXFormats.allElementTypes.find(_.name == typeAName)
-    .getOrElse(sys.error(s"未知 type-a: '$typeAName'，可选: ${MXFormats.allElementTypes.map(_.name).mkString(", ")}"))
+    .getOrElse(sys.error(s"Unknown type-a: '$typeAName', Valid: ${MXFormats.allElementTypes.map(_.name).mkString(", ")}"))
 
   val elementB = MXFormats.allElementTypes.find(_.name == typeBName)
-    .getOrElse(sys.error(s"未知 type-b: '$typeBName'，可选: ${MXFormats.allElementTypes.map(_.name).mkString(", ")}"))
+    .getOrElse(sys.error(s"Unknown type-b: '$typeBName', Valid: ${MXFormats.allElementTypes.map(_.name).mkString(", ")}"))
 
   val scale = ScaleFormats.allScaleTypes.find(_.name == scaleName)
-    .getOrElse(sys.error(s"未知 scale: '$scaleName'，可选: ${ScaleFormats.allScaleTypes.map(_.name).mkString(", ")}"))
+    .getOrElse(sys.error(s"Unknown scale: '$scaleName', Valid: ${ScaleFormats.allScaleTypes.map(_.name).mkString(", ")}"))
 
   val outDir = getArg("--out-dir",
     s"generated/fused_dot/${typeAName}_${typeBName}_${scaleName}_vec${vectorSize}")
@@ -53,5 +54,50 @@ object GenerateFusedDotProduct extends App {
     Array("--target-dir", outDir)
   )
 
-  println(s"[Generate] 完成 → $outDir/BFP_PE.sv")
+  println(s"[Generate] Done → $outDir/BFP_PE.sv")
+}
+
+/**
+ * Generate RequantFP8 via command-line arguments.
+ *
+ * Usage (via sbt):
+ *   sbt "runMain mx.GenerateRequantFP8 --out-type E5M2 --scale UE8M0 --block-size 32 --tile-rows 4 --tile-cols 4 --out-dir generated/requant"
+ *
+ * Parameters (all optional, have defaults):
+ *   --out-type   <name>  FP8 output element format (E5M2 or E4M3), default E5M2
+ *   --scale      <name>  Shared-scale format, default UE8M0
+ *   --block-size <int>   MX block size (16, 32, or 64), default 32
+ *   --tile-rows  <int>   PE tile rows (4 or 8), default 4
+ *   --tile-cols  <int>   PE tile columns (4 or 8), default 4
+ *   --out-dir    <path>  Output directory, default auto-generated path
+ */
+object GenerateRequantFP8 extends App {
+
+  def getArg(flag: String, default: String): String = {
+    val idx = args.indexOf(flag)
+    if (idx >= 0 && idx + 1 < args.length) args(idx + 1) else default
+  }
+
+  val outTypeName = getArg("--out-type",   "E5M2")
+  val scaleName   = getArg("--scale",      "UE8M0")
+  val blockSize   = getArg("--block-size", "32").toInt
+  val tileRows    = getArg("--tile-rows",  "4").toInt
+  val tileCols    = getArg("--tile-cols",  "4").toInt
+
+  val outputType = MXFormats.allElementTypes.find(_.name == outTypeName)
+    .getOrElse(sys.error(s"Unknown --out-type: '$outTypeName', valid: E5M2, E4M3"))
+
+  val scale = ScaleFormats.allScaleTypes.find(_.name == scaleName)
+    .getOrElse(sys.error(s"Unknown --scale: '$scaleName', valid: ${ScaleFormats.allScaleTypes.map(_.name).mkString(", ")}"))
+
+  val outDir = getArg("--out-dir",
+    s"generated/requant/${outTypeName}_${scaleName}_blk${blockSize}_${tileRows}x${tileCols}")
+
+  val cfg = RequantConfig(blockSize, tileRows, tileCols, outputType, scale)
+
+  println(s"[GenerateRequantFP8] outType=$outTypeName  scale=$scaleName  blk=$blockSize  ${tileRows}x${tileCols}  → $outDir")
+
+  emitVerilog(new RequantFP8(cfg), Array("--target-dir", outDir))
+
+  println(s"[GenerateRequantFP8] Done → $outDir")
 }

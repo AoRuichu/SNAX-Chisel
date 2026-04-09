@@ -161,7 +161,7 @@ class ScaleToFP32(val scfg: ScaleAddConfig) extends Module {
  *        ...        │  Tree        │   │  Accum  ├──► accOut
  *    ┌─ lane N-1 ─┐ │  (balanced)  │   │  Reg    │
  *    │ CustomOp  │  │              │   └─────────┘
- *    │ ScaleAdd  ├──►│              │
+ *    │ ScaleAdd  ├──►│             │
  *    │ ToFP32    │  └──────────────┘
  *    └───────────┘
  *
@@ -210,61 +210,109 @@ class FusedDotProductUnit(val scfg: ScaleAddConfig, val vectorSize: Int, val ist
   })
 
   // ------------------------------------------------------------------
-  // Lanes: vectorSize × (CustomOperator → ScaleAddition → ScaleToFP32)
+  // Reduction tree helpers
   // ------------------------------------------------------------------
-  val laneResults = Wire(Vec(vectorSize, UInt(32.W)))
-
-  for (i <- 0 until vectorSize) {
-    val op = Module(new CustomOperator(OperatorConfig(scfg.elementTypeA, scfg.elementTypeB)))
-    op.io.inA := io.op_a_i((i + 1) * wA - 1, i * wA)
-    op.io.inB := io.op_b_i((i + 1) * wB - 1, i * wB)
-
-    val sa = Module(new ScaleAddition(scfg))
-    sa.io.inOpSign      := op.io.outSign
-    sa.io.inOpExp       := op.io.outExp
-    sa.io.inOpMant      := op.io.outMant
-    sa.io.inShareScaleA := io.share_exp_A_i
-    sa.io.inShareScaleB := io.share_exp_B_i
-
-    val conv = Module(new ScaleToFP32(scfg))
-    conv.io.inSign := sa.io.outSign
-    conv.io.inExp  := sa.io.outExp
-    conv.io.inMant := sa.io.outMant
-
-    laneResults(i) := conv.io.out
-
-    // 只有在测试模式下连接调试信号
-    io.debug.foreach { d =>
-      d.all_lanes_fp32(i)    := conv.io.out
-      d.all_lanes_sa_mant(i) := sa.io.outMant
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // FP32 balanced reduction tree
-  // ------------------------------------------------------------------
-  /** Recursively halve the list using FP32Adder instances until one value remains. */
+  /** FP32 balanced reduction tree: recursively pairs lanes with FP32Adder. */
   def fp32ReduceTree(inputs: Seq[UInt]): UInt = {
-    if (inputs.length == 1) {
-      inputs.head
-    } else {
+    if (inputs.length == 1) inputs.head
+    else {
       val nextLevel = inputs.grouped(2).map { group =>
         if (group.length == 2) {
           val adder = Module(new FP32Adder())
           adder.io.a := group(0)
           adder.io.b := group(1)
           adder.io.out
-        } else {
-          group(0) // odd lane passes through without an adder
-        }
+        } else group(0)
       }.toSeq
       fp32ReduceTree(nextLevel)
     }
   }
 
-  val reducedSum = fp32ReduceTree(laneResults.toSeq)
-  
-  //for debug------------------------------------------------------------
+  /** Custom reduction tree on (sign, SInt exp, UInt mant) bundles.
+   *  Defers normalization + FP32 conversion to a single ScaleToFP32 after the tree. */
+  def customFPReduceTree(inputs: Seq[CustomFP]): CustomFP = {
+    if (inputs.length == 1) inputs.head
+    else {
+      val nextLevel = inputs.grouped(2).map { group =>
+        if (group.length == 2) {
+          val adder = Module(new CustomFPAdder(scfg.resScaleAddExpWidth, scfg.resScaleAddMantWidth))
+          adder.io.a := group(0)
+          adder.io.b := group(1)
+          adder.io.out
+        } else group(0)
+      }.toSeq
+      customFPReduceTree(nextLevel)
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Lanes + reduction  (path selected statically at elaboration time)
+  // ------------------------------------------------------------------
+  val reducedSum: UInt = if (scfg.useCustomTree) {
+    // ── Path A: per-lane CustomOp+ScaleAdd, custom tree, single ScaleToFP32 ──
+    val laneCustom = Wire(Vec(vectorSize, new CustomFP(scfg.resScaleAddExpWidth, scfg.resScaleAddMantWidth)))
+
+    for (i <- 0 until vectorSize) {
+      val op = Module(new CustomOperator(OperatorConfig(scfg.elementTypeA, scfg.elementTypeB)))
+      op.io.inA := io.op_a_i((i + 1) * wA - 1, i * wA)
+      op.io.inB := io.op_b_i((i + 1) * wB - 1, i * wB)
+
+      val sa = Module(new ScaleAddition(scfg))
+      sa.io.inOpSign      := op.io.outSign
+      sa.io.inOpExp       := op.io.outExp
+      sa.io.inOpMant      := op.io.outMant
+      sa.io.inShareScaleA := io.share_exp_A_i
+      sa.io.inShareScaleB := io.share_exp_B_i
+
+      laneCustom(i).sign := sa.io.outSign
+      laneCustom(i).exp  := sa.io.outExp
+      laneCustom(i).mant := sa.io.outMant
+
+      io.debug.foreach { d =>
+        d.all_lanes_fp32(i)    := DontCare  // per-lane FP32 not available in this path
+        d.all_lanes_sa_mant(i) := sa.io.outMant
+      }
+    }
+
+    val reduced = customFPReduceTree(laneCustom.toSeq)
+    val conv    = Module(new ScaleToFP32(scfg))
+    conv.io.inSign := reduced.sign
+    conv.io.inExp  := reduced.exp
+    conv.io.inMant := reduced.mant
+    conv.io.out
+
+  } else {
+    // ── Path B: per-lane ScaleToFP32, FP32 reduction tree ───────────────
+    val laneResults = Wire(Vec(vectorSize, UInt(32.W)))
+
+    for (i <- 0 until vectorSize) {
+      val op = Module(new CustomOperator(OperatorConfig(scfg.elementTypeA, scfg.elementTypeB)))
+      op.io.inA := io.op_a_i((i + 1) * wA - 1, i * wA)
+      op.io.inB := io.op_b_i((i + 1) * wB - 1, i * wB)
+
+      val sa = Module(new ScaleAddition(scfg))
+      sa.io.inOpSign      := op.io.outSign
+      sa.io.inOpExp       := op.io.outExp
+      sa.io.inOpMant      := op.io.outMant
+      sa.io.inShareScaleA := io.share_exp_A_i
+      sa.io.inShareScaleB := io.share_exp_B_i
+
+      val conv = Module(new ScaleToFP32(scfg))
+      conv.io.inSign := sa.io.outSign
+      conv.io.inExp  := sa.io.outExp
+      conv.io.inMant := sa.io.outMant
+
+      laneResults(i) := conv.io.out
+
+      io.debug.foreach { d =>
+        d.all_lanes_fp32(i)    := conv.io.out
+        d.all_lanes_sa_mant(i) := sa.io.outMant
+      }
+    }
+
+    fp32ReduceTree(laneResults.toSeq)
+  }
+
   io.debug.foreach(_.reducedSum := reducedSum)
   // ------------------------------------------------------------------
   // FP32 accumulator register
@@ -307,15 +355,21 @@ object FusedDotProductMain extends App {
   )
 }
 
-/** Emit Verilog for every element-type × scale-type × vector-size combination. */
+/** Emit Verilog for selected element-type × scale-type × vector-size combinations.
+ *  Only unordered pairs are generated (A ≤ B in list order).
+ *  Pairs where both types are lower precision than E4M3 (E3M2, E2M3, E2M1) are skipped. */
 object AllFusedDotProductMain extends App {
-  val vectorSizes = Seq(1, 2, 4, 8, 16, 32)
+  val vectorSizes  = Seq(4, 16, 32)
+  val elementTypes = MXFormats.allElementTypes
+  val scaleTypes   = Seq(ScaleFormats.UE8M0, ScaleFormats.UE6M2, ScaleFormats.UE4M4, ScaleFormats.UE2M6)
+  val lowPrecision = Set(MXFormats.E3M2, MXFormats.E2M3, MXFormats.E2M1)
 
   for {
-    typeA <- MXFormats.allElementTypes
-    typeB <- MXFormats.allElementTypes
-    stype <- ScaleFormats.allScaleTypes
-    vsize <- vectorSizes
+    (typeA, i) <- elementTypes.zipWithIndex
+    typeB      <- elementTypes.drop(i)
+    if !(lowPrecision(typeA) && lowPrecision(typeB))
+    stype      <- scaleTypes
+    vsize      <- vectorSizes
   } {
     val scfg = ScaleAddConfig(typeA, typeB, stype)
     println(
@@ -325,7 +379,7 @@ object AllFusedDotProductMain extends App {
     emitVerilog(
       new FusedDotProductUnit(scfg, vsize, false),
       Array("--target-dir",
-        s"generated/fused_dot/${typeA.name}_${typeB.name}_${stype.name}_vec${vsize}")
+        s"generated/adaptive/${typeA.name}_${typeB.name}_${stype.name}_vec${vsize}")
     )
   }
 }

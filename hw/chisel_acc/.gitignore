@@ -3,7 +3,9 @@ project/*
 !project/build.properties
 target
 out
-generated
+generated/*
+!generated/fused_dot
+!generated/adaptive
 test_run_dir
 
 # Files

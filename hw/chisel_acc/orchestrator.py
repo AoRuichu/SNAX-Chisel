@@ -24,8 +24,9 @@ import hjson
 from pathlib import Path
 
 # Mappings from params.hjson integer codes to Chisel type names
-_ELEMENT_TYPE_MAP = {0: "INT8", 1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3", 5: "E2M1"}
-_SCALE_FORMAT_MAP = {0: "UE8M0", 1: "UE7M1", 2: "UE6M2", 3: "UE5M3", 4: "UE4M4", 5: "UE3M5", 6: "UE2M6"}
+_ELEMENT_TYPE_MAP  = {0: "INT8", 1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3", 5: "E2M1"}
+_FP8_OUT_TYPE_MAP  = {1: "E5M2", 2: "E4M3"}   # valid FP8 output types for RequantFP8
+_SCALE_FORMAT_MAP  = {0: "UE8M0", 1: "UE7M1", 2: "UE6M2", 3: "UE5M3", 4: "UE4M4", 5: "UE3M5", 6: "UE2M6"}
 
 # ---------------------------------------------------------------------------
 # Default paths (relative to this script's location)
@@ -152,7 +153,7 @@ def patch_hwcfg(src: Path, dst: Path, hw: dict) -> None:
 # Chisel RTL generation
 # ---------------------------------------------------------------------------
 
-def run_chisel_gen(p: dict) -> Path:
+def run_mac_gen(p: dict) -> Path:
     """
     Derive FusedDotProductUnit parameters from params and invoke sbt to
     generate SystemVerilog.
@@ -196,6 +197,58 @@ def run_chisel_gen(p: dict) -> Path:
 
     sv_path = out_dir / "BFP_PE.sv"
     print(f"[orchestrator] RTL written → {sv_path}")
+    return out_dir
+
+
+def run_requant_gen(p: dict) -> Path:
+    """
+    Derive RequantFP8 parameters from params and invoke sbt to generate
+    SystemVerilog.
+
+    Mapping from params.hjson:
+      fp8_out_type  (int, default 1) → FP8 output element format (1=E5M2, 2=E4M3)
+      shared_format (int, default 0) → shared-scale format
+      parfor_M                       → tileRows
+      parfor_N                       → tileCols
+      block_size    (int, default 32) → MX block size (16, 32, or 64)
+    """
+    fp8_out_type  = p.get("fp8_out_type",  1)
+    shared_format = p.get("shared_format", 0)
+    tile_rows     = p["parfor_M"]
+    tile_cols     = p["parfor_N"]
+    block_size    = p.get("block_size", 32)
+
+    out_type = _FP8_OUT_TYPE_MAP.get(fp8_out_type)
+    scale    = _SCALE_FORMAT_MAP.get(shared_format)
+
+    if out_type is None:
+        sys.exit(f"[orchestrator] unknown fp8_out_type={fp8_out_type}, "
+                 f"valid: {_FP8_OUT_TYPE_MAP}")
+    if scale is None:
+        sys.exit(f"[orchestrator] unknown shared_format={shared_format}, "
+                 f"valid: {_SCALE_FORMAT_MAP}")
+
+    out_dir = SCRIPT_DIR / "generated" / "requant" / \
+              f"{out_type}_{scale}_blk{block_size}_{tile_rows}x{tile_cols}"
+
+    sbt_cmd = (
+        f"runMain mx.GenerateRequantFP8"
+        f" --out-type   {out_type}"
+        f" --scale      {scale}"
+        f" --block-size {block_size}"
+        f" --tile-rows  {tile_rows}"
+        f" --tile-cols  {tile_cols}"
+        f" --out-dir    {out_dir}"
+    )
+
+    print(f"[orchestrator] RequantFP8 RTL: outType={out_type}, scale={scale}, "
+          f"blk={block_size}, {tile_rows}x{tile_cols}")
+    print(f"[orchestrator] sbt {sbt_cmd}")
+    result = subprocess.run(["sbt", sbt_cmd], cwd=SCRIPT_DIR)
+    if result.returncode != 0:
+        sys.exit(f"[orchestrator] RequantFP8 generation failed (exit {result.returncode})")
+
+    print(f"[orchestrator] RequantFP8 RTL written → {out_dir}")
     return out_dir
 
 
@@ -246,7 +299,8 @@ def main() -> None:
 
     # 3. Generate Chisel RTL
     if not args.skip_rtl:
-        run_chisel_gen(params)
+        run_mac_gen(params)
+        run_requant_gen(params)
     else:
         print("[orchestrator] skipping Chisel RTL generation (--skip-rtl)")
 
