@@ -17,13 +17,13 @@ from pathlib import Path
 import re
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SUMMARY_CSV     = Path(__file__).parent / "260408-195534_area_summary.csv"
-HIERARCHICAL_CSV= Path(__file__).parent / "260408-195534_area_hierarchical.csv"
-OUTPUT_DIR      = Path(__file__).parent / "Figs"
+SUMMARY_CSV     = Path(__file__).parent / "adaptive_area_summary.csv"
+HIERARCHICAL_CSV= Path(__file__).parent / "adaptive_area_hierachy.csv"
+OUTPUT_DIR      = Path(__file__).parent / "Figs"/"adaptive"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-VEC_ORDER   = ["vec1", "vec4", "vec16", "vec32"]
-VEC_INT_MAP = {"vec1": 1, "vec4": 4, "vec16": 16, "vec32": 32}
+VEC_ORDER   = ["vec4", "vec16", "vec32"]
+VEC_INT_MAP = { "vec4": 4, "vec16": 16, "vec32": 32}
 
 # ── Load & parse ──────────────────────────────────────────────────────────────
 def load_summary(path: Path) -> pd.DataFrame:

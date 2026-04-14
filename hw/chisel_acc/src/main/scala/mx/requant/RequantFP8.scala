@@ -294,8 +294,12 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
     io.fp32_in(nIn * 32 - k * 32 - 1, nIn * 32 - (k + 1) * 32)
   }
 
-  val buffer   = Reg(Vec(cfg.tileRows, Vec(64, UInt(32.W))))
-  val batchCnt = RegInit(0.U(6.W))
+  // Active-low async reset — matches FusedDotProductUnit register convention.
+  // Registers reset when reset=false (rst_ni=0 in SV), not when reset=true.
+  val asyncRstN = (!reset.asBool).asAsyncReset
+
+  val buffer   = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(64, UInt(32.W)))))
+  val batchCnt = withReset(asyncRstN)(RegInit(0.U(6.W)))
   val blockDone = io.valid_in && (batchCnt === (B - 1).U)
 
   when(io.valid_in) {
@@ -327,9 +331,9 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
     fp8Wire(row)         := rq.io.fp8_out
   }
 
-  val validOutReg    = RegNext(blockDone, init = false.B)
-  val sharedScaleReg = Reg(Vec(cfg.tileRows, UInt(8.W)))
-  val fp8OutReg      = Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(fp8W.W))))
+  val validOutReg    = withReset(asyncRstN)(RegNext(blockDone, init = false.B))
+  val sharedScaleReg = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, UInt(8.W))))
+  val fp8OutReg      = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(fp8W.W)))))
 
   when(blockDone) {
     sharedScaleReg := sharedScaleWire

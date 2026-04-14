@@ -1,0 +1,39 @@
+
+6. Printing statistics.
+
+=== mac_8bit ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+      469        - wires
+      669        - wire bits
+        5        - public wires
+       50        - public wire bits
+        5        - ports
+       50        - port bits
+      491  695.324 cells
+        9    9.576   AND2_X1
+       26    34.58   AND3_X1
+       15    23.94   AND4_X1
+        2     2.66   AOI211_X1
+       48   51.072   AOI21_X1
+       15    19.95   AOI22_X1
+       32   170.24   DFFR_X1
+       29   15.428   INV_X1
+       57   45.486   NAND2_X1
+       15    15.96   NAND3_X1
+        5     6.65   NAND4_X1
+       49   39.102   NOR2_X1
+       10    10.64   NOR3_X1
+        3     3.99   OAI211_X1
+       44   46.816   OAI21_X1
+        1     1.33   OAI22_X1
+        8    8.512   OR2_X1
+       26    34.58   OR3_X1
+       55    87.78   XNOR2_X1
+       42   67.032   XOR2_X1
+
+   Chip area for module '\mac_8bit': 695.324000
+     of which used for sequential elements: 170.240000 (24.48%)
+

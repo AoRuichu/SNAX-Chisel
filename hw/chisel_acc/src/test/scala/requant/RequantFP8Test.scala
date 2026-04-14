@@ -242,6 +242,17 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   }
 
   /**
+   * Drive reset=1 so asyncRstN = ~1 = 0 (not in reset) for normal operation.
+   * Mirrors FusedDotProductUnit.initDut: RequantFP8 registers use active-low
+   * async reset (!reset.asBool), so ChiselTest's default reset=0 would keep
+   * asyncRstN permanently high and hold all registers in their reset state.
+   */
+  def initDut(dut: RequantFP8): Unit = {
+    dut.reset.poke(true.B)
+    dut.io.valid_in.poke(false.B)
+  }
+
+  /**
    * Drive one tile-column batch: poke valid_in=1 + fp32_in, step, then
    * de-assert valid_in.  The batch data is a tileRows × tileCols matrix.
    */
@@ -281,10 +292,10 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8: valid_out timing — fires only after full block") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg       = dut.cfg
       val zeroSlice = Seq.fill(cfg.tileRows)(Seq.fill(cfg.tileCols)(0.0f))
 
-      dut.io.valid_in.poke(false.B)
       dut.clock.step()
       dut.io.valid_out.expect(false.B, "valid_out must be false before any input")
 
@@ -309,6 +320,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: all-zeros block → shared_scale=0 and fp8=0") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg       = dut.cfg
       val zeroBlock = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(0.0f))
 
@@ -333,6 +345,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: block of 1.0 → shared_scale=127, fp8=0x3C") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg   = dut.cfg
       // E5M2 encoding of 1.0:
       //   fp32 biased exp = 127, fp8 exp = 127 - 127 + 15 = 15, mant = 0
@@ -361,6 +374,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: max-exponent selection with [1.0, 2.0] mix") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg = dut.cfg
       // Row 0: alternating 1.0 / 2.0 → max biased exp = 128
       // Row 1: all 1.0              → max biased exp = 127
@@ -396,6 +410,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: negative values preserve sign bit") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg = dut.cfg
       // Row 0: all -1.0  →  sign bit should be 1
       // Row 1: all +1.0  →  sign bit should be 0
@@ -430,6 +445,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: underflow → 0, overflow → max-normal") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg = dut.cfg
       // Huge: 2^125 (fp32 biased exp=252), very near E5M2 representable maximum.
       // Tiny: 2^-126 (minimum normal FP32 — tiny relative to huge).
@@ -470,6 +486,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: consecutive blocks are independent") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg    = dut.cfg
       val block1 = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(1.0f))
       val block2 = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(2.0f))
@@ -493,6 +510,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("RequantFP8 E5M2: gaps between valid_in pulses do not corrupt buffer") {
     test(new RequantFP8(cfgE5M2)) { dut =>
+      initDut(dut)
       val cfg   = dut.cfg
       val block = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(1.0f))
       val (expScales, expFP8) = swRequantBlock(block, cfg.outputType)
@@ -537,6 +555,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     def randFP32(): Float = (rng.nextFloat() * 32.0f - 16.0f)
 
     test(new RequantFP8(cfg)) { dut =>
+      initDut(dut)
       for (blockIdx <- 0 until nBlocks) {
         val block = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(randFP32()))
         val (expScales, expFP8) = swRequantBlock(block, cfg.outputType)
@@ -594,6 +613,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     def randFP32(): Float = rng.nextFloat() * 32.0f - 16.0f
 
     test(new RequantFP8(cfg)) { dut =>
+      initDut(dut)
       for (blockIdx <- 0 until nBlocks) {
         val block = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(randFP32()))
         val (expScales, expFP8) = swRequantBlockExMy(block, cfg.outputType, cfg.scaleType)
