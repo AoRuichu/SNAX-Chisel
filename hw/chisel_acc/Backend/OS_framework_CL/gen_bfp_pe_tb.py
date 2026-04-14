@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""
+gen_bfp_pe_tb.py — Generate a power testbench template for a BFP_PE.sv variant.
+
+Usage:
+    python3 gen_bfp_pe_tb.py <path/to/BFP_PE.sv> <output_tb.sv>
+
+Parses the BFP_PE module port declaration to extract the exact bit widths of
+io_op_a_i and io_op_b_i (which vary across variants), then emits a complete
+SystemVerilog power testbench with a 3-phase stimulus.
+
+Framework placeholders in the generated file are filled at runtime by sim-syn.sh:
+    {CLK_HALF}      — clock half-period (ns), from FREQ
+    {DIR_LOC_TEMP}  — per-run output directory (= RUN_ID)
+    {WORKLOAD}      — workload name (e.g. "default")
+    {PROJ_DIR}      — absolute OS_framework_CL project directory
+    {DESIGN_NAME}   — design name (= "BFP_PE")
+
+VCD scope convention:
+    OpenSTA reads VCD with -scope {TB_SIM}/{DESIGN_NAME}{VCD_INSTANCE_SUFFIX}.
+    This testbench names the DUT instance "BFP_PE" so that with:
+        TB_SIM             = "tb_pt_bfp_pe"
+        DESIGN_NAME        = "BFP_PE"
+        VCD_INSTANCE_SUFFIX = ""
+    the scope resolves to: tb_pt_bfp_pe/BFP_PE
+"""
+
+import re
+import sys
+from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Port-width extraction
+# ---------------------------------------------------------------------------
+
+def parse_op_port_widths(port_section: str) -> tuple:
+    """
+    Return (w_a, w_b) for io_op_a_i and io_op_b_i.
+
+    firtool emits two patterns depending on whether types match:
+
+    Pattern A — asymmetric types (separate declarations):
+        input  [31:0] io_op_a_i,
+        input  [15:0] io_op_b_i,
+
+    Pattern B — symmetric types (shared declaration):
+        input  [31:0] io_op_a_i,
+                      io_op_b_i,
+
+    In Pattern B, io_op_b_i inherits the width from io_op_a_i.
+    """
+    # io_op_a_i always has an explicit bracketed input declaration
+    m_a = re.search(r'\binput\s+\[(\d+):0\]\s+io_op_a_i\b', port_section)
+    if not m_a:
+        raise ValueError("io_op_a_i not found in BFP_PE module declaration")
+    w_a = int(m_a.group(1)) + 1
+
+    # io_op_b_i: try explicit declaration first (asymmetric case)
+    m_b = re.search(r'\binput\s+\[(\d+):0\]\s+io_op_b_i\b', port_section)
+    if m_b:
+        w_b = int(m_b.group(1)) + 1
+    else:
+        # Symmetric case: io_op_b_i is on a continuation line — inherits w_a
+        if not re.search(r'\bio_op_b_i\b', port_section):
+            raise ValueError("io_op_b_i not found in BFP_PE module declaration")
+        w_b = w_a
+
+    return w_a, w_b
+
+
+# ---------------------------------------------------------------------------
+# Stimulus expression builders
+# ---------------------------------------------------------------------------
+
+def urandom_expr(width: int) -> str:
+    """
+    Return a SV expression that fills ``width`` bits with $urandom calls.
+    $urandom returns 32 bits; wider ports use concatenation.
+    """
+    n = max(1, (width + 31) // 32)
+    if n == 1:
+        return "$urandom"
+    return "{" + ", ".join(["$urandom"] * n) + "}"
+
+
+def counter_expr(width: int, var: str = "i", invert: bool = False) -> str:
+    """
+    Return a SV expression that fills ``width`` bits from loop counter ``var``.
+    Replicates the 32-bit counter to fill wider ports.
+    """
+    inv = "~" if invert else ""
+    n = max(1, (width + 31) // 32)
+    if n == 1:
+        msb = min(width - 1, 31)
+        return f"{inv}{var}[{msb}:0]"
+    chunk = f"{inv}{var}[31:0]"
+    return "{" + ", ".join([chunk] * n) + "}"
+
+
+# ---------------------------------------------------------------------------
+# Testbench template generation
+# ---------------------------------------------------------------------------
+
+def generate_tb(sv_path: Path, out_path: Path) -> None:
+    text = sv_path.read_text()
+
+    # Locate the BFP_PE module declaration (everything from "module BFP_PE(" to ");")
+    m = re.search(r'module BFP_PE\s*\(.*?\);', text, re.DOTALL)
+    if not m:
+        raise ValueError(f"BFP_PE module declaration not found in {sv_path}")
+    port_section = m.group(0)
+
+    w_a, w_b = parse_op_port_widths(port_section)
+    print(f"  Parsed: io_op_a_i = {w_a} bits,  io_op_b_i = {w_b} bits")
+
+    # Pre-compute stimulus expressions for the 3 phases
+    rand_a    = urandom_expr(w_a)
+    rand_b    = urandom_expr(w_b)
+    ctr_a     = counter_expr(w_a, "i", invert=False)
+    ctr_b_inv = counter_expr(w_b, "i", invert=True)
+
+    # ---- Build the testbench ------------------------------------------------
+    # Framework placeholders ({CLK_HALF}, {DIR_LOC_TEMP}, {WORKLOAD},
+    # {PROJ_DIR}, {DESIGN_NAME}) must survive as literal text so that
+    # sim-syn.sh can substitute them with sed. In f-strings they are written
+    # with doubled braces: {{CLK_HALF}} → {CLK_HALF} in the output.
+    # -------------------------------------------------------------------------
+
+    lines = [
+        "// Power testbench for BFP_PE — auto-generated by gen_bfp_pe_tb.py",
+        f"// io_op_a_i = {w_a} bits   io_op_b_i = {w_b} bits",
+        "// Do NOT edit manually — re-run gen_bfp_pe_tb.py to regenerate.",
+        "`timescale 1ns/1ps",
+        "",
+        "module tb_pt_bfp_pe;",
+        "",
+        "    // ---- Port mirrors ----",
+        "    logic              clock;",
+        "    logic              reset;",
+        f"    logic [{w_a - 1}:0]  io_op_a_i;",
+        f"    logic [{w_b - 1}:0]  io_op_b_i;",
+        "    logic [7:0]        io_share_exp_A_i;",
+        "    logic [7:0]        io_share_exp_B_i;",
+        "    logic              io_validIn;",
+        "    logic              io_resetAcc;",
+        "    logic              io_validOut;",
+        "    logic [31:0]       io_accOut;",
+        "",
+        "    // ---- Clock generation ({CLK_HALF} filled by sim-syn.sh) ----",
+        "    always begin #({CLK_HALF}); clock = ~clock; end",
+        "",
+        "    // ---- DUT instantiation ----",
+        "    // Instance name matches DESIGN_NAME so OpenSTA VCD scope resolves:",
+        "    //   -scope {TB_SIM}/{DESIGN_NAME}  →  tb_pt_bfp_pe/BFP_PE",
+        "    BFP_PE BFP_PE (",
+        "        .clock             (clock),",
+        "        .reset             (reset),",
+        "        .io_op_a_i         (io_op_a_i),",
+        "        .io_op_b_i         (io_op_b_i),",
+        "        .io_share_exp_A_i  (io_share_exp_A_i),",
+        "        .io_share_exp_B_i  (io_share_exp_B_i),",
+        "        .io_validIn        (io_validIn),",
+        "        .io_resetAcc       (io_resetAcc),",
+        "        .io_validOut       (io_validOut),",
+        "        .io_accOut         (io_accOut)",
+        "    );",
+        "",
+        "    integer i;",
+        "",
+        "    initial begin",
+        "        clock = 0;",
+        "        // BFP_PE uses active-high synchronous reset (Chisel default)",
+        "        reset = 1; io_op_a_i = 0; io_op_b_i = 0;",
+        "        io_share_exp_A_i = 0; io_share_exp_B_i = 0;",
+        "        io_validIn = 0; io_resetAcc = 0;",
+        "",
+        "        $dumpfile(\"{PROJ_DIR}/sim-syn/vcd/{DIR_LOC_TEMP}/{DESIGN_NAME}_{WORKLOAD}.vcd\");",
+        "        $dumpvars(0, tb_pt_bfp_pe);",
+        "        $dumpon;",
+        "",
+        "        // ---- Reset: hold high for 4 cycles, then release ----",
+        "        repeat(4) @(posedge clock);",
+        "        reset = 0;",
+        "        // Clear accumulator once after reset",
+        "        io_resetAcc = 1;",
+        "        @(posedge clock);",
+        "        io_resetAcc = 0;",
+        "",
+        "        // ---- Phase 1 — High-toggle: random inputs, validIn=1 ----",
+        "        // Exercises dynamic power at maximum toggle rate.",
+        "        io_validIn = 1;",
+        "        for (i = 0; i < 256; i = i + 1) begin",
+        f"            io_op_a_i        = {rand_a};",
+        f"            io_op_b_i        = {rand_b};",
+        "            io_share_exp_A_i = $urandom & 8'hFF;",
+        "            io_share_exp_B_i = $urandom & 8'hFF;",
+        "            @(posedge clock);",
+        "        end",
+        "",
+        "        // ---- Phase 2 — Moderate-toggle: structured counter pattern ----",
+        "        // Deterministic pattern for reproducible power comparison.",
+        "        for (i = 0; i < 128; i = i + 1) begin",
+        f"            io_op_a_i        = {ctr_a};",
+        f"            io_op_b_i        = {ctr_b_inv};",
+        "            io_share_exp_A_i = i[7:0];",
+        "            io_share_exp_B_i = ~i[7:0];",
+        "            @(posedge clock);",
+        "        end",
+        "",
+        "        // ---- Phase 3 — Idle/leakage: fixed inputs, validIn=0 ----",
+        "        // Captures leakage + static power contribution.",
+        "        io_validIn       = 0;",
+        "        io_op_a_i        = 0;",
+        "        io_op_b_i        = 0;",
+        "        io_share_exp_A_i = 8'h7F;",
+        "        io_share_exp_B_i = 8'h7F;",
+        "        repeat(128) @(posedge clock);",
+        "",
+        "        $dumpoff;",
+        "        $finish;",
+        "    end",
+        "",
+        "endmodule",
+    ]
+
+    out_path.write_text("\n".join(lines) + "\n")
+    print(f"  Written: {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <BFP_PE.sv> <output_tb.sv>", file=sys.stderr)
+        sys.exit(1)
+
+    sv_path  = Path(sys.argv[1])
+    out_path = Path(sys.argv[2])
+
+    if not sv_path.exists():
+        print(f"ERROR: {sv_path} not found", file=sys.stderr)
+        sys.exit(1)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    generate_tb(sv_path, out_path)
