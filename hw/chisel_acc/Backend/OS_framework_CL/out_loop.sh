@@ -20,6 +20,7 @@
 # Options:
 #   --verify-only       Run verify.sh (RTL verification) and exit
 #   --skip-verify-syn   Skip step 2 (gate-level functional verification)
+#   --skip-sim          Skip step 3 (VCD simulation); use static power in OpenSTA
 #   --start-step=STEP   Resume from STEP {syn|verify_syn|sim_syn|sta} for the first unfinished run
 #
 
@@ -45,12 +46,14 @@ trap 'echo "=== out_loop.sh exited with code $? at $(date) ==="' EXIT
 # ----------------------------------------------------------------
 VERIFY_ONLY=false
 SKIP_VERIFY_SYN=false
+SKIP_SIM_CLI=false
 START_STEP=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --verify-only)     VERIFY_ONLY=true; shift ;;
         --skip-verify-syn) SKIP_VERIFY_SYN=true; shift ;;
+        --skip-sim)        SKIP_SIM_CLI=true; shift ;;
         --start-step=*)    START_STEP="${1#--start-step=}"; shift ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
@@ -100,6 +103,9 @@ for _v in $(compgen -v SDC_); do unset "$_v"; done
 
 # Load configuration and stage scripts
 . config.sh
+# --skip-sim CLI flag overrides SKIP_SIM from config.sh
+[[ "$SKIP_SIM_CLI" == true ]] && SKIP_SIM=true
+export SKIP_SIM
 . tech.sh
 . syn.sh
 . verify_syn.sh
@@ -370,8 +376,8 @@ for run in "${all_runs[@]}"; do
         _announce "verify_syn" $(( SECONDS - _t0 ))
     fi
 
-    # ---- Step 3: sim_syn ----
-    if [[ $local_start -le 3 ]]; then
+    # ---- Step 3: sim_syn (skipped when SKIP_SIM=true) ----
+    if [[ $local_start -le 3 && "${SKIP_SIM:-false}" != "true" ]]; then
         _t0=$SECONDS
         sim_syn_main
         if [[ $? -ne 0 ]]; then
@@ -379,6 +385,8 @@ for run in "${all_runs[@]}"; do
             exit 1
         fi
         _announce "sim_syn" $(( SECONDS - _t0 ))
+    elif [[ "${SKIP_SIM:-false}" == "true" ]]; then
+        echo "  sim_syn: skipped (SKIP_SIM=true — static power mode)"
     fi
 
     # ---- Step 4: sta ----

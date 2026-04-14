@@ -40,8 +40,12 @@ sta_main () {
     for workload in "${WORKLOADS[@]}"; do
         echo "  sta: workload=${workload}"
 
-        # ---- Fill power.tcl template ----
-        cp "$sta_dir/templates/power.tcl" "$sta_dir/power.tcl"
+        # ---- Select power template (VCD-annotated vs static) ----
+        if [[ "${SKIP_SIM:-false}" == "true" ]]; then
+            cp "$sta_dir/templates/power_no_vcd.tcl" "$sta_dir/power.tcl"
+        else
+            cp "$sta_dir/templates/power.tcl" "$sta_dir/power.tcl"
+        fi
 
         # Liberty commands (multi-line)
         perl -i -0pe "s|\{READ_LIBERTY_CMDS\}|${read_liberty_cmds}|g" "$sta_dir/power.tcl"

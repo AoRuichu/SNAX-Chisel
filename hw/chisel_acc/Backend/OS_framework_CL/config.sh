@@ -23,6 +23,11 @@ VCD_INSTANCE_SUFFIX="0"
 # Verification testbench basename — template at rtl/tb/templates/${TB_VERIFY}.sv
 TB_VERIFY="tb_verify_mac_8bit"
 
+# Set to "true" to skip VCD simulation (step 3) and run static-only power analysis.
+# Useful when no testbench exists for the design (e.g. bare Chisel-generated RTLs).
+# Power numbers will use a default 10% toggle-rate; area and timing are unaffected.
+SKIP_SIM=true
+
 # ================================================================
 # SECTION 2: SWEEP MODE
 # "cartesian" — sweeps all combinations of the axes in Section 4

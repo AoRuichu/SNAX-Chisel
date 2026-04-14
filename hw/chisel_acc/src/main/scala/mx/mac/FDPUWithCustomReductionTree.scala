@@ -215,9 +215,9 @@ object FDPUWithCustomReductionTreeMain extends App {
  *  Only unordered pairs are generated (A ≤ B in list order).
  *  Pairs where both types are lower precision than E4M3 (E3M2, E2M3, E2M1) are skipped. */
 object AllFDPUWithCustomReductionTreeMainMain extends App {
-  val vectorSizes  = Seq(4, 16, 32)
+  val vectorSizes  = Seq(4, 16)
   val elementTypes = MXFormats.allElementTypes
-  val scaleTypes   = Seq(ScaleFormats.UE8M0, ScaleFormats.UE6M2, ScaleFormats.UE4M4, ScaleFormats.UE2M6)
+  val scaleTypes   = Seq(ScaleFormats.UE8M0, ScaleFormats.UE6M2, ScaleFormats.UE4M4)
   val lowPrecision = Set(MXFormats.E3M2, MXFormats.E2M3, MXFormats.E2M1)
 
   for {

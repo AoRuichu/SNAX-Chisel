@@ -162,16 +162,21 @@ object FusedDotProductMain extends App {
     Array("--target-dir", s"generated/fused_dot_product/default_vec${vectorSize}")
   )
 }
-
-/** Emit Verilog for every element-type × scale-type × vector-size combination. */
+/** Emit Verilog for selected element-type × scale-type × vector-size combinations.
+ *  Only unordered pairs are generated (A ≤ B in list order).
+ *  Pairs where both types are lower precision than E4M3 (E3M2, E2M3, E2M1) are skipped. */
 object AllFusedDotProductMain extends App {
-  val vectorSizes = Seq(1, 2, 4, 8, 16, 32)
+  val vectorSizes  = Seq(4, 16)
+  val elementTypes = MXFormats.allElementTypes
+  val scaleTypes   = Seq(ScaleFormats.UE8M0, ScaleFormats.UE6M2, ScaleFormats.UE4M4)
+  val lowPrecision = Set(MXFormats.E3M2, MXFormats.E2M3, MXFormats.E2M1)
 
   for {
-    typeA <- MXFormats.allElementTypes
-    typeB <- MXFormats.allElementTypes
-    stype <- ScaleFormats.allScaleTypes
-    vsize <- vectorSizes
+    (typeA, i) <- elementTypes.zipWithIndex
+    typeB      <- elementTypes.drop(i)
+    if !(lowPrecision(typeA) && lowPrecision(typeB))
+    stype      <- scaleTypes
+    vsize      <- vectorSizes
   } {
     val scfg = ScaleAddConfig(typeA, typeB, stype)
     println(
