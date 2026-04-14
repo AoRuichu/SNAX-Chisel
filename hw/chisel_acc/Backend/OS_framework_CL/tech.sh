@@ -1,7 +1,7 @@
 #! /usr/bin/bash
 
 # ================================================================
-# TECHNOLOGY CONFIGURATION — NanGate 45nm Open Cell Library
+# TECHNOLOGY CONFIGURATION — TSMC 28nm HPC+ (tcbn28hpcplusbwp30p140)
 #
 # Used by:
 #   - syn.sh      : Yosys dfflibmap + abc (Liberty .lib)
@@ -14,12 +14,13 @@
 # ================================================================
 
 # Base directory for technology files
-TECH_DIR="/users/micas/scuycken/Claude/RTL_LLM_Loop_v1.4/OpenSource/PDK/OpenROAD-flow-scripts/flow/platforms/nangate45"
+TECH_DIR="/users/micas/micas/design/tsmc28hpcplus"
 
 # Liberty file for synthesis (Yosys) and power analysis (OpenSTA)
 # Format: .lib (Liberty ASCII — NOT .db compiled format)
+# Corner: TT 0.9V 25C
 SYNTH_LIBS=(
-    "lib/NangateOpenCellLibrary_typical.lib"
+    "standard_cell_libraries/tcbn28hpcplusbwp30p140-set/tcbn28hpcplusbwp30p140_190a_FE/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp30p140_180a/tcbn28hpcplusbwp30p140tt0p9v25c.lib"
 )
 
 # ================================================================
@@ -32,18 +33,14 @@ SYNTH_LIBS=(
 #
 # "true": iverilog compiles SIM_MODELS + mapped netlist + testbench.
 #         VCD contains every internal gate/FF transition → accurate power.
-#         Requires NangateOpenCellLibrary.v at ${TECH_DIR}/NangateOpenCellLibrary.v
-#         See download instructions below.
+#         Requires Verilog behavioral models for TSMC28 HPC+ cells.
+# "false": uses RTL-level VCD (less accurate power, but no sim models needed).
 # ================================================================
-GATE_LEVEL_SIM="true"
+GATE_LEVEL_SIM="false"
 
 # Gate-level simulation models (Verilog behavioral — only used when GATE_LEVEL_SIM="true")
-# NangateOpenCellLibrary.v contains all 135 cells, auto-generated from the Liberty file
-# by OpenSource/PDK/gen_nangate45_verilog.py.  Do NOT add cells_adders.v / cells_clkgate.v
-# / cells_latch.v here — those are subsets already covered by NangateOpenCellLibrary.v
-# and duplicate module definitions will cause iverilog to error out.
+# Set GATE_LEVEL_SIM="true" and provide the path to TSMC28 Verilog cell models if available.
 SIM_MODELS=(
-    "NangateOpenCellLibrary.v"
 )
 
 # ================================================================
