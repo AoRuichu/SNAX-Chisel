@@ -75,10 +75,25 @@ sim_syn_main () {
         else
             # RTL mode: RTL sources + power TB
             echo "  sim-syn: RTL mode (GATE_LEVEL_SIM=false)"
+
+            # Preprocess RTL files: strip 'automatic' lifetime keyword from
+            # initial-block variable declarations (Chisel/FIRRTL emits
+            # 'automatic logic ...' inside `initial begin` blocks for register
+            # randomisation).  iverilog does not support lifetime overrides
+            # there.  The keyword is safe to remove — it only affects
+            # simulation initialisation, not synthesis or power results.
+            local pp_dir
+            pp_dir="$sim_syn_dir/logs/${RUN_ID}/pp_rtl"
+            mkdir -p "$pp_dir"
+
             local rtl_files_args=()
             for rtl_file in "${RTL_FILES[@]}"; do
-                rtl_files_args+=("$PROJ_DIR/$rtl_file")
+                local src="$PROJ_DIR/$rtl_file"
+                local dst="$pp_dir/$(basename "$rtl_file")"
+                sed 's/\bautomatic\b//g' "$src" > "$dst"
+                rtl_files_args+=("$dst")
             done
+
             iverilog -g2012 \
                 "${rtl_files_args[@]}" \
                 "$tb_dir/${TB_SIM}.sv" \

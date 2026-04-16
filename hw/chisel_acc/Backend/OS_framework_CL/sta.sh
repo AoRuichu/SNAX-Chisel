@@ -85,7 +85,7 @@ sta_main () {
 
         # ---- Run OpenSTA ----
         local terminal_log="$sta_dir/terminal_logs/${RUN_ID}/sta_power_${workload}.log"
-        sta "$sta_dir/power.tcl" 2>&1 | tee "$terminal_log"
+        sta -exit "$sta_dir/power.tcl" 2>&1 | tee "$terminal_log"
         local sta_rc=${PIPESTATUS[0]}
 
         if [[ $sta_rc -ne 0 ]]; then
@@ -108,6 +108,49 @@ sta_main () {
         fi
 
         echo "  sta: power report -> $power_rpt"
+
+        # ---- Extract critical path delay from timing report ----
+        # report_checks -path_delay max writes a summary section:
+        #
+        #   XX.XXXX   data required time
+        #   -Y.YYYY   data arrival time      ← negative because it is subtracted
+        #   ---------
+        #    S.SSSS   slack (MET|VIOLATED)
+        #
+        # "data arrival time" is the actual worst-case combinational path delay.
+        # It appears negated in the subtraction row, so we take its absolute value.
+        # No set_input_delay / set_output_delay are used, so input ports launch at
+        # time 0 and the arrival time IS the pure logic propagation delay.
+        local timing_rpt_local="$sta_dir/reports/${RUN_ID}/timing_${workload}.rpt"
+        local cp_raw=""
+        if [[ -f "$timing_rpt_local" ]]; then
+            # OpenSTA prints "data arrival time" twice per path:
+            #   1. Bare label at end of path trace: "   9.4152   data arrival time"
+            #      → $1 is positive, not a valid summary line
+            #   2. Summary subtraction row:        "  -9.4152   data arrival time"
+            #      → $1 is negative (value being subtracted from required time)
+            #
+            # Multiple paths are reported; we want the MAXIMUM arrival time
+            # (= worst-case combinational delay) across all paths.
+            # The reset recovery path has arrival=0.0000 and appears first;
+            # scanning all lines and taking the max avoids exiting early on it.
+            cp_raw=$(awk '/data arrival time/ && $1 ~ /^-[0-9]/ {
+                v = -($1 + 0)
+                if (v > max) max = v
+            } END { if (max > 0) print max }' "$timing_rpt_local" 2>/dev/null)
+        fi
+        if [[ -n "$cp_raw" ]]; then
+            CP_RESULT="$cp_raw"
+            export CP_RESULT
+            echo "  sta: critical_path = ${CP_RESULT} ns"
+        else
+            CP_RESULT=""
+            export CP_RESULT
+            echo "  sta: critical path not found in timing report (no paths traced)"
+        fi
+
+        local timing_rpt="$sta_dir/reports/${RUN_ID}/timing_${workload}.rpt"
+        [[ -f "$timing_rpt" ]] && echo "  sta: timing report -> $timing_rpt"
     done
 
     echo "[$RUN_ID] sta OK"

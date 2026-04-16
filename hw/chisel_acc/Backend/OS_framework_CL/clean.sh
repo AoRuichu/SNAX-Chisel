@@ -1,55 +1,48 @@
-#!/usr/bin/bash
-#
-# Clean all generated outputs from a previous run.
-# Preserves: templates, tech.sh, config.sh, RTL sources, testbench templates
-#
-# Usage:  ./clean.sh
-#         ./clean.sh --all   (also removes done.txt and manifest.csv)
-#
+#!/usr/bin/env bash
+# clean.sh — remove all runtime-generated files to free disk space.
+# Keeps: source RTL, templates, scripts, config, and data_to_excel results.
 
-PROJ_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-cd "$PROJ_DIR"
+set -euo pipefail
 
-ALL=false
-if [[ "${1:-}" == "--all" ]]; then
-    ALL=true
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Cleaning OS_framework_CL outputs..."
+echo "Cleaning runtime-generated files in: $SCRIPT_DIR"
+echo ""
 
-# Synthesis outputs
-rm -rf syn/outputs syn/reports syn/logs syn/synth.ys
+# Helper: wipe contents of a directory but keep the directory itself
+wipe_dir() {
+    local dir="$SCRIPT_DIR/$1"
+    if [ -d "$dir" ]; then
+        echo "  Clearing $1/ ..."
+        rm -rf "$dir"/*/
+        rm -f  "$dir"/*
+    fi
+}
 
-# RTL verification
-rm -rf verify_rtl/logs
-rm -f  rtl/tb/*.sv  # instantiated TBs (templates are kept)
+# ── Synthesis outputs ────────────────────────────────────────────────────────
+wipe_dir "syn/reports"    # per-variant area reports
+wipe_dir "syn/outputs"    # per-variant mapped netlists (.v)
+wipe_dir "syn/logs"       # yosys log files
 
-# Post-synthesis verification
-rm -rf verify_syn/logs
+# ── Static timing / power analysis outputs ──────────────────────────────────
+wipe_dir "sta/reports"    # per-variant power reports
+wipe_dir "sta/debug"      # per-variant generated TCL debug scripts
+wipe_dir "sta/logs"       # OpenSTA log files
+wipe_dir "sta/terminal_logs"  # terminal capture logs
 
-# Simulation / VCD
-rm -rf sim-syn/vcd sim-syn/logs rtl/tb/debug
+# ── Post-synthesis simulation ────────────────────────────────────────────────
+wipe_dir "sim-syn/logs"   # simulation logs
+wipe_dir "sim-syn/vcd"    # VCD waveform dumps (can be very large)
 
-# OpenSTA power analysis
-rm -rf sta/reports sta/logs sta/terminal_logs sta/debug sta/power.tcl
+# ── RTL / netlist verification ───────────────────────────────────────────────
+wipe_dir "verify_rtl/logs"
+wipe_dir "verify_syn/logs"
 
-# Logs
-rm -f out_loop_*.log out_loop_latest.log
-rm -f verify_failures.txt status.txt progress.txt
+# ── Runtime status markers ───────────────────────────────────────────────────
+rm -f "$SCRIPT_DIR/done.txt"
+rm -f "$SCRIPT_DIR/status.txt"
+rm -f "$SCRIPT_DIR/progress.txt"
 
-if [[ "$ALL" == true ]]; then
-    rm -f done.txt neg_slack.txt
-    rm -rf data_to_excel
-    echo "  (--all: also removed done.txt and data_to_excel/)"
-fi
-
-# Recreate empty directories
-mkdir -p syn/{outputs,reports,logs}
-mkdir -p verify_rtl/logs
-mkdir -p verify_syn/logs
-mkdir -p sim-syn/{vcd,logs}
-mkdir -p sta/{reports,logs,terminal_logs,debug}
-mkdir -p rtl/tb/debug
-[[ "$ALL" == true ]] && mkdir -p data_to_excel
-
-echo "Done."
+echo ""
+echo "Done. Disk usage after clean:"
+du -sh "$SCRIPT_DIR"

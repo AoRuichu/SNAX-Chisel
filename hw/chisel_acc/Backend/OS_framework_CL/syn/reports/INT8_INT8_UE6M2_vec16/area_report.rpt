@@ -1,0 +1,334 @@
+
+6. Printing statistics.
+
+=== BFP_PE ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+      158        - wires
+     2120        - wire bits
+      124        - public wires
+     2086        - public wire bits
+       10        - ports
+      309        - port bits
+       67   99.918 cells
+       32   24.192   AO22D0BWP30P140
+       33   74.844   DFCNQD1BWP30P140
+        1    0.504   INR2D0BWP30P140
+        1    0.378   NR2D0BWP30P140
+       64        - submodules
+       16        -   CustomOperator_INT8_to_INT8
+       16        -   FP32Adder
+       16        -   ScaleAddition_INT8_to_INT8_scale_UE6M2
+       16        -   ScaleToFP32_INT8_x_INT8_UE6M2
+
+   Chip area for module '\BFP_PE': 99.918000
+     of which used for sequential elements: 74.844000 (74.91%)
+
+=== FP32Adder ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+      872        - wires
+     1037        - wire bits
+        6        - public wires
+      171        - public wire bits
+        3        - ports
+       96        - port bits
+      898  554.904 cells
+       18    9.072   AN2D0BWP30P140
+        5     3.15   AN3D0BWP30P140
+        4    3.024   AN4D0BWP30P140
+        2    1.512   AO211D0BWP30P140
+       13     8.19   AO21D0BWP30P140
+        4    3.024   AO22D0BWP30P140
+       10      6.3   AOI211D0BWP30P140
+       52   26.208   AOI21D0BWP30P140
+       10     7.56   AOI221D0BWP30P140
+        2    2.016   AOI222D0BWP30P140
+       32    20.16   AOI22D0BWP30P140
+        2     1.26   AOI31D0BWP30P140
+       19   16.758   CKMUX2D0BWP30P140
+       65    16.38   CKND0BWP30P140
+       72   27.216   CKND2D0BWP30P140
+        6     3.78   IAO21D0BWP30P140
+       20    10.08   IND2D0BWP30P140
+        1     0.63   IND3D0BWP30P140
+        2    1.512   IND4D0BWP30P140
+       21   10.584   INR2D0BWP30P140
+        8     5.04   INR3D0BWP30P140
+        3    2.268   INR4D0BWP30P140
+        7     4.41   IOA21D0BWP30P140
+       30    22.68   MAOI222D0BWP30P140
+       15    11.34   MAOI22D0BWP30P140
+        4    3.024   MOAI22D0BWP30P140
+      114   86.184   MUX2ND0BWP30P140
+        1    1.764   MUX3D0BWP30P140
+        1    1.638   MUX3ND0BWP30P140
+        2    4.788   MUX4D0BWP30P140
+       16   36.288   MUX4ND0BWP30P140
+       14    7.056   ND3D0BWP30P140
+        5     3.15   ND4D0BWP30P140
+       99   37.422   NR2D0BWP30P140
+       35    17.64   NR3D0BWP30P140
+        8     5.04   NR4D0BWP30P140
+        2    1.512   OA211D0BWP30P140
+        6     3.78   OA21D0BWP30P140
+        1    0.882   OA22D0BWP30P140
+       13     8.19   OAI211D0BWP30P140
+       41   20.664   OAI21D0BWP30P140
+        1    0.882   OAI221D0BWP30P140
+        1    1.008   OAI222D0BWP30P140
+       10      6.3   OAI22D0BWP30P140
+        6     3.78   OAI31D0BWP30P140
+        3    2.268   OAI32D0BWP30P140
+        1    0.882   OAI33D0BWP30P140
+        6    3.024   OR2D0BWP30P140
+        8     5.04   OR3D0BWP30P140
+        2    1.512   OR4D0BWP30P140
+       51   44.982   XNR2UD0BWP30P140
+        1    1.764   XNR3UD0BWP30P140
+       23   20.286   XOR2UD0BWP30P140
+
+   Chip area for module '\FP32Adder': 554.904000
+     of which used for sequential elements: 0.000000 (0.00%)
+
+=== ScaleToFP32_INT8_x_INT8_UE6M2 ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+      159        - wires
+      217        - wire bits
+        4        - public wires
+       62        - public wire bits
+        4        - ports
+       62        - port bits
+      183  112.014 cells
+        4    2.016   AN2D0BWP30P140
+        1     0.63   AN3D0BWP30P140
+        1    0.756   AN4D0BWP30P140
+        3     1.89   AO21D0BWP30P140
+        6     3.78   AOI211D0BWP30P140
+        3    1.512   AOI21D0BWP30P140
+        2     1.26   AOI31D0BWP30P140
+       18   15.876   CKMUX2D0BWP30P140
+        6    1.512   CKND0BWP30P140
+       12    4.536   CKND2D0BWP30P140
+       11     6.93   IAO21D0BWP30P140
+        4    2.016   IND2D0BWP30P140
+        3    1.512   INR2D0BWP30P140
+        3     1.89   INR3D0BWP30P140
+        1     0.63   IOA21D0BWP30P140
+        1    0.756   MOAI22D0BWP30P140
+       24   18.144   MUX2ND0BWP30P140
+        2    1.008   ND3D0BWP30P140
+        1     0.63   ND4D0BWP30P140
+       13    4.914   NR2D0BWP30P140
+       19    9.576   NR3D0BWP30P140
+       13     8.19   NR4D0BWP30P140
+        2     1.26   OA21D0BWP30P140
+        2     1.26   OAI211D0BWP30P140
+        9    4.536   OAI21D0BWP30P140
+        1    1.008   OAI222D0BWP30P140
+        2     1.26   OAI22D0BWP30P140
+        1     0.63   OAI31D0BWP30P140
+        2    1.008   OR2D0BWP30P140
+        1     0.63   OR3D0BWP30P140
+        1    0.756   OR4D0BWP30P140
+        7    6.174   XNR2UD0BWP30P140
+        4    3.528   XOR2UD0BWP30P140
+
+   Chip area for module '\ScaleToFP32_INT8_x_INT8_UE6M2': 112.014000
+     of which used for sequential elements: 0.000000 (0.00%)
+
+=== ScaleAddition_INT8_to_INT8_scale_UE6M2 ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+      374        - wires
+      428        - wire bits
+        7        - public wires
+       61        - public wire bits
+        7        - ports
+       61        - port bits
+      395  267.372 cells
+        8    4.032   AN2D0BWP30P140
+        4     2.52   AN3D0BWP30P140
+        1    0.756   AO211D0BWP30P140
+        5     3.15   AO21D0BWP30P140
+        1    0.756   AO22D0BWP30P140
+        1     0.63   AOI211D0BWP30P140
+       14    7.056   AOI21D0BWP30P140
+        3     1.89   AOI22D0BWP30P140
+        2     1.26   AOI31D0BWP30P140
+        1    0.756   AOI32D0BWP30P140
+        8    2.016   CKND0BWP30P140
+      110    41.58   CKND2D0BWP30P140
+        1     0.63   IAO21D0BWP30P140
+        9    4.536   IND2D0BWP30P140
+       10     5.04   INR2D0BWP30P140
+        1     0.63   IOA21D0BWP30P140
+       34   25.704   MAOI222D0BWP30P140
+        7    3.528   ND3D0BWP30P140
+        1     0.63   ND4D0BWP30P140
+       19    7.182   NR2D0BWP30P140
+        2    1.008   NR3D0BWP30P140
+        1    0.756   OA211D0BWP30P140
+        1     0.63   OAI211D0BWP30P140
+       17    8.568   OAI21D0BWP30P140
+        7     4.41   OAI22D0BWP30P140
+        6    3.024   OR2D0BWP30P140
+        2    1.512   OR4D0BWP30P140
+       61   53.802   XNR2UD0BWP30P140
+       23   40.572   XNR3UD0BWP30P140
+        2    5.292   XNR4D0BWP30P140
+       28   24.696   XOR2UD0BWP30P140
+        5     8.82   XOR3UD0BWP30P140
+
+   Chip area for module '\ScaleAddition_INT8_to_INT8_scale_UE6M2': 267.372000
+     of which used for sequential elements: 0.000000 (0.00%)
+
+=== CustomOperator_INT8_to_INT8 ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+      225        - wires
+      252        - wire bits
+        4        - public wires
+       31        - public wire bits
+        4        - ports
+       31        - port bits
+      236  166.446 cells
+        3    1.512   AN2D0BWP30P140
+        4     2.52   AN3D0BWP30P140
+        1    0.756   AO211D0BWP30P140
+        1     0.63   AO21D0BWP30P140
+        1    0.756   AO22D0BWP30P140
+        6    3.024   AOI21D0BWP30P140
+        3     1.89   AOI22D0BWP30P140
+        1     0.63   AOI31D0BWP30P140
+       11    2.772   CKND0BWP30P140
+       21    7.938   CKND2D0BWP30P140
+        1     0.63   IAO21D0BWP30P140
+       11    5.544   IND2D0BWP30P140
+        5     2.52   INR2D0BWP30P140
+        1     0.63   INR3D0BWP30P140
+       21   15.876   MAOI222D0BWP30P140
+        1    0.756   MOAI22D0BWP30P140
+        3    1.512   ND3D0BWP30P140
+       33   12.474   NR2D0BWP30P140
+        5     2.52   NR3D0BWP30P140
+        1     0.63   NR4D0BWP30P140
+        1     0.63   OA21D0BWP30P140
+        2    1.764   OA22D0BWP30P140
+        1     0.63   OAI211D0BWP30P140
+        5     2.52   OAI21D0BWP30P140
+        4     2.52   OAI22D0BWP30P140
+        4     2.52   OAI31D0BWP30P140
+        5     2.52   OR2D0BWP30P140
+        1     0.63   OR3D0BWP30P140
+        1    0.756   OR4D0BWP30P140
+       28   24.696   XNR2UD0BWP30P140
+        9   15.876   XNR3UD0BWP30P140
+        1    2.646   XNR4D0BWP30P140
+       31   27.342   XOR2UD0BWP30P140
+        9   15.876   XOR3UD0BWP30P140
+
+   Chip area for module '\CustomOperator_INT8_to_INT8': 166.446000
+     of which used for sequential elements: 0.000000 (0.00%)
+
+=== design hierarchy ===
+
+        +----------Count including submodules.
+        |        +-Area including submodules.
+        |        | 
+    27459 1.77E+04 BFP_PE
+      236  166.446 CustomOperator_INT8_to_INT8
+      898  554.904 FP32Adder
+      395  267.372 ScaleAddition_INT8_to_INT8_scale_UE6M2
+      183  112.014 ScaleToFP32_INT8_x_INT8_UE6M2
+
+        +----------Count including submodules.
+        |        +-Area including submodules.
+        |        | 
+    26238        - wires
+    33064        - wire bits
+      460        - public wires
+     7286        - public wire bits
+      298        - ports
+     4309        - port bits
+        -        - memories
+        -        - memory bits
+        -        - processes
+    27459 1.77E+04 cells
+      528  266.112   AN2D0BWP30P140
+      224   141.12   AN3D0BWP30P140
+       80    60.48   AN4D0BWP30P140
+       64   48.384   AO211D0BWP30P140
+      352   221.76   AO21D0BWP30P140
+      128   96.768   AO22D0BWP30P140
+      272   171.36   AOI211D0BWP30P140
+     1200    604.8   AOI21D0BWP30P140
+      160   120.96   AOI221D0BWP30P140
+       32   32.256   AOI222D0BWP30P140
+      608   383.04   AOI22D0BWP30P140
+      112    70.56   AOI31D0BWP30P140
+       16   12.096   AOI32D0BWP30P140
+      592  522.144   CKMUX2D0BWP30P140
+     1440   362.88   CKND0BWP30P140
+     3440  1300.32   CKND2D0BWP30P140
+       33   74.844   DFCNQD1BWP30P140
+      304   191.52   IAO21D0BWP30P140
+      704  354.816   IND2D0BWP30P140
+       16    10.08   IND3D0BWP30P140
+       32   24.192   IND4D0BWP30P140
+      625      315   INR2D0BWP30P140
+      192   120.96   INR3D0BWP30P140
+       48   36.288   INR4D0BWP30P140
+      144    90.72   IOA21D0BWP30P140
+     1360  1028.16   MAOI222D0BWP30P140
+      240   181.44   MAOI22D0BWP30P140
+       96   72.576   MOAI22D0BWP30P140
+     2208 1.67E+03   MUX2ND0BWP30P140
+       16   28.224   MUX3D0BWP30P140
+       16   26.208   MUX3ND0BWP30P140
+       32   76.608   MUX4D0BWP30P140
+      256  580.608   MUX4ND0BWP30P140
+      416  209.664   ND3D0BWP30P140
+      112    70.56   ND4D0BWP30P140
+     2625   992.25   NR2D0BWP30P140
+      976  491.904   NR3D0BWP30P140
+      352   221.76   NR4D0BWP30P140
+       48   36.288   OA211D0BWP30P140
+      144    90.72   OA21D0BWP30P140
+       48   42.336   OA22D0BWP30P140
+      272   171.36   OAI211D0BWP30P140
+     1152  580.608   OAI21D0BWP30P140
+       16   14.112   OAI221D0BWP30P140
+       32   32.256   OAI222D0BWP30P140
+      368   231.84   OAI22D0BWP30P140
+      176   110.88   OAI31D0BWP30P140
+       48   36.288   OAI32D0BWP30P140
+       16   14.112   OAI33D0BWP30P140
+      304  153.216   OR2D0BWP30P140
+      160    100.8   OR3D0BWP30P140
+       96   72.576   OR4D0BWP30P140
+     2352 2.07E+03   XNR2UD0BWP30P140
+      528  931.392   XNR3UD0BWP30P140
+       48  127.008   XNR4D0BWP30P140
+     1376 1.21E+03   XOR2UD0BWP30P140
+      224  395.136   XOR3UD0BWP30P140
+       64 1.76E+04 submodules
+       16 2.66E+03   CustomOperator_INT8_to_INT8
+       16 8.88E+03   FP32Adder
+       16 4.28E+03   ScaleAddition_INT8_to_INT8_scale_UE6M2
+       16 1.79E+03   ScaleToFP32_INT8_x_INT8_UE6M2
+
+   Chip area for top module '\BFP_PE': 17711.694000
+     of which used for sequential elements: 74.844000 (0.42%)
+

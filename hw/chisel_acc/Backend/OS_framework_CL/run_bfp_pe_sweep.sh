@@ -23,6 +23,12 @@
 set -euo pipefail
 
 # ----------------------------------------------------------------
+# Tool environment
+# ----------------------------------------------------------------
+source "$HOME/oss-cad-suite/environment"
+export PATH="$HOME/no_backup/opensta-install/bin:$PATH"
+
+# ----------------------------------------------------------------
 # Resolve project root
 # ----------------------------------------------------------------
 PROJ_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -84,7 +90,10 @@ declare -a TECH_PARAM_NAMES=()
 export RTL_PARAM_NAMES TECH_PARAM_NAMES
 
 # Frequency
-FREQ=500
+# Set below the design's natural limit so the critical path is identifiable
+# by its smallest positive WNS.  500 MHz leaves the slack too wide to be
+# informative; 200 MHz gives a 5 ns period that exposes which path is binding.
+FREQ=50
 export FREQ
 
 # Synthesis compile flags (same defaults as config.sh)
@@ -113,6 +122,19 @@ export SDC_MAX_TRANSITION MAX_TRANSITION
 export SDC_MAX_FANOUT MAX_FANOUT
 export SDC_CLK_UNCERTAINTY_SETUP CLK_UNCERTAINTY_SETUP
 export SDC_CLK_UNCERTAINTY_HOLD CLK_UNCERTAINTY_HOLD
+
+# Without set_output_delay, output ports are not valid timing endpoints in
+# OpenSTA, so report_checks only finds paths to flip-flop D pins (the tiny
+# 0.1% sequential component) and misses the full combinational datapath.
+# IO_DELAY=0 makes every input port a proper startpoint (arrival = 0 ns) and
+# every output port a proper endpoint (required = clk_period), so the true
+# worst-case combinational path is captured.  Warning 441 for the clock port
+# is benign — OpenSTA skips just that port and applies the constraint to all
+# data inputs.  data_arrival_time in the report = raw combinational delay.
+SDC_IO_DELAY="set_input_delay  {IO_DELAY} -clock CORE_CLK [all_inputs]
+set_output_delay {IO_DELAY} -clock CORE_CLK [all_outputs]"
+IO_DELAY=0
+export SDC_IO_DELAY IO_DELAY
 
 # ----------------------------------------------------------------
 # Source stage scripts (same as out_loop.sh)
@@ -206,9 +228,41 @@ mkdir -p "$PROJ_DIR/data_to_excel"
 MANIFEST="$PROJ_DIR/data_to_excel/bfp_pe_manifest.csv"
 
 if [[ ! -f "$MANIFEST" ]]; then
-    echo "variant,elem_a,elem_b,scale_type,vec_size,freq_mhz,area_um2,power_default_W" \
+    echo "variant,elem_a,elem_b,scale_type,vec_size,freq_mhz,area_um2,power_default_W,critical_path_ns" \
         > "$MANIFEST"
 fi
+
+# ----------------------------------------------------------------
+# Helper: remove large intermediate files for a finished variant.
+# Keeps all report files (area, power, timing, terminal logs) but
+# deletes VCDs, mapped netlists, compiled .vvp binaries, preprocessed
+# RTL copies, and debug TCL/SV files that accumulate to GBs over the
+# full 90-variant sweep and can cause tool or filesystem errors.
+# ----------------------------------------------------------------
+cleanup_variant() {
+    local vid="$1"
+    echo "  [cleanup] removing intermediates for $vid"
+
+    # VCD switching-activity files (can be 100s of MB each)
+    rm -rf "$PROJ_DIR/sim-syn/vcd/${vid}"
+
+    # Yosys-mapped gate netlist (not needed after area is extracted)
+    rm -f  "$PROJ_DIR/syn/outputs/${vid}/${DESIGN_NAME}_mapped.v"
+
+    # Preprocessed RTL copies used by iverilog
+    rm -rf "$PROJ_DIR/sim-syn/logs/${vid}/pp_rtl"
+
+    # Compiled iverilog binaries
+    rm -f  "$PROJ_DIR/sim-syn/logs/${vid}"/*.vvp
+
+    # Debug copies of filled STA TCL scripts
+    rm -rf "$PROJ_DIR/sta/debug/${vid}"
+
+    # Debug copies of filled testbench SV
+    rm -rf "$PROJ_DIR/rtl/tb/debug/${vid}"
+
+    echo "  [cleanup] done"
+}
 
 # ----------------------------------------------------------------
 # Helper: parse variant directory name into metadata fields
@@ -303,19 +357,25 @@ for variant in "${ALL_VARIANTS[@]}"; do
 
     # ------ Gather results ------
     area_file="$PROJ_DIR/syn/reports/${RUN_ID}/area_report.rpt"
-    area=$(grep -m1 "Chip area for module" "$area_file" 2>/dev/null | sed "s/.*: //")
+    area=$(grep -m1 "Chip area for top module" "$area_file" 2>/dev/null | sed "s/.*: //")
 
     power_file="$PROJ_DIR/sta/reports/${RUN_ID}/power_default.rpt"
     power=$(awk '/^Total[[:space:]]/ { print $5 }' "$power_file" 2>/dev/null | head -1)
 
-    echo "  area=${area} um2   power=${power} W"
+    # Critical path delay: exported by sta_main() as CP_RESULT
+    cp_ns="${CP_RESULT:-}"
+
+    echo "  area=${area} um2   power=${power} W   critical_path=${cp_ns} ns"
 
     # Append row to BFP_PE manifest
-    echo "${variant},${ELEM_A},${ELEM_B},${SCALE_TYPE},${VEC_SIZE},${FREQ},${area},${power}" \
+    echo "${variant},${ELEM_A},${ELEM_B},${SCALE_TYPE},${VEC_SIZE},${FREQ},${area},${power},${cp_ns}" \
         >> "$MANIFEST"
 
     # Mark done
     echo "$variant" >> "$DONE_FILE"
+
+    # Remove large intermediates now that results are captured
+    cleanup_variant "$RUN_ID"
 done
 
 # ----------------------------------------------------------------

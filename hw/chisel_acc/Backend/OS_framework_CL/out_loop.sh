@@ -23,6 +23,8 @@
 #   --skip-sim          Skip step 3 (VCD simulation); use static power in OpenSTA
 #   --start-step=STEP   Resume from STEP {syn|verify_syn|sim_syn|sta} for the first unfinished run
 #
+source "$HOME/oss-cad-suite/environment"
+export PATH="$HOME/no_backup/opensta-install/bin:$PATH"
 
 # ----------------------------------------------------------------
 # Resolve project root and move there so all relative paths work

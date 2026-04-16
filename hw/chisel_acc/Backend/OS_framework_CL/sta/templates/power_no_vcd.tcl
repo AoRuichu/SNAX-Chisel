@@ -19,8 +19,11 @@ link_design {DESIGN_NAME}
 
 # ---- Default switching activity (no VCD) ----
 # 10% toggle rate on all inputs; internal nodes inferred from liberty tables.
-set_power_activity -input 0.1
-set_power_activity -input_port_toggle 0.1
+set_power_activity -input -activity 0.1
+
+# ---- Timing analysis ----
+report_checks -path_delay max -digits 4 > {PROJ_DIR}/sta/reports/{RUN_ID}/timing_{WORKLOAD}.rpt
+report_wns
 
 # ---- Power analysis ----
 report_power > {PROJ_DIR}/sta/reports/{RUN_ID}/power_{WORKLOAD}.rpt

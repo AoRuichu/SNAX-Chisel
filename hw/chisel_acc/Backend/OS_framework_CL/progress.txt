@@ -1,6 +1,0 @@
-[run_001] starting  FREQ=500 CLK_UNCERTAINTY_HOLD=0.025 CLK_UNCERTAINTY_SETUP=0.05 MAX_FANOUT=32 MAX_TRANSITION=0.250 COMPILE_NO_AUTOUNGROUP= COMPILE_RETIME= COMPILE_CLOCK_GATING=-gate_clock
-[run_001] syn finished in 0m0s  (1 sweep point(s) remaining)
-[run_001] verify_syn finished in 0m0s  (1 sweep point(s) remaining)
-[run_001] sim_syn finished in 0m0s  (1 sweep point(s) remaining)
-[run_001] sta finished in 0m1s  (1 sweep point(s) remaining)
-All runs complete.
