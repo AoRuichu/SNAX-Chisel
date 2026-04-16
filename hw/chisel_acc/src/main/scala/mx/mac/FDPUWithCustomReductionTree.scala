@@ -31,6 +31,9 @@ import chisel3._
 class FDPUWithCustomReductionTree(val scfg: ScaleAddConfig, val vectorSize: Int, val istest: Boolean) extends Module {
   require(vectorSize >= 1, "vectorSize must be >= 1")
 
+  // Collects CustomFPAdder outputs during elaboration of customFPReduceTree (test mode only)
+  private val treeNodeBuffer = scala.collection.mutable.ArrayBuffer[CustomFP]()
+
   override def desiredName =
     if (!istest)
       s"BFP_PE"
@@ -61,7 +64,14 @@ class FDPUWithCustomReductionTree(val scfg: ScaleAddConfig, val vectorSize: Int,
     val debug = if (istest) Some(new Bundle {
       val all_lanes_fp32    = Output(Vec(vectorSize, UInt(32.W)))
       val reducedSum        = Output(UInt(32.W))
+      val all_lanes_sa_sign = Output(Vec(vectorSize, UInt(1.W)))
+      val all_lanes_sa_exp  = Output(Vec(vectorSize, SInt(scfg.resScaleAddExpWidth.W)))
       val all_lanes_sa_mant = Output(Vec(vectorSize, UInt(scfg.resScaleAddMantWidth.W)))
+      // Internal nodes of the custom reduction tree; (vectorSize-1) adders total.
+      // Slot 0 is unused and set to DontCare when vectorSize==1.
+      val tree_node_sign    = Output(Vec((vectorSize - 1).max(1), UInt(1.W)))
+      val tree_node_exp     = Output(Vec((vectorSize - 1).max(1), SInt(scfg.resScaleAddExpWidth.W)))
+      val tree_node_mant    = Output(Vec((vectorSize - 1).max(1), UInt(scfg.resScaleAddMantWidth.W)))
     }) else None
   })
 
@@ -94,6 +104,8 @@ class FDPUWithCustomReductionTree(val scfg: ScaleAddConfig, val vectorSize: Int,
           val adder = Module(new CustomFPAdder(scfg.resScaleAddExpWidth, scfg.resScaleAddMantWidth))
           adder.io.a := group(0)
           adder.io.b := group(1)
+          // Collect adder output for debug visibility (BFS order: level 1 first, etc.)
+          if (istest) treeNodeBuffer += adder.io.out
           adder.io.out
         } else group(0)
       }.toSeq
@@ -126,6 +138,8 @@ class FDPUWithCustomReductionTree(val scfg: ScaleAddConfig, val vectorSize: Int,
 
       io.debug.foreach { d =>
         d.all_lanes_fp32(i)    := DontCare  // per-lane FP32 not available in this path
+        d.all_lanes_sa_sign(i) := sa.io.outSign
+        d.all_lanes_sa_exp(i)  := sa.io.outExp
         d.all_lanes_sa_mant(i) := sa.io.outMant
       }
     }
@@ -135,6 +149,21 @@ class FDPUWithCustomReductionTree(val scfg: ScaleAddConfig, val vectorSize: Int,
     conv.io.inSign := reduced.sign
     conv.io.inExp  := reduced.exp
     conv.io.inMant := reduced.mant
+
+    // Connect collected tree-node outputs to debug ports (populated by customFPReduceTree above)
+    io.debug.foreach { d =>
+      treeNodeBuffer.zipWithIndex.foreach { case (node, idx) =>
+        d.tree_node_sign(idx) := node.sign
+        d.tree_node_exp(idx)  := node.exp
+        d.tree_node_mant(idx) := node.mant
+      }
+      for (idx <- treeNodeBuffer.length until (vectorSize - 1).max(1)) {
+        d.tree_node_sign(idx) := DontCare
+        d.tree_node_exp(idx)  := DontCare
+        d.tree_node_mant(idx) := DontCare
+      }
+    }
+
     conv.io.out
 
   } else {
@@ -162,7 +191,18 @@ class FDPUWithCustomReductionTree(val scfg: ScaleAddConfig, val vectorSize: Int,
 
       io.debug.foreach { d =>
         d.all_lanes_fp32(i)    := conv.io.out
+        d.all_lanes_sa_sign(i) := sa.io.outSign
+        d.all_lanes_sa_exp(i)  := sa.io.outExp
         d.all_lanes_sa_mant(i) := sa.io.outMant
+      }
+    }
+
+    // No custom tree in this path — set tree node ports to DontCare
+    io.debug.foreach { d =>
+      for (idx <- 0 until (vectorSize - 1).max(1)) {
+        d.tree_node_sign(idx) := DontCare
+        d.tree_node_exp(idx)  := DontCare
+        d.tree_node_mant(idx) := DontCare
       }
     }
 

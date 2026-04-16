@@ -23,17 +23,17 @@ import chisel3.util._
  */
 class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
   override def desiredName =
-    s"FP32ToMXFP8_${cfg.outputType.name}_${cfg.scaleType.name}"
+    s"FP32ToMXFP_${cfg.outputType.name}_${cfg.scaleType.name}"
 
-  private val fp8ExpBits      = cfg.outputType.elementWidthExp
-  private val fp8MantBits     = cfg.outputType.elementWidthMant
-  private val fp8Bias         = cfg.outputType.bias
-  private val fp8MaxNormalExp = (1 << fp8ExpBits) - 2
+  private val outExpBits      = cfg.outputType.elementWidthExp
+  private val outMantBits     = cfg.outputType.elementWidthMant
+  private val outBias         = cfg.outputType.bias
+  private val outMaxNormalExp = (1 << outExpBits) - 2
 
   val io = IO(new Bundle {
     val fp32_in      = Input(UInt(32.W))
     val shared_scale = Input(UInt(8.W))   // always 8 bits; format depends on cfg.scaleType
-    val fp8_out      = Output(UInt(cfg.outputType.totalWidth.W))
+    val elem_out     = Output(UInt(cfg.outputType.totalWidth.W))
   })
 
   // ── Unpack FP32 ──────────────────────────────────────────
@@ -44,33 +44,33 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
   val isZeroOrSubnormal = fp32_exp === 0.U
   val fp32_exp_s        = fp32_exp.zext   // SInt(9)
 
-  val maxNormalMant = ((1 << fp8MantBits) - 1).U(fp8MantBits.W)
-  val maxNormalExpU = fp8MaxNormalExp.U(fp8ExpBits.W)
+  val maxNormalMant = ((1 << outMantBits) - 1).U(outMantBits.W)
+  val maxNormalExpU = outMaxNormalExp.U(outExpBits.W)
 
   if (cfg.scaleType.mantScaleWidth == 0) {
     // ── UE8M0 path (original, unchanged) ──────────────────
     //
     // shared_scale = max biased FP32 exponent in the block.
-    // fp8_biased_exp = fp32_biased_exp − shared_scale + fp8Bias
+    // out_biased_exp = fp32_biased_exp − shared_scale + outBias
     val shared_exp_s = io.shared_scale.zext     // SInt(9)
-    val fp8_exp_full = fp32_exp_s - shared_exp_s + fp8Bias.S
+    val out_exp_full = fp32_exp_s - shared_exp_s + outBias.S
 
-    val underflow = isZeroOrSubnormal || fp8_exp_full <= 0.S
-    val overflow  = fp8_exp_full > fp8MaxNormalExp.S
+    val underflow = isZeroOrSubnormal || out_exp_full <= 0.S
+    val overflow  = out_exp_full > outMaxNormalExp.S
 
-    val fp8_mant_raw = fp32_man(22, 23 - fp8MantBits)
-    val guardBit     = fp32_man(22 - fp8MantBits)
+    val out_mant_raw = fp32_man(22, 23 - outMantBits)
+    val guardBit     = fp32_man(22 - outMantBits)
     val stickyBits   =
-      if (22 - fp8MantBits > 0) fp32_man(21 - fp8MantBits, 0).orR
+      if (22 - outMantBits > 0) fp32_man(21 - outMantBits, 0).orR
       else false.B
-    val roundUp  = guardBit && (fp8_mant_raw(0) || stickyBits)
-    val fp8_mant = Mux(roundUp, fp8_mant_raw + 1.U, fp8_mant_raw)
+    val roundUp  = guardBit && (out_mant_raw(0) || stickyBits)
+    val out_mant = Mux(roundUp, out_mant_raw + 1.U, out_mant_raw)
 
-    val fp8_exp_clamped = fp8_exp_full.asUInt(fp8ExpBits - 1, 0)
-    val normalResult    = Cat(sign, fp8_exp_clamped, fp8_mant)
+    val out_exp_clamped = out_exp_full.asUInt(outExpBits - 1, 0)
+    val normalResult    = Cat(sign, out_exp_clamped, out_mant)
     val maxResult       = Cat(sign, maxNormalExpU, maxNormalMant)
 
-    io.fp8_out := Mux(underflow, 0.U, Mux(overflow, maxResult, normalResult))
+    io.elem_out := Mux(underflow, 0.U, Mux(overflow, maxResult, normalResult))
 
   } else {
     // ── ExMy path ──────────────────────────────────────────
@@ -93,18 +93,18 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     val M          = cfg.scaleType.mantScaleWidth   // 1..6
     val E          = cfg.scaleType.expScaleWidth    // = 8 − M
     val scaleBias  = cfg.scaleType.bias             // (1 << (E-1)) − 1
-    val correction = scaleBias - 127 + fp8Bias      // design-time Scala Int
+    val correction = scaleBias - 127 + outBias       // design-time Scala Int
 
     val scale_biased_exp = io.shared_scale(7, M)          // E bits
     val scale_mant_raw   = io.shared_scale(M - 1, 0)     // M bits
     // Implicit-1 for normal (biased_exp > 0); 0 for subnormal/zero
     val scale_full_mant  = Cat(scale_biased_exp.orR, scale_mant_raw)  // (M+1) bits
 
-    val fp8_exp_raw = fp32_exp_s - scale_biased_exp.zext + correction.S  // SInt
+    val out_exp_raw = fp32_exp_s - scale_biased_exp.zext + correction.S  // SInt
 
     // ── Mantissa division q = (1.fp32_mant) / (1.scale_mant) ──
     //
-    // EXTRA provides fp8MantBits fractional bits + 3 guard/round/sticky bits.
+    // EXTRA provides outMantBits fractional bits + 3 guard/round/sticky bits.
     // Integer representation:
     //   q_int  = fp32FullMant × 2^EXTRA / scale_full_mant
     //   value  = q_int × 2^(M − 23 − EXTRA)
@@ -112,7 +112,7 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     // MSB of q_int (= implicit-1 of q) is at:
     //   IMPL     = 23 − M + EXTRA   when q ≥ 1
     //   IMPL − 1                    when q ∈ [0.5, 1)
-    val EXTRA = fp8MantBits + 3
+    val EXTRA = outMantBits + 3
     val IMPL  = 23 - M + EXTRA      // e.g. E4M3+UE7M1: 23-1+6 = 28
 
     val fp32FullMant = Cat(fp32_exp.orR, fp32_man)    // 24 bits (0 for zero/subnormal)
@@ -125,42 +125,42 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     val qGeq1 = q_int(IMPL)   // 1 iff q_frac ≥ 1.0
 
     // Mantissa bits and rounding (all bit-indices are Scala-time constants)
-    val fp8_mant_raw = Mux(
+    val out_mant_raw = Mux(
       qGeq1,
-      q_int(IMPL - 1,         IMPL - fp8MantBits),
-      q_int(IMPL - 2,         IMPL - 1 - fp8MantBits)
+      q_int(IMPL - 1,         IMPL - outMantBits),
+      q_int(IMPL - 2,         IMPL - 1 - outMantBits)
     )
     val guardBit = Mux(qGeq1,
-      q_int(IMPL - fp8MantBits - 1),
-      q_int(IMPL - fp8MantBits - 2))
+      q_int(IMPL - outMantBits - 1),
+      q_int(IMPL - outMantBits - 2))
     val roundBit = Mux(qGeq1,
-      q_int(IMPL - fp8MantBits - 2),
-      q_int(IMPL - fp8MantBits - 3))
+      q_int(IMPL - outMantBits - 2),
+      q_int(IMPL - outMantBits - 3))
 
     // Sticky: lower q_int bits + division remainder
-    // For qGeq1: IMPL−fp8MantBits−3 = 23−M  (≥ 17 for all valid M)
-    // For qLt1:  IMPL−fp8MantBits−4 = 22−M  (≥ 16 for all valid M)
-    val stickyQ_geq1 = q_int(IMPL - fp8MantBits - 3, 0).orR
-    val stickyQ_lt1  = q_int(IMPL - fp8MantBits - 4, 0).orR
+    // For qGeq1: IMPL−outMantBits−3 = 23−M  (≥ 17 for all valid M)
+    // For qLt1:  IMPL−outMantBits−4 = 22−M  (≥ 16 for all valid M)
+    val stickyQ_geq1 = q_int(IMPL - outMantBits - 3, 0).orR
+    val stickyQ_lt1  = q_int(IMPL - outMantBits - 4, 0).orR
     val stickyBit    = (q_rem =/= 0.U) || Mux(qGeq1, stickyQ_geq1, stickyQ_lt1)
 
-    val roundUp        = guardBit && (fp8_mant_raw(0) || roundBit || stickyBit)
-    val fp8_mant_carry = fp8_mant_raw +& roundUp        // (fp8MantBits+1) bits
-    val mantOverflow   = fp8_mant_carry(fp8MantBits)
-    val fp8_mant       = fp8_mant_carry(fp8MantBits - 1, 0)
+    val roundUp        = guardBit && (out_mant_raw(0) || roundBit || stickyBit)
+    val out_mant_carry = out_mant_raw +& roundUp        // (outMantBits+1) bits
+    val mantOverflow   = out_mant_carry(outMantBits)
+    val out_mant       = out_mant_carry(outMantBits - 1, 0)
 
     // Apply normalisation shift (−1 when q < 1) and mantissa carry-out
     val normAdj      = Mux(qGeq1, 0.S(2.W), (-1).S(2.W))
-    val fp8_exp_full = fp8_exp_raw + normAdj + mantOverflow.zext
+    val out_exp_full = out_exp_raw + normAdj + mantOverflow.zext
 
-    val underflow = isZeroOrSubnormal || fp8_exp_full <= 0.S
-    val overflow  = fp8_exp_full > fp8MaxNormalExp.S
+    val underflow = isZeroOrSubnormal || out_exp_full <= 0.S
+    val overflow  = out_exp_full > outMaxNormalExp.S
 
-    val fp8_exp_clamped = fp8_exp_full.asUInt(fp8ExpBits - 1, 0)
-    val normalResult    = Cat(sign, fp8_exp_clamped, fp8_mant)
+    val out_exp_clamped = out_exp_full.asUInt(outExpBits - 1, 0)
+    val normalResult    = Cat(sign, out_exp_clamped, out_mant)
     val maxResult       = Cat(sign, maxNormalExpU, maxNormalMant)
 
-    io.fp8_out := Mux(underflow, 0.U, Mux(overflow, maxResult, normalResult))
+    io.elem_out := Mux(underflow, 0.U, Mux(overflow, maxResult, normalResult))
   }
 }
 
@@ -241,7 +241,7 @@ class RequantBlock(val cfg: RequantConfig) extends Module {
   val io = IO(new Bundle {
     val fp32_in      = Input(Vec(cfg.blockSize, UInt(32.W)))
     val shared_scale = Output(UInt(8.W))
-    val fp8_out      = Output(Vec(cfg.blockSize, UInt(cfg.outputType.totalWidth.W)))
+    val elem_out     = Output(Vec(cfg.blockSize, UInt(cfg.outputType.totalWidth.W)))
   })
 
   val scaleFinder = Module(new MaxScaleFinder(cfg))
@@ -252,7 +252,7 @@ class RequantBlock(val cfg: RequantConfig) extends Module {
     val conv = Module(new FP32ToMXFP8(cfg))
     conv.io.fp32_in      := io.fp32_in(i)
     conv.io.shared_scale := scaleFinder.io.max_scale
-    io.fp8_out(i)        := conv.io.fp8_out
+    io.elem_out(i)       := conv.io.elem_out
   }
 }
 
@@ -270,22 +270,22 @@ class RequantBlock(val cfg: RequantConfig) extends Module {
  * After batchesPerBlock = blockSize / tileCols valid pulses, valid_out
  * fires for one cycle:
  *   shared_scale_out[i]  — 8-bit scale for row i (format per cfg.scaleType)
- *   fp8_out[i][k]        — k-th MXFP8 element of row i
+ *   elem_out[i][k]       — k-th MX element of row i
  */
 class RequantFP8(val cfg: RequantConfig) extends Module {
   override def desiredName =
-    s"RequantFP8_${cfg.outputType.name}_${cfg.scaleType.name}_blk${cfg.blockSize}" +
+    s"RequantFP${cfg.outputType.totalWidth}_${cfg.outputType.name}_${cfg.scaleType.name}_blk${cfg.blockSize}" +
     s"_${cfg.tileRows}x${cfg.tileCols}"
 
-  private val B    = cfg.batchesPerBlock
-  private val fp8W = cfg.outputType.totalWidth
-  private val nIn  = cfg.tileRows * cfg.tileCols
+  private val B     = cfg.batchesPerBlock
+  private val elemW = cfg.outputType.totalWidth
+  private val nIn   = cfg.tileRows * cfg.tileCols
 
   val io = IO(new Bundle {
     val fp32_in          = Input(UInt((nIn * 32).W))
     val valid_in         = Input(Bool())
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
-    val fp8_out          = Output(UInt((cfg.tileRows * cfg.blockSize * fp8W).W))
+    val elem_out         = Output(UInt((cfg.tileRows * cfg.blockSize * elemW).W))
     val valid_out        = Output(Bool())
   })
 
@@ -298,7 +298,7 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
   // Registers reset when reset=false (rst_ni=0 in SV), not when reset=true.
   val asyncRstN = (!reset.asBool).asAsyncReset
 
-  val buffer   = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(64, UInt(32.W)))))
+  val buffer   = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(32.W)))))
   val batchCnt = withReset(asyncRstN)(RegInit(0.U(6.W)))
   val blockDone = io.valid_in && (batchCnt === (B - 1).U)
 
@@ -313,7 +313,7 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
   }
 
   val sharedScaleWire = Wire(Vec(cfg.tileRows, UInt(8.W)))
-  val fp8Wire         = Wire(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(fp8W.W))))
+  val elemWire        = Wire(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(elemW.W))))
 
   for (row <- 0 until cfg.tileRows) {
     val rq = Module(new RequantBlock(cfg))
@@ -328,23 +328,23 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
       )
     }
     sharedScaleWire(row) := rq.io.shared_scale
-    fp8Wire(row)         := rq.io.fp8_out
+    elemWire(row)        := rq.io.elem_out
   }
 
   val validOutReg    = withReset(asyncRstN)(RegNext(blockDone, init = false.B))
   val sharedScaleReg = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, UInt(8.W))))
-  val fp8OutReg      = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(fp8W.W)))))
+  val elemOutReg     = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(elemW.W)))))
 
   when(blockDone) {
     sharedScaleReg := sharedScaleWire
-    fp8OutReg      := fp8Wire
+    elemOutReg     := elemWire
   }
 
   io.valid_out        := validOutReg
   io.shared_scale_out := Cat(sharedScaleReg.toSeq)
-  io.fp8_out := Cat(
+  io.elem_out := Cat(
     for (row <- 0 until cfg.tileRows; col <- 0 until cfg.blockSize)
-      yield fp8OutReg(row)(col)
+      yield elemOutReg(row)(col)
   )
 }
 
@@ -368,12 +368,29 @@ object RequantFP8Main extends App {
   }
 }
 
+/** Emit the baseline UE8M0 FP6 configs (E3M2 and E2M3). */
+object RequantFP6Main extends App {
+  import DefaultRequantConfigs._
+
+  Seq(e3m2_block32_4x4, e3m2_block32_8x8, e2m3_block32_4x4, e2m3_block32_8x8).foreach { cfg =>
+    println(s"Generating RequantFP6: ${cfg.outputType.name} ${cfg.scaleType.name} " +
+            s"blk${cfg.blockSize} ${cfg.tileRows}x${cfg.tileCols}")
+    emitVerilog(
+      new RequantFP8(cfg),
+      Array("--target-dir",
+            s"generated/requant/${cfg.outputType.name}_${cfg.scaleType.name}" +
+            s"_blk${cfg.blockSize}_${cfg.tileRows}x${cfg.tileCols}")
+    )
+  }
+}
+
 /** Emit Verilog for a matrix of output-type × scale-type × geometry combinations. */
 object AllRequantFP8Main extends App {
   import mx.mac.{MXFormats, ScaleFormats}
 
   // (elemType, scaleType, blockSize, tileRows, tileCols)
   val configs = Seq(
+    // FP8 variants
     (MXFormats.E5M2, ScaleFormats.UE8M0, 32, 4, 4),
     (MXFormats.E4M3, ScaleFormats.UE8M0, 16, 8, 8),
     (MXFormats.E4M3, ScaleFormats.UE8M0, 64, 4, 4),
@@ -383,6 +400,13 @@ object AllRequantFP8Main extends App {
     (MXFormats.E4M3, ScaleFormats.UE6M2, 64, 4, 4),
     (MXFormats.E5M2, ScaleFormats.UE4M4, 32, 4, 4),
     (MXFormats.E4M3, ScaleFormats.UE4M4, 64, 4, 4),
+    // FP6 variants
+    (MXFormats.E3M2, ScaleFormats.UE8M0, 32, 4, 4),
+    (MXFormats.E3M2, ScaleFormats.UE8M0, 32, 8, 8),
+    (MXFormats.E2M3, ScaleFormats.UE8M0, 32, 4, 4),
+    (MXFormats.E2M3, ScaleFormats.UE8M0, 32, 8, 8),
+    (MXFormats.E3M2, ScaleFormats.UE7M1, 32, 4, 4),
+    (MXFormats.E2M3, ScaleFormats.UE7M1, 32, 4, 4),
   )
 
   for ((elemType, scaleType, blockSize, tileRows, tileCols) <- configs) {

@@ -25,8 +25,17 @@ from pathlib import Path
 
 # Mappings from params.hjson integer codes to Chisel type names
 _ELEMENT_TYPE_MAP  = {0: "INT8", 1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3", 5: "E2M1"}
-_FP8_OUT_TYPE_MAP  = {1: "E5M2", 2: "E4M3"}   # valid FP8 output types for RequantFP8
 _SCALE_FORMAT_MAP  = {0: "UE8M0", 1: "UE7M1", 2: "UE6M2", 3: "UE5M3", 4: "UE4M4", 5: "UE3M5", 6: "UE2M6"}
+
+# MX float output types for RequantFP8 (covers both FP8 and FP6 element formats)
+_MX_FLOAT_OUT_TYPE_MAP = {1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3"}
+
+# requant_mode: selects which requantizer RTL to generate
+#   0 = MX float (FP8 / FP6) — GenerateRequantFP8, uses out_format + shared_format
+#   1 = INT8                  — GenerateRequantINT8, uses block_size only
+#   2 = BF16                  — GenerateRequantBF16, no extra params
+#   (absent / None)           = no requant RTL generated
+_REQUANT_MODE_NAMES = {0: "MX_FLOAT", 1: "INT8", 2: "BF16"}
 
 # ---------------------------------------------------------------------------
 # Default paths (relative to this script's location)
@@ -43,8 +52,9 @@ DATAGEN_PY     = SCRIPT_DIR / "data" / "datagen.py"
 # HW parameter derivation
 # ---------------------------------------------------------------------------
 
-def _o_bitwidth(quantize_mode: int) -> int:
-    return {0: 32, 1: 16, 2: 8}.get(quantize_mode, 32)
+def _o_bitwidth(quantize_mode) -> int:
+    """Map requant_mode to per-element output bit-width used for streamer sizing."""
+    return {0: 8, 1: 8, 2: 16}.get(quantize_mode, 32)   # None / unknown → 32 (FP32 passthrough)
 
 
 def compute_hw_cfg(p: dict) -> dict:
@@ -70,7 +80,7 @@ def compute_hw_cfg(p: dict) -> dict:
     parfor_K   = p["parfor_K"]
     A_bits     = p["A_bit_width"]
     B_bits     = p["B_bit_width"]
-    o_bits     = _o_bitwidth(p.get("quantize_mode", 0))
+    o_bits     = _o_bitwidth(p.get("quantize_mode", None))
     stationary = p.get("stationary", 0)
 
     # Tile sizes in bytes, aligned to 8
@@ -202,53 +212,95 @@ def run_mac_gen(p: dict) -> Path:
 
 def run_requant_gen(p: dict) -> Path:
     """
-    Derive RequantFP8 parameters from params and invoke sbt to generate
-    SystemVerilog.
+    Dispatch requantizer RTL generation based on requant_mode in params.hjson.
 
-    Mapping from params.hjson:
-      fp8_out_type  (int, default 1) → FP8 output element format (1=E5M2, 2=E4M3)
-      shared_format (int, default 0) → shared-scale format
-      parfor_M                       → tileRows
-      parfor_N                       → tileCols
-      block_size    (int, default 32) → MX block size (16, 32, or 64)
+    params.hjson fields:
+      requant_mode  (int, required) — selects the requantizer:
+                      0 = MX float (FP8 / FP6) → GenerateRequantFP8
+                      1 = INT8                  → GenerateRequantINT8
+                      2 = BF16                  → GenerateRequantBF16
+      out_format    (int, default 1) — for requant_mode=0 only:
+                      1=E5M2 (FP8)  2=E4M3 (FP8)
+                      3=E3M2 (FP6)  4=E2M3 (FP6)
+      shared_format (int, default 0) — for requant_mode=0 only:
+                      scale format, see _SCALE_FORMAT_MAP
+      block_size    (int, default 32) — for requant_mode=0/1 only:
+                      MX block size (16, 32, or 64)
+      parfor_M → tileRows,  parfor_N → tileCols  (all modes)
     """
-    fp8_out_type  = p.get("fp8_out_type",  1)
-    shared_format = p.get("shared_format", 0)
-    tile_rows     = p["parfor_M"]
-    tile_cols     = p["parfor_N"]
-    block_size    = p.get("block_size", 32)
+    requant_mode = p.get("requant_mode")
+    if requant_mode is None:
+        sys.exit("[orchestrator] 'requant_mode' not set in params.hjson. "
+                 "Valid values: 0=MX_FLOAT(FP8/FP6), 1=INT8, 2=BF16")
 
-    out_type = _FP8_OUT_TYPE_MAP.get(fp8_out_type)
-    scale    = _SCALE_FORMAT_MAP.get(shared_format)
+    tile_rows  = p["parfor_M"]
+    tile_cols  = p["parfor_N"]
+    block_size = p.get("block_size", 32)
 
-    if out_type is None:
-        sys.exit(f"[orchestrator] unknown fp8_out_type={fp8_out_type}, "
-                 f"valid: {_FP8_OUT_TYPE_MAP}")
-    if scale is None:
-        sys.exit(f"[orchestrator] unknown shared_format={shared_format}, "
-                 f"valid: {_SCALE_FORMAT_MAP}")
+    # ── Mode 0: MX float (FP8 or FP6) ────────────────────────────────────
+    if requant_mode == 0:
+        out_format    = p.get("out_format", p.get("fp8_out_type", 1))  # backward-compat alias
+        shared_format = p.get("shared_format", 0)
 
-    out_dir = SCRIPT_DIR / "generated" / "requant" / \
-              f"{out_type}_{scale}_blk{block_size}_{tile_rows}x{tile_cols}"
+        out_type = _MX_FLOAT_OUT_TYPE_MAP.get(out_format)
+        scale    = _SCALE_FORMAT_MAP.get(shared_format)
 
-    sbt_cmd = (
-        f"runMain mx.GenerateRequantFP8"
-        f" --out-type   {out_type}"
-        f" --scale      {scale}"
-        f" --block-size {block_size}"
-        f" --tile-rows  {tile_rows}"
-        f" --tile-cols  {tile_cols}"
-        f" --out-dir    {out_dir}"
-    )
+        if out_type is None:
+            sys.exit(f"[orchestrator] unknown out_format={out_format}, "
+                     f"valid: {_MX_FLOAT_OUT_TYPE_MAP}")
+        if scale is None:
+            sys.exit(f"[orchestrator] unknown shared_format={shared_format}, "
+                     f"valid: {_SCALE_FORMAT_MAP}")
 
-    print(f"[orchestrator] RequantFP8 RTL: outType={out_type}, scale={scale}, "
-          f"blk={block_size}, {tile_rows}x{tile_cols}")
+        out_dir = SCRIPT_DIR / "generated" / "requant" / \
+                  f"{out_type}_{scale}_blk{block_size}_{tile_rows}x{tile_cols}"
+        sbt_cmd = (
+            f"runMain mx.GenerateRequantFP8or6"
+            f" --out-type   {out_type}"
+            f" --scale      {scale}"
+            f" --block-size {block_size}"
+            f" --tile-rows  {tile_rows}"
+            f" --tile-cols  {tile_cols}"
+            f" --out-dir    {out_dir}"
+        )
+        label = f"MX_FLOAT outType={out_type} scale={scale} blk={block_size} {tile_rows}x{tile_cols}"
+
+    # ── Mode 1: INT8 ──────────────────────────────────────────────────────
+    elif requant_mode == 1:
+        out_dir = SCRIPT_DIR / "generated" / "requant" / \
+                  f"INT8_UE8M0_blk{block_size}_{tile_rows}x{tile_cols}"
+        sbt_cmd = (
+            f"runMain mx.GenerateRequantINT8"
+            f" --block-size {block_size}"
+            f" --tile-rows  {tile_rows}"
+            f" --tile-cols  {tile_cols}"
+            f" --out-dir    {out_dir}"
+        )
+        label = f"INT8 blk={block_size} {tile_rows}x{tile_cols}"
+
+    # ── Mode 2: BF16 ─────────────────────────────────────────────────────
+    elif requant_mode == 2:
+        out_dir = SCRIPT_DIR / "generated" / "requant" / \
+                  f"BF16_{tile_rows}x{tile_cols}"
+        sbt_cmd = (
+            f"runMain mx.GenerateRequantBF16"
+            f" --tile-rows {tile_rows}"
+            f" --tile-cols {tile_cols}"
+            f" --out-dir   {out_dir}"
+        )
+        label = f"BF16 {tile_rows}x{tile_cols}"
+
+    else:
+        sys.exit(f"[orchestrator] unknown requant_mode={requant_mode}, "
+                 f"valid: {_REQUANT_MODE_NAMES}")
+
+    print(f"[orchestrator] Requant RTL ({_REQUANT_MODE_NAMES.get(requant_mode)}): {label}")
     print(f"[orchestrator] sbt {sbt_cmd}")
     result = subprocess.run(["sbt", sbt_cmd], cwd=SCRIPT_DIR)
     if result.returncode != 0:
-        sys.exit(f"[orchestrator] RequantFP8 generation failed (exit {result.returncode})")
+        sys.exit(f"[orchestrator] Requant RTL generation failed (exit {result.returncode})")
 
-    print(f"[orchestrator] RequantFP8 RTL written → {out_dir}")
+    print(f"[orchestrator] Requant RTL written → {out_dir}")
     return out_dir
 
 
@@ -300,7 +352,10 @@ def main() -> None:
     # 3. Generate Chisel RTL
     if not args.skip_rtl:
         run_mac_gen(params)
-        run_requant_gen(params)
+        if params.get("requant_mode") is not None:
+            run_requant_gen(params)
+        else:
+            print("[orchestrator] 'requant_mode' not set — skipping requant RTL generation")
     else:
         print("[orchestrator] skipping Chisel RTL generation (--skip-rtl)")
 

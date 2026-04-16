@@ -328,7 +328,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       dut.io.valid_out.expect(true.B)
 
       val scaleOut = dut.io.shared_scale_out.peek().litValue
-      val fp8Out   = dut.io.fp8_out.peek().litValue
+      val fp8Out   = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows)
         assert(extractScale(scaleOut, cfg.tileRows, row) == 0,
@@ -356,7 +356,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       dut.io.valid_out.expect(true.B)
 
       val scaleOut = dut.io.shared_scale_out.peek().litValue
-      val fp8Out   = dut.io.fp8_out.peek().litValue
+      val fp8Out   = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows) {
         val sc = extractScale(scaleOut, cfg.tileRows, row)
@@ -390,7 +390,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       dut.io.valid_out.expect(true.B)
 
       val scaleOut = dut.io.shared_scale_out.peek().litValue
-      val fp8Out   = dut.io.fp8_out.peek().litValue
+      val fp8Out   = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows) {
         val hwScale = extractScale(scaleOut, cfg.tileRows, row)
@@ -424,7 +424,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       driveBlock(dut, block)
       dut.io.valid_out.expect(true.B)
 
-      val fp8Out = dut.io.fp8_out.peek().litValue
+      val fp8Out = dut.io.elem_out.peek().litValue
 
       for (col <- 0 until cfg.blockSize) {
         val hwNeg = extractFP8(fp8Out, cfg.tileRows, cfg.blockSize, 0, col)
@@ -461,7 +461,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       driveBlock(dut, block)
       dut.io.valid_out.expect(true.B)
 
-      val fp8Out = dut.io.fp8_out.peek().litValue
+      val fp8Out = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows) {
         // Huge values: compare against SW model (may saturate to max-normal)
@@ -532,7 +532,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       }
 
       val scaleOut = dut.io.shared_scale_out.peek().litValue
-      val fp8Out   = dut.io.fp8_out.peek().litValue
+      val fp8Out   = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows) {
         val hwSc = extractScale(scaleOut, cfg.tileRows, row)
@@ -564,7 +564,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
         dut.io.valid_out.expect(true.B, s"block $blockIdx: valid_out not asserted")
 
         val scaleOut = dut.io.shared_scale_out.peek().litValue
-        val fp8Out   = dut.io.fp8_out.peek().litValue
+        val fp8Out   = dut.io.elem_out.peek().litValue
 
         for (row <- 0 until cfg.tileRows) {
           val hwSc = extractScale(scaleOut, cfg.tileRows, row)
@@ -622,7 +622,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
         dut.io.valid_out.expect(true.B, s"block $blockIdx: valid_out not asserted")
 
         val scaleOut = dut.io.shared_scale_out.peek().litValue
-        val fp8Out   = dut.io.fp8_out.peek().litValue
+        val fp8Out   = dut.io.elem_out.peek().litValue
 
         for (row <- 0 until cfg.tileRows) {
           val hwSc = extractScale(scaleOut, cfg.tileRows, row)
@@ -654,7 +654,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       dut.io.valid_out.expect(true.B)
 
       val scaleOut = dut.io.shared_scale_out.peek().litValue
-      val fp8Out   = dut.io.fp8_out.peek().litValue
+      val fp8Out   = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows) {
         val hwSc = extractScale(scaleOut, cfg.tileRows, row)
@@ -684,7 +684,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       dut.io.valid_out.expect(true.B)
 
       val scaleOut = dut.io.shared_scale_out.peek().litValue
-      val fp8Out   = dut.io.fp8_out.peek().litValue
+      val fp8Out   = dut.io.elem_out.peek().litValue
 
       for (row <- 0 until cfg.tileRows) {
         val hwSc = extractScale(scaleOut, cfg.tileRows, row)

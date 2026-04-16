@@ -18,7 +18,7 @@ import mx.requant.RequantFP8
  *       → FusedDotProductUnit (tileRows × tileCols)
  *       → results_o (FP32, tileRows × tileCols)
  *       → RequantFP8
- *       → fp8_out / shared_scale_out / valid_out
+ *       → elem_out / shared_scale_out / valid_out
  */
 class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   override def desiredName = "PE_Array_wrapper"
@@ -58,7 +58,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     // One 8-bit shared scale per tile row
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
     // Flat packed MXFP8: tileRows × blockSize elements
-    val fp8_out          = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
+    val elem_out         = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
     val valid_out        = Output(Bool())
   })
 
@@ -105,7 +105,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   rq.io.valid_in := peValidOut(0)(0)
 
   io.shared_scale_out := rq.io.shared_scale_out
-  io.fp8_out          := rq.io.fp8_out
+  io.elem_out         := rq.io.elem_out
   io.valid_out        := rq.io.valid_out
 }
 
