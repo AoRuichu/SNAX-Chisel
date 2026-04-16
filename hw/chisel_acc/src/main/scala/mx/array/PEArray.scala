@@ -21,7 +21,7 @@ import mx.requant.RequantFP8
  *       → elem_out / shared_scale_out / valid_out
  */
 class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
-  override def desiredName = "PE_Array_wrapper"
+  override def desiredName = "BFP_PE"
 
   val io = IO(new Bundle {
     // ── CSR & Control ────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ object PEArrayMain extends App {
 /** Emit all default configs. */
 object AllPEArrayMain extends App {
   import DefaultPEArrayConfigs._
-  Seq(e5m2_4x4, e4m3_4x4, e4m3_8x8).foreach { cfg =>
+  Seq(e5m2_4x4, e4m3_4x4, e3m2_4x4, e4m3_8x8).foreach { cfg =>
     println(
       s"Generating PEArray: ${cfg.macCfg.elementTypeA.name} x ${cfg.macCfg.elementTypeB.name}" +
       s" scale ${cfg.macCfg.stype.name} ${cfg.tileRows}x${cfg.tileCols} vec${cfg.vectorSize}"

@@ -42,7 +42,7 @@ object DefaultPEArrayConfigs {
   /** 4×4 tile, vec1, E5M2×E5M2 / UE8M0, block-32, E5M2 output */
   val e5m2_4x4 = PEArrayConfig(
     macCfg     = ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE8M0),
-    vectorSize = 1,
+    vectorSize = 4,
     tileRows   = 4,
     tileCols   = 4,
     requantCfg = RequantConfig(
@@ -56,7 +56,7 @@ object DefaultPEArrayConfigs {
   /** 4×4 tile, vec1, E4M3×E4M3 / UE8M0, block-32, E4M3 output */
   val e4m3_4x4 = PEArrayConfig(
     macCfg     = ScaleAddConfig(MXFormats.E4M3, MXFormats.E4M3, ScaleFormats.UE8M0),
-    vectorSize = 1,
+    vectorSize = 4,
     tileRows   = 4,
     tileCols   = 4,
     requantCfg = RequantConfig(
@@ -67,10 +67,24 @@ object DefaultPEArrayConfigs {
     )
   )
 
+    /** 4×4 tile, vec1, E4M3×E4M3 / UE8M0, block-32, E4M3 output */
+  val e3m2_4x4 = PEArrayConfig(
+    macCfg     = ScaleAddConfig(MXFormats.E3M2, MXFormats.E3M2, ScaleFormats.UE8M0),
+    vectorSize = 4,
+    tileRows   = 4,
+    tileCols   = 4,
+    requantCfg = RequantConfig(
+      blockSize  = 32,
+      tileRows   = 4,
+      tileCols   = 4,
+      outputType = MXFormats.E3M2
+    )
+  )
+
   /** 8×8 tile, vec1, E4M3×E4M3 / UE8M0, block-16, E4M3 output */
   val e4m3_8x8 = PEArrayConfig(
     macCfg     = ScaleAddConfig(MXFormats.E4M3, MXFormats.E4M3, ScaleFormats.UE8M0),
-    vectorSize = 1,
+    vectorSize = 4,
     tileRows   = 8,
     tileCols   = 8,
     requantCfg = RequantConfig(

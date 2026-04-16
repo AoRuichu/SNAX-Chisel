@@ -6,6 +6,7 @@ out
 generated/*
 !generated/fused_dot
 !generated/adaptive
+!generated/pe_array
 test_run_dir
 
 # Files

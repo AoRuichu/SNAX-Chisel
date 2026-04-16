@@ -59,9 +59,8 @@ module CustomOperator_INT8_to_INT8(	// src/main/scala/mx/mac/CustomOperator.scal
 
   assign io_outSign = io_inA[7] ^ io_inB[7];	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :19:17, :51:23
   assign io_outMant =
-    {2'h0,
-     {6'h0, io_inA[7] ? ~(io_inA[5:0]) + 6'h1 : io_inA[5:0]}
-       * {6'h0, io_inB[7] ? ~(io_inB[5:0]) + 6'h1 : io_inB[5:0]}};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :19:17, :22:20, :23:{21,27}, :24:26, :52:27, :53:14
+    {7'h0, io_inA[7] ? ~(io_inA[6:0]) + 7'h1 : io_inA[6:0]}
+    * {7'h0, io_inB[7] ? ~(io_inB[6:0]) + 7'h1 : io_inB[6:0]};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :19:17, :22:20, :23:{21,27}, :24:26, :52:27
 endmodule
 
 module ScaleAddition_INT8_to_INT8_scale_UE4M4(	// src/main/scala/mx/mac/ScaleAddition.scala:10:7
@@ -88,11 +87,11 @@ module ScaleAddition_INT8_to_INT8_scale_UE4M4(	// src/main/scala/mx/mac/ScaleAdd
        * {5'h0, |(io_inShareScaleB[7:4]), io_inShareScaleB[3:0]}} * {10'h0, io_inOpMant};	// src/main/scala/mx/mac/ScaleAddition.scala:10:7, :28:17, :32:20, :33:29, :55:41, :58:38
 endmodule
 
-module ScaleToFP32_INT8_x_INT8_UE4M4(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:7
-  input         io_inSign,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:97:14
-  input  [6:0]  io_inExp,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:97:14
-  input  [23:0] io_inMant,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:97:14
-  output [31:0] io_out	// src/main/scala/mx/mac/FusedDotProductUnit.scala:97:14
+module ScaleToFP32_INT8_x_INT8_UE4M4(	// src/main/scala/mx/mac/FP32Common.scala:93:7
+  input         io_inSign,	// src/main/scala/mx/mac/FP32Common.scala:97:14
+  input  [6:0]  io_inExp,	// src/main/scala/mx/mac/FP32Common.scala:97:14
+  input  [23:0] io_inMant,	// src/main/scala/mx/mac/FP32Common.scala:97:14
+  output [31:0] io_out	// src/main/scala/mx/mac/FP32Common.scala:97:14
 );
 
   wire [4:0]  lzc =
@@ -141,37 +140,37 @@ module ScaleToFP32_INT8_x_INT8_UE4M4(	// src/main/scala/mx/mac/FusedDotProductUn
                                                                                       : io_inMant[2]
                                                                                           ? 5'h15
                                                                                           : {4'hB,
-                                                                                             ~(io_inMant[1])};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:115:47
-  wire [54:0] shiftedMant = {31'h0, io_inMant} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:116:31
-  wire [6:0]  _adjustedExp_T_1 = io_inExp - {2'h0, lzc};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:138:30
-  wire [8:0]  _adjustedExp_T_4 = {{2{_adjustedExp_T_1[6]}}, _adjustedExp_T_1} + 9'h8E;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:138:{30,41}
-  wire        isUnderflow = $signed(_adjustedExp_T_4) < 9'sh1;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:138:41, :140:33
+                                                                                             ~(io_inMant[1])};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:115:47
+  wire [54:0] shiftedMant = {31'h0, io_inMant} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:116:31
+  wire [6:0]  _adjustedExp_T_1 = io_inExp - {2'h0, lzc};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:138:30
+  wire [8:0]  _adjustedExp_T_4 = {{2{_adjustedExp_T_1[6]}}, _adjustedExp_T_1} + 9'h8E;	// src/main/scala/mx/mac/FP32Common.scala:138:{30,41}
+  wire        isUnderflow = $signed(_adjustedExp_T_4) < 9'sh1;	// src/main/scala/mx/mac/FP32Common.scala:138:41, :140:33
   assign io_out =
     io_inMant == 24'h0 | isUnderflow
       ? 32'h0
       : {io_inSign,
          _adjustedExp_T_4 == 9'hFF ? 8'hFF : isUnderflow ? 8'h0 : _adjustedExp_T_4[7:0],
-         shiftedMant[22:0]};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:93:7, :112:26, :116:31, :126:30, :138:{41,53}, :139:33, :140:33, :142:21, :143:{21,63}, :146:{16,24,54}
+         shiftedMant[22:0]};	// src/main/scala/mx/mac/FP32Common.scala:93:7, :112:26, :116:31, :126:30, :138:{41,53}, :139:33, :140:33, :142:21, :143:{21,63}, :146:{16,24,54}
 endmodule
 
-module FP32Adder(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:16:7
-  input  [31:0] io_a,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:17:14
-                io_b,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:17:14
-  output [31:0] io_out	// src/main/scala/mx/mac/FusedDotProductUnit.scala:17:14
+module FP32Adder(	// src/main/scala/mx/mac/FP32Common.scala:16:7
+  input  [31:0] io_a,	// src/main/scala/mx/mac/FP32Common.scala:17:14
+                io_b,	// src/main/scala/mx/mac/FP32Common.scala:17:14
+  output [31:0] io_out	// src/main/scala/mx/mac/FP32Common.scala:17:14
 );
 
-  wire [23:0]  valA_M = {|(io_a[30:23]), io_a[22:0]};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:24:20, :25:{19,27,36}
-  wire [23:0]  valB_M = {|(io_b[30:23]), io_b[22:0]};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:28:20, :29:{19,27,36}
-  wire [8:0]   _expDiff_T_2 = {1'h0, io_a[30:23]} - {1'h0, io_b[30:23]};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:24:20, :28:20, :32:30, :33:26
+  wire [23:0]  valA_M = {|(io_a[30:23]), io_a[22:0]};	// src/main/scala/mx/mac/FP32Common.scala:24:20, :25:{19,27,36}
+  wire [23:0]  valB_M = {|(io_b[30:23]), io_b[22:0]};	// src/main/scala/mx/mac/FP32Common.scala:28:20, :29:{19,27,36}
+  wire [8:0]   _expDiff_T_2 = {1'h0, io_a[30:23]} - {1'h0, io_b[30:23]};	// src/main/scala/mx/mac/FP32Common.scala:24:20, :28:20, :32:30, :33:26
   wire         aGreater =
-    $signed(_expDiff_T_2) > 9'sh0 | _expDiff_T_2 == 9'h0 & valA_M >= valB_M;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:25:19, :29:19, :32:30, :33:{26,32,44,52,62}
-  wire [23:0]  nearM = aGreater ? valB_M : valA_M;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:25:19, :29:19, :33:32, :36:19
-  wire [8:0]   absExpDiff = aGreater ? _expDiff_T_2 : 9'h0 - _expDiff_T_2;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:32:30, :33:{26,32,44}, :40:{28,56}
-  wire [511:0] _stickyFromAlign_T = 512'h1 << absExpDiff;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:40:28, :44:42
-  wire [26:0]  _stickyFromAlign_T_1 = _stickyFromAlign_T[26:0] - 27'h1;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:44:{42,57}
-  wire [27:0]  _GEN = {1'h0, aGreater ? valA_M : valB_M, 3'h0};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:25:19, :29:19, :33:{26,32}, :37:19, :41:28, :51:27
-  wire [27:0]  _GEN_0 = {1'h0, {nearM, 3'h0} >> absExpDiff};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:33:26, :36:19, :40:28, :41:28, :42:33, :51:27
-  wire [27:0]  resMag = io_a[31] ^ io_b[31] ? _GEN - _GEN_0 : _GEN + _GEN_0;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:23:20, :27:20, :47:23, :49:25, :51:27, :52:12
+    $signed(_expDiff_T_2) > 9'sh0 | _expDiff_T_2 == 9'h0 & valA_M >= valB_M;	// src/main/scala/mx/mac/FP32Common.scala:25:19, :29:19, :32:30, :33:{26,32,44,52,62}
+  wire [23:0]  nearM = aGreater ? valB_M : valA_M;	// src/main/scala/mx/mac/FP32Common.scala:25:19, :29:19, :33:32, :36:19
+  wire [8:0]   absExpDiff = aGreater ? _expDiff_T_2 : 9'h0 - _expDiff_T_2;	// src/main/scala/mx/mac/FP32Common.scala:32:30, :33:{26,32,44}, :40:{28,56}
+  wire [511:0] _stickyFromAlign_T = 512'h1 << absExpDiff;	// src/main/scala/mx/mac/FP32Common.scala:40:28, :44:42
+  wire [26:0]  _stickyFromAlign_T_1 = _stickyFromAlign_T[26:0] - 27'h1;	// src/main/scala/mx/mac/FP32Common.scala:44:{42,57}
+  wire [27:0]  _GEN = {1'h0, aGreater ? valA_M : valB_M, 3'h0};	// src/main/scala/mx/mac/FP32Common.scala:25:19, :29:19, :33:{26,32}, :37:19, :41:28, :51:27
+  wire [27:0]  _GEN_0 = {1'h0, {nearM, 3'h0} >> absExpDiff};	// src/main/scala/mx/mac/FP32Common.scala:33:26, :36:19, :40:28, :41:28, :42:33, :51:27
+  wire [27:0]  resMag = io_a[31] ^ io_b[31] ? _GEN - _GEN_0 : _GEN + _GEN_0;	// src/main/scala/mx/mac/FP32Common.scala:23:20, :27:20, :47:23, :49:25, :51:27, :52:12
   wire [4:0]   resLZC =
     resMag[27]
       ? 5'h0
@@ -226,213 +225,213 @@ module FP32Adder(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:16:7
                                                                                                       : resMag[2]
                                                                                                           ? 5'h19
                                                                                                           : {4'hD,
-                                                                                                             ~(resMag[1])};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:49:25, :58:42
-  wire [58:0]  normShift = {31'h0, resMag} << resLZC;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:49:25, :59:26
+                                                                                                             ~(resMag[1])};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:49:25, :58:42
+  wire [58:0]  normShift = {31'h0, resMag} << resLZC;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:49:25, :59:26
   wire [23:0]  roundedM =
     {1'h0, normShift[26:4]}
     + {23'h0,
        normShift[3]
          & (normShift[4] | normShift[2] | (|(normShift[1:0]))
-            | (|(nearM & _stickyFromAlign_T_1[26:3])))};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:33:26, :36:19, :44:{34,57,72}, :59:26, :62:28, :63:28, :64:28, :65:{28,35}, :67:{27,37,53}, :68:25, :80:36
+            | (|(nearM & _stickyFromAlign_T_1[26:3])))};	// src/main/scala/mx/mac/FP32Common.scala:33:26, :36:19, :44:{34,57,72}, :59:26, :62:28, :63:28, :64:28, :65:{28,35}, :67:{27,37,53}, :68:25, :80:36
   wire [8:0]   _finalE_wide_T_9 =
     {1'h0, aGreater ? io_a[30:23] : io_b[30:23]} - {{4{resLZC[4]}}, resLZC}
-    + {8'h0, roundedM[23]} + 9'h1;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FusedDotProductUnit.scala:24:20, :25:27, :28:20, :33:{26,32}, :35:19, :68:25, :71:27, :73:{33,49,55}
+    + {8'h0, roundedM[23]} + 9'h1;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:24:20, :25:27, :28:20, :33:{26,32}, :35:19, :68:25, :71:27, :73:{33,49,55}
   assign io_out =
     resMag == 28'h0 | $signed(_finalE_wide_T_9) < 9'sh1
       ? 32'h0
       : {aGreater ? io_a[31] : io_b[31],
          _finalE_wide_T_9 == 9'hFF
            ? 31'h7F800000
-           : {_finalE_wide_T_9[7:0], roundedM[22:0]}};	// src/main/scala/mx/mac/FusedDotProductUnit.scala:16:7, :23:20, :27:20, :33:32, :49:25, :55:20, :68:25, :72:27, :73:{49,55}, :76:{30,38,53}, :77:35, :79:16, :80:{17,36}, :81:{36,64}
+           : {_finalE_wide_T_9[7:0], roundedM[22:0]}};	// src/main/scala/mx/mac/FP32Common.scala:16:7, :23:20, :27:20, :33:32, :49:25, :55:20, :68:25, :72:27, :73:{49,55}, :76:{30,38,53}, :77:35, :79:16, :80:{17,36}, :81:{36,64}
 endmodule
 
-module BFP_PE(	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-  input         clock,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-                reset,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-  input  [31:0] io_op_a_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-                io_op_b_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-  input  [7:0]  io_share_exp_A_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-                io_share_exp_B_i,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-  input         io_validIn,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-                io_resetAcc,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-  output        io_validOut,	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-  output [31:0] io_accOut	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
+module BFP_PE(	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+  input         clock,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+                reset,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+  input  [31:0] io_op_a_i,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+                io_op_b_i,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+  input  [7:0]  io_share_exp_A_i,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+                io_share_exp_B_i,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+  input         io_validIn,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+                io_resetAcc,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+  output        io_validOut,	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+  output [31:0] io_accOut	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
 );
 
-  wire [31:0] _accAdder_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:324:24
-  wire [31:0] _reducedSum_nextLevel_adder_2_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-  wire [31:0] _reducedSum_nextLevel_adder_1_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-  wire [31:0] _reducedSum_nextLevel_adder_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-  wire [31:0] _reducedSum_conv_3_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-  wire        _reducedSum_sa_3_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [6:0]  _reducedSum_sa_3_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [23:0] _reducedSum_sa_3_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire        _reducedSum_op_3_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [13:0] _reducedSum_op_3_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [31:0] _reducedSum_conv_2_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-  wire        _reducedSum_sa_2_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [6:0]  _reducedSum_sa_2_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [23:0] _reducedSum_sa_2_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire        _reducedSum_op_2_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [13:0] _reducedSum_op_2_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [31:0] _reducedSum_conv_1_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-  wire        _reducedSum_sa_1_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [6:0]  _reducedSum_sa_1_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [23:0] _reducedSum_sa_1_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire        _reducedSum_op_1_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [13:0] _reducedSum_op_1_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [31:0] _reducedSum_conv_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-  wire        _reducedSum_sa_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [6:0]  _reducedSum_sa_io_outExp;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire [23:0] _reducedSum_sa_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-  wire        _reducedSum_op_io_outSign;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire [13:0] _reducedSum_op_io_outMant;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-  wire        _asyncRstN_T = ~reset;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:320:20
-  reg  [31:0] accReg;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:321:46
-  reg         validReg;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:322:46
-  always @(posedge clock or posedge _asyncRstN_T) begin	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :320:20
-    if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :320:20
-      accReg <= 32'h0;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:321:46
-      validReg <= 1'h0;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :322:46
+  wire [31:0] _accAdder_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:220:24
+  wire [31:0] _reducedSum_nextLevel_adder_2_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+  wire [31:0] _reducedSum_nextLevel_adder_1_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+  wire [31:0] _reducedSum_nextLevel_adder_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+  wire [31:0] _reducedSum_conv_3_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+  wire        _reducedSum_sa_3_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [6:0]  _reducedSum_sa_3_io_outExp;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [23:0] _reducedSum_sa_3_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire        _reducedSum_op_3_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [13:0] _reducedSum_op_3_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [31:0] _reducedSum_conv_2_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+  wire        _reducedSum_sa_2_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [6:0]  _reducedSum_sa_2_io_outExp;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [23:0] _reducedSum_sa_2_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire        _reducedSum_op_2_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [13:0] _reducedSum_op_2_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [31:0] _reducedSum_conv_1_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+  wire        _reducedSum_sa_1_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [6:0]  _reducedSum_sa_1_io_outExp;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [23:0] _reducedSum_sa_1_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire        _reducedSum_op_1_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [13:0] _reducedSum_op_1_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [31:0] _reducedSum_conv_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+  wire        _reducedSum_sa_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [6:0]  _reducedSum_sa_io_outExp;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire [23:0] _reducedSum_sa_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+  wire        _reducedSum_op_io_outSign;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire [13:0] _reducedSum_op_io_outMant;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+  wire        _asyncRstN_T = ~reset;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:216:20
+  reg  [31:0] accReg;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:217:46
+  reg         validReg;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:218:46
+  always @(posedge clock or posedge _asyncRstN_T) begin	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :216:20
+    if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :216:20
+      accReg <= 32'h0;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:217:46
+      validReg <= 1'h0;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :218:46
     end
-    else begin	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-      if (io_resetAcc)	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-        accReg <= 32'h0;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:321:46
-      else if (io_validIn)	// src/main/scala/mx/mac/FusedDotProductUnit.scala:188:14
-        accReg <= _accAdder_io_out;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:321:46, :324:24
-      validReg <= ~io_resetAcc & io_validIn;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:322:46, :328:21, :330:14, :331:26
+    else begin	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+      if (io_resetAcc)	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+        accReg <= 32'h0;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:217:46
+      else if (io_validIn)	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:47:14
+        accReg <= _accAdder_io_out;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:217:46, :220:24
+      validReg <= ~io_resetAcc & io_validIn;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:218:46, :224:21, :226:14, :227:26
     end
   end // always @(posedge, posedge)
-  `ifdef ENABLE_INITIAL_REG_	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-    `ifdef FIRRTL_BEFORE_INITIAL	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-      `FIRRTL_BEFORE_INITIAL	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
+  `ifdef ENABLE_INITIAL_REG_	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+    `ifdef FIRRTL_BEFORE_INITIAL	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+      `FIRRTL_BEFORE_INITIAL	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
     `endif // FIRRTL_BEFORE_INITIAL
-    initial begin	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-      automatic logic [31:0] _RANDOM[0:1];	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-      `ifdef INIT_RANDOM_PROLOG_	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-        `INIT_RANDOM_PROLOG_	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
+    initial begin	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+      automatic logic [31:0] _RANDOM[0:1];	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+      `ifdef INIT_RANDOM_PROLOG_	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+        `INIT_RANDOM_PROLOG_	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
       `endif // INIT_RANDOM_PROLOG_
-      `ifdef RANDOMIZE_REG_INIT	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
+      `ifdef RANDOMIZE_REG_INIT	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
         for (logic [1:0] i = 2'h0; i < 2'h2; i += 2'h1) begin
-          _RANDOM[i[0]] = `RANDOM;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-        end	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-        accReg = _RANDOM[1'h0];	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :321:46
-        validReg = _RANDOM[1'h1][0];	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :322:46
+          _RANDOM[i[0]] = `RANDOM;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+        end	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+        accReg = _RANDOM[1'h0];	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :217:46
+        validReg = _RANDOM[1'h1][0];	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :218:46
       `endif // RANDOMIZE_REG_INIT
-      if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :320:20
-        accReg = 32'h0;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:321:46
-        validReg = 1'h0;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :322:46
+      if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :216:20
+        accReg = 32'h0;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:217:46
+        validReg = 1'h0;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :218:46
       end
     end // initial
-    `ifdef FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
-      `FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7
+    `ifdef FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
+      `FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7
     `endif // FIRRTL_AFTER_INITIAL
   `endif // ENABLE_INITIAL_REG_
-  CustomOperator_INT8_to_INT8 reducedSum_op (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inA     (io_op_a_i[7:0]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:290:29
-    .io_inB     (io_op_b_i[7:0]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:291:29
+  CustomOperator_INT8_to_INT8 reducedSum_op (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inA     (io_op_a_i[7:0]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:175:29
+    .io_inB     (io_op_b_i[7:0]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:176:29
     .io_outSign (_reducedSum_op_io_outSign),
     .io_outMant (_reducedSum_op_io_outMant)
   );
-  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inOpSign      (_reducedSum_op_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inOpMant      (_reducedSum_op_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
+  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inOpSign      (_reducedSum_op_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inOpMant      (_reducedSum_op_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
     .io_inShareScaleA (io_share_exp_A_i),
     .io_inShareScaleB (io_share_exp_B_i),
     .io_outSign       (_reducedSum_sa_io_outSign),
     .io_outExp        (_reducedSum_sa_io_outExp),
     .io_outMant       (_reducedSum_sa_io_outMant)
   );
-  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-    .io_inSign (_reducedSum_sa_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inExp  (_reducedSum_sa_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inMant (_reducedSum_sa_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
+  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+    .io_inSign (_reducedSum_sa_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inExp  (_reducedSum_sa_io_outExp),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inMant (_reducedSum_sa_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
     .io_out    (_reducedSum_conv_io_out)
   );
-  CustomOperator_INT8_to_INT8 reducedSum_op_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inA     (io_op_a_i[15:8]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:290:29
-    .io_inB     (io_op_b_i[15:8]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:291:29
+  CustomOperator_INT8_to_INT8 reducedSum_op_1 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inA     (io_op_a_i[15:8]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:175:29
+    .io_inB     (io_op_b_i[15:8]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:176:29
     .io_outSign (_reducedSum_op_1_io_outSign),
     .io_outMant (_reducedSum_op_1_io_outMant)
   );
-  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inOpSign      (_reducedSum_op_1_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inOpMant      (_reducedSum_op_1_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
+  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa_1 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inOpSign      (_reducedSum_op_1_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inOpMant      (_reducedSum_op_1_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
     .io_inShareScaleA (io_share_exp_A_i),
     .io_inShareScaleB (io_share_exp_B_i),
     .io_outSign       (_reducedSum_sa_1_io_outSign),
     .io_outExp        (_reducedSum_sa_1_io_outExp),
     .io_outMant       (_reducedSum_sa_1_io_outMant)
   );
-  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-    .io_inSign (_reducedSum_sa_1_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inExp  (_reducedSum_sa_1_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inMant (_reducedSum_sa_1_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
+  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv_1 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+    .io_inSign (_reducedSum_sa_1_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inExp  (_reducedSum_sa_1_io_outExp),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inMant (_reducedSum_sa_1_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
     .io_out    (_reducedSum_conv_1_io_out)
   );
-  CustomOperator_INT8_to_INT8 reducedSum_op_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inA     (io_op_a_i[23:16]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:290:29
-    .io_inB     (io_op_b_i[23:16]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:291:29
+  CustomOperator_INT8_to_INT8 reducedSum_op_2 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inA     (io_op_a_i[23:16]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:175:29
+    .io_inB     (io_op_b_i[23:16]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:176:29
     .io_outSign (_reducedSum_op_2_io_outSign),
     .io_outMant (_reducedSum_op_2_io_outMant)
   );
-  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inOpSign      (_reducedSum_op_2_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inOpMant      (_reducedSum_op_2_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
+  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa_2 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inOpSign      (_reducedSum_op_2_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inOpMant      (_reducedSum_op_2_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
     .io_inShareScaleA (io_share_exp_A_i),
     .io_inShareScaleB (io_share_exp_B_i),
     .io_outSign       (_reducedSum_sa_2_io_outSign),
     .io_outExp        (_reducedSum_sa_2_io_outExp),
     .io_outMant       (_reducedSum_sa_2_io_outMant)
   );
-  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-    .io_inSign (_reducedSum_sa_2_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inExp  (_reducedSum_sa_2_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inMant (_reducedSum_sa_2_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
+  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv_2 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+    .io_inSign (_reducedSum_sa_2_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inExp  (_reducedSum_sa_2_io_outExp),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inMant (_reducedSum_sa_2_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
     .io_out    (_reducedSum_conv_2_io_out)
   );
-  CustomOperator_INT8_to_INT8 reducedSum_op_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inA     (io_op_a_i[31:24]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:290:29
-    .io_inB     (io_op_b_i[31:24]),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:291:29
+  CustomOperator_INT8_to_INT8 reducedSum_op_3 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inA     (io_op_a_i[31:24]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:175:29
+    .io_inB     (io_op_b_i[31:24]),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:176:29
     .io_outSign (_reducedSum_op_3_io_outSign),
     .io_outMant (_reducedSum_op_3_io_outMant)
   );
-  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inOpSign      (_reducedSum_op_3_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
-    .io_inOpMant      (_reducedSum_op_3_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:289:22
+  ScaleAddition_INT8_to_INT8_scale_UE4M4 reducedSum_sa_3 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inOpSign      (_reducedSum_op_3_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
+    .io_inOpMant      (_reducedSum_op_3_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:174:22
     .io_inShareScaleA (io_share_exp_A_i),
     .io_inShareScaleB (io_share_exp_B_i),
     .io_outSign       (_reducedSum_sa_3_io_outSign),
     .io_outExp        (_reducedSum_sa_3_io_outExp),
     .io_outMant       (_reducedSum_sa_3_io_outMant)
   );
-  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv_3 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-    .io_inSign (_reducedSum_sa_3_io_outSign),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inExp  (_reducedSum_sa_3_io_outExp),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
-    .io_inMant (_reducedSum_sa_3_io_outMant),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:293:22
+  ScaleToFP32_INT8_x_INT8_UE4M4 reducedSum_conv_3 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+    .io_inSign (_reducedSum_sa_3_io_outSign),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inExp  (_reducedSum_sa_3_io_outExp),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
+    .io_inMant (_reducedSum_sa_3_io_outMant),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:178:22
     .io_out    (_reducedSum_conv_3_io_out)
   );
-  FP32Adder reducedSum_nextLevel_adder (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-    .io_a   (_reducedSum_conv_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-    .io_b   (_reducedSum_conv_1_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
+  FP32Adder reducedSum_nextLevel_adder (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+    .io_a   (_reducedSum_conv_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+    .io_b   (_reducedSum_conv_1_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
     .io_out (_reducedSum_nextLevel_adder_io_out)
   );
-  FP32Adder reducedSum_nextLevel_adder_1 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-    .io_a   (_reducedSum_conv_2_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
-    .io_b   (_reducedSum_conv_3_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:300:24
+  FP32Adder reducedSum_nextLevel_adder_1 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+    .io_a   (_reducedSum_conv_2_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
+    .io_b   (_reducedSum_conv_3_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:185:24
     .io_out (_reducedSum_nextLevel_adder_1_io_out)
   );
-  FP32Adder reducedSum_nextLevel_adder_2 (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-    .io_a   (_reducedSum_nextLevel_adder_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
-    .io_b   (_reducedSum_nextLevel_adder_1_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
+  FP32Adder reducedSum_nextLevel_adder_2 (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+    .io_a   (_reducedSum_nextLevel_adder_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
+    .io_b   (_reducedSum_nextLevel_adder_1_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
     .io_out (_reducedSum_nextLevel_adder_2_io_out)
   );
-  FP32Adder accAdder (	// src/main/scala/mx/mac/FusedDotProductUnit.scala:324:24
-    .io_a   (accReg),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:321:46
-    .io_b   (_reducedSum_nextLevel_adder_2_io_out),	// src/main/scala/mx/mac/FusedDotProductUnit.scala:221:29
+  FP32Adder accAdder (	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:220:24
+    .io_a   (accReg),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:217:46
+    .io_b   (_reducedSum_nextLevel_adder_2_io_out),	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:87:29
     .io_out (_accAdder_io_out)
   );
-  assign io_validOut = validReg;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :322:46
-  assign io_accOut = accReg;	// src/main/scala/mx/mac/FusedDotProductUnit.scala:175:7, :321:46
+  assign io_validOut = validReg;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :218:46
+  assign io_accOut = accReg;	// src/main/scala/mx/mac/FDPUWithCustomReductionTree.scala:31:7, :217:46
 endmodule
 
