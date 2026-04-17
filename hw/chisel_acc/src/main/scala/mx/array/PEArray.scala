@@ -2,20 +2,19 @@ package mx.array
 
 import chisel3._
 import chisel3.util._
-import mx.mac.FusedDotProductUnit
-import mx.requant.RequantFP8
+import mx.mac.FDPUWithCustomReductionTree
+import mx.requant.{RequantFP8, RequantINT8, RequantBF16}
 
+// ============================================================
+// FP8 / FP6 output wrapper
+// ============================================================
 /**
- * Top-level PE array wrapper integrating:
- *   - tileRows × tileCols FusedDotProductUnit PEs
- *   - RequantFP8 requantization block
- *
- * Port names are aligned with PE_Array_wrapper.sv so that the generated
- * Verilog can directly replace it.
+ * Top-level PE array wrapper using FDPUWithCustomReductionTree PEs and
+ * FP32→MXFP8/FP6 (RequantFP8) requantization.
  *
  * Data flow:
  *   op_a_i / op_b_i / shared_exp_*_i
- *       → FusedDotProductUnit (tileRows × tileCols)
+ *       → FDPUWithCustomReductionTree (tileRows × tileCols)
  *       → results_o (FP32, tileRows × tileCols)
  *       → RequantFP8
  *       → elem_out / shared_scale_out / valid_out
@@ -54,10 +53,10 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     // [0:TileRows-1][0:TileCols-1][DST_WIDTH-1:0] — matches SV results_o
     val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
-    // ── Requantized MXFP8 Output ─────────────────────────────────────────
+    // ── Requantized FP8/FP6 Output ────────────────────────────────────────
     // One 8-bit shared scale per tile row
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
-    // Flat packed MXFP8: tileRows × blockSize elements
+    // Flat packed output: tileRows × blockSize elements
     val elem_out         = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
     val valid_out        = Output(Bool())
   })
@@ -67,16 +66,13 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   io.B_ready_o := !io.send_output_i
   val internal_valid = io.A_valid_i && io.B_valid_i
 
-  // ── PE Array: tileRows × tileCols FusedDotProductUnits ──────────────────
-  // Capture per-PE validOut to forward to RequantFP8; use PE[0][0] as clock
-  // reference since all PEs receive the same validIn and resetAcc.
+  // ── PE Array: tileRows × tileCols FDPUWithCustomReductionTree units ──────
   val peValidOut = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, Bool())))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FusedDotProductUnit(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUWithCustomReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
 
-      // Inputs: row r shares operand A and scale A; col c shares operand B and scale B
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
       pe.io.share_exp_A_i := io.shared_exp_A_i(r)
@@ -89,19 +85,15 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     }
   }
 
-  // ── RequantFP8: FP32 → MXFP8 ─────────────────────────────────────────────
+  // ── RequantFP8: FP32 → MXFP8/FP6 ────────────────────────────────────────
   val rq = Module(new RequantFP8(cfg.requantCfg))
 
   // Pack FP32 outputs into a flat UInt, row-major, big-endian:
-  //   (row=0, col=0) occupies the most-significant 32 bits,
-  //   which matches RequantFP8.extractFP32's indexing:
-  //     k = row*tileCols + col
-  //     fp32_in[nIn*32-1 - k*32 : nIn*32-(k+1)*32]
+  //   (row=0, col=0) occupies the most-significant 32 bits.
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield io.results_o(r)(c)
   )
-  // All PEs are synchronised; use PE[0][0] as the valid reference
   rq.io.valid_in := peValidOut(0)(0)
 
   io.shared_scale_out := rq.io.shared_scale_out
@@ -110,36 +102,342 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
 }
 
 // ============================================================
-// Emission helpers
+// INT8 output wrapper
+// ============================================================
+/**
+ * PE array with FDPUWithCustomReductionTree PEs and FP32→INT8 requantization.
+ *
+ * Data flow:
+ *   op_a_i / op_b_i / shared_exp_*_i
+ *       → FDPUWithCustomReductionTree (tileRows × tileCols)
+ *       → results_o (FP32)
+ *       → RequantINT8
+ *       → int8_out / shared_scale_out / valid_out
+ */
+class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
+  override def desiredName = "BFP_PE"
+
+  val io = IO(new Bundle {
+    // ── CSR & Control ────────────────────────────────────────────────────
+    val A_mode           = Input(UInt(3.W))
+    val B_mode           = Input(UInt(3.W))
+    val result_mode_quan = Input(UInt(2.W))
+    val group_size       = Input(UInt(2.W))
+    val shared_format_i  = Input(UInt(4.W))
+
+    val acc_reset_i      = Input(Bool())
+    val send_output_i    = Input(Bool())
+
+    // ── Handshakes ────────────────────────────────────────────────────────
+    val A_valid_i        = Input(Bool())
+    val B_valid_i        = Input(Bool())
+    val A_ready_o        = Output(Bool())
+    val B_ready_o        = Output(Bool())
+
+    // ── Data Input ───────────────────────────────────────────────────────
+    val op_a_i           = Input(Vec(cfg.tileRows, UInt(cfg.srcWidthA.W)))
+    val op_b_i           = Input(Vec(cfg.tileCols, UInt(cfg.srcWidthB.W)))
+    val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
+    val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
+
+    // ── FP32 Accumulator Output ──────────────────────────────────────────
+    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
+
+    // ── Requantized INT8 Output ───────────────────────────────────────────
+    // One 8-bit UE8M0 shared scale per tile row
+    val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
+    // Flat packed INT8: tileRows × blockSize elements (two's complement)
+    val int8_out         = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * 8).W))
+    val valid_out        = Output(Bool())
+  })
+
+  // ── Handshake logic ──────────────────────────────────────────────────────
+  io.A_ready_o := !io.send_output_i
+  io.B_ready_o := !io.send_output_i
+  val internal_valid = io.A_valid_i && io.B_valid_i
+
+  // ── PE Array ──────────────────────────────────────────────────────────────
+  val peValidOut = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, Bool())))
+
+  for (r <- 0 until cfg.tileRows) {
+    for (c <- 0 until cfg.tileCols) {
+      val pe = Module(new FDPUWithCustomReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+
+      pe.io.op_a_i        := io.op_a_i(r)
+      pe.io.op_b_i        := io.op_b_i(c)
+      pe.io.share_exp_A_i := io.shared_exp_A_i(r)
+      pe.io.share_exp_B_i := io.shared_exp_B_i(c)
+      pe.io.validIn       := internal_valid
+      pe.io.resetAcc      := io.acc_reset_i
+
+      io.results_o(r)(c) := pe.io.accOut
+      peValidOut(r)(c)   := pe.io.validOut
+    }
+  }
+
+  // ── RequantINT8: FP32 → INT8 ──────────────────────────────────────────────
+  val rq = Module(new RequantINT8(cfg.requantCfg))
+
+  rq.io.fp32_in := Cat(
+    for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
+      yield io.results_o(r)(c)
+  )
+  rq.io.valid_in := peValidOut(0)(0)
+
+  io.shared_scale_out := rq.io.shared_scale_out
+  io.int8_out         := rq.io.int8_out
+  io.valid_out        := rq.io.valid_out
+}
+
+// ============================================================
+// BF16 output wrapper
+// ============================================================
+/**
+ * PE array with FDPUWithCustomReductionTree PEs and FP32→BF16 requantization.
+ *
+ * BF16 is a purely combinational per-element pass-through (top 16 bits of FP32
+ * with RNE rounding). No block buffering, no shared scale.
+ *
+ * Data flow:
+ *   op_a_i / op_b_i / shared_exp_*_i
+ *       → FDPUWithCustomReductionTree (tileRows × tileCols)
+ *       → results_o (FP32)
+ *       → RequantBF16
+ *       → bf16_out / valid_out
+ */
+class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
+  override def desiredName = "BFP_PE"
+
+  val io = IO(new Bundle {
+    // ── CSR & Control ────────────────────────────────────────────────────
+    val A_mode           = Input(UInt(3.W))
+    val B_mode           = Input(UInt(3.W))
+    val result_mode_quan = Input(UInt(2.W))
+    val group_size       = Input(UInt(2.W))
+    val shared_format_i  = Input(UInt(4.W))
+
+    val acc_reset_i      = Input(Bool())
+    val send_output_i    = Input(Bool())
+
+    // ── Handshakes ────────────────────────────────────────────────────────
+    val A_valid_i        = Input(Bool())
+    val B_valid_i        = Input(Bool())
+    val A_ready_o        = Output(Bool())
+    val B_ready_o        = Output(Bool())
+
+    // ── Data Input ───────────────────────────────────────────────────────
+    val op_a_i           = Input(Vec(cfg.tileRows, UInt(cfg.srcWidthA.W)))
+    val op_b_i           = Input(Vec(cfg.tileCols, UInt(cfg.srcWidthB.W)))
+    val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
+    val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
+
+    // ── FP32 Accumulator Output ──────────────────────────────────────────
+    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
+
+    // ── Requantized BF16 Output ───────────────────────────────────────────
+    // Flat packed BF16: tileRows × tileCols elements, big-endian
+    val bf16_out         = Output(UInt((cfg.tileRows * cfg.tileCols * 16).W))
+    val valid_out        = Output(Bool())
+  })
+
+  // ── Handshake logic ──────────────────────────────────────────────────────
+  io.A_ready_o := !io.send_output_i
+  io.B_ready_o := !io.send_output_i
+  val internal_valid = io.A_valid_i && io.B_valid_i
+
+  // ── PE Array ──────────────────────────────────────────────────────────────
+  val peValidOut = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, Bool())))
+
+  for (r <- 0 until cfg.tileRows) {
+    for (c <- 0 until cfg.tileCols) {
+      val pe = Module(new FDPUWithCustomReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+
+      pe.io.op_a_i        := io.op_a_i(r)
+      pe.io.op_b_i        := io.op_b_i(c)
+      pe.io.share_exp_A_i := io.shared_exp_A_i(r)
+      pe.io.share_exp_B_i := io.shared_exp_B_i(c)
+      pe.io.validIn       := internal_valid
+      pe.io.resetAcc      := io.acc_reset_i
+
+      io.results_o(r)(c) := pe.io.accOut
+      peValidOut(r)(c)   := pe.io.validOut
+    }
+  }
+
+  // ── RequantBF16: FP32 → BF16 ─────────────────────────────────────────────
+  val rq = Module(new RequantBF16(cfg.tileRows, cfg.tileCols))
+
+  rq.io.fp32_in := Cat(
+    for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
+      yield io.results_o(r)(c)
+  )
+  rq.io.valid_in := peValidOut(0)(0)
+
+  io.bf16_out  := rq.io.bf16_out
+  io.valid_out := rq.io.valid_out
+}
+
+// ============================================================
+// Emission helpers — shared directory-name utility
 // ============================================================
 
-/** Emit the default 4×4 E5M2 array. */
+private object EmitDir {
+  /** Common target-dir pattern: <tileRows>x<tileCols>_<typeA>_<typeB>_<scale>_vec<v>_<outTag> */
+  def fp8(cfg: PEArrayConfig): String =
+    s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
+    s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
+    s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}" +
+    s"_${cfg.requantCfg.outputType.name}_blk${cfg.requantCfg.blockSize}"
+
+  def int8(cfg: PEArrayINT8Config): String =
+    s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
+    s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
+    s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}" +
+    s"_INT8_blk${cfg.requantCfg.blockSize}"
+
+  def bf16(cfg: PEArrayBF16Config): String =
+    s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
+    s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
+    s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}_BF16"
+}
+
+// ============================================================
+// Emission helpers — generation App objects
+// ============================================================
+
+/** Emit the default 4×4 E5M2 array with FP8 output. */
 object PEArrayMain extends App {
   import DefaultPEArrayConfigs._
   val cfg = e5m2_4x4
-  emitVerilog(
-    new PEArrayWrapper(cfg),
-    Array("--target-dir",
-      s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
-      s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
-      s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}")
-  )
+  emitVerilog(new PEArrayWrapper(cfg), Array("--target-dir", EmitDir.fp8(cfg)))
 }
 
-/** Emit all default configs. */
+/** Emit all FP8/FP6 output configs: symmetric and asymmetric MAC pairs. */
 object AllPEArrayMain extends App {
-  import DefaultPEArrayConfigs._
-  Seq(e5m2_4x4, e4m3_4x4, e3m2_4x4, e4m3_8x8).foreach { cfg =>
+  import mx.mac.{MXFormats, ScaleFormats, ScaleAddConfig}
+  import mx.requant.RequantConfig
+
+  // ── Tile sizes + block sizes ────────────────────────────────────────────
+  val tileConfigs = Seq(
+    (4, 4, 32),   // 4×4 tile, block-32
+    (8, 8, 16)    // 8×8 tile, block-16
+  )
+
+  // ── MAC input pairs (symmetric + asymmetric) ────────────────────────────
+  val macPairs = Seq(
+    (MXFormats.E5M2, MXFormats.E5M2),
+    (MXFormats.E4M3, MXFormats.E4M3),
+    (MXFormats.E3M2, MXFormats.E3M2),
+    (MXFormats.INT8, MXFormats.E5M2),
+    (MXFormats.INT8, MXFormats.E4M3),
+    (MXFormats.E5M2, MXFormats.E4M3)
+  )
+
+  // ── Output element types (FP8 and FP6) ──────────────────────────────────
+  val outputTypes = Seq(
+    MXFormats.E5M2,   // FP8
+    MXFormats.E4M3,   // FP8
+    MXFormats.E3M2,   // FP6
+    MXFormats.E2M3    // FP6
+  )
+
+  val vecSize = 4
+  val scale   = ScaleFormats.UE8M0
+
+  for {
+    (typeA, typeB) <- macPairs
+    (rows, cols, blk) <- tileConfigs
+    outType <- outputTypes
+  } {
+    val cfg = PEArrayConfig(
+      macCfg     = ScaleAddConfig(typeA, typeB, scale),
+      vectorSize = vecSize,
+      tileRows   = rows,
+      tileCols   = cols,
+      requantCfg = RequantConfig(blk, rows, cols, outType)
+    )
     println(
-      s"Generating PEArray: ${cfg.macCfg.elementTypeA.name} x ${cfg.macCfg.elementTypeB.name}" +
-      s" scale ${cfg.macCfg.stype.name} ${cfg.tileRows}x${cfg.tileCols} vec${cfg.vectorSize}"
+      s"[FP8/FP6] ${typeA.name}×${typeB.name} scale ${scale.name} " +
+      s"${rows}x${cols} vec${vecSize} → ${outType.name} blk${blk}"
     )
-    emitVerilog(
-      new PEArrayWrapper(cfg),
-      Array("--target-dir",
-        s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
-        s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
-        s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}")
+    emitVerilog(new PEArrayWrapper(cfg), Array("--target-dir", EmitDir.fp8(cfg)))
+  }
+}
+
+/** Emit all INT8 output configs: symmetric and asymmetric MAC pairs. */
+object AllPEArrayINT8Main extends App {
+  import mx.mac.{MXFormats, ScaleFormats, ScaleAddConfig}
+  import mx.requant.RequantINT8Config
+
+  val tileConfigs = Seq(
+    (4, 4, 32),
+    (8, 8, 16)
+  )
+
+  val macPairs = Seq(
+    (MXFormats.E5M2, MXFormats.E5M2),
+    (MXFormats.E4M3, MXFormats.E4M3),
+    (MXFormats.INT8, MXFormats.E5M2),
+    (MXFormats.INT8, MXFormats.E4M3),
+    (MXFormats.E5M2, MXFormats.E4M3)
+  )
+
+  val vecSize = 4
+  val scale   = ScaleFormats.UE8M0
+
+  for {
+    (typeA, typeB) <- macPairs
+    (rows, cols, blk) <- tileConfigs
+  } {
+    val cfg = PEArrayINT8Config(
+      macCfg     = ScaleAddConfig(typeA, typeB, scale),
+      vectorSize = vecSize,
+      tileRows   = rows,
+      tileCols   = cols,
+      requantCfg = RequantINT8Config(blk, rows, cols)
     )
+    println(
+      s"[INT8] ${typeA.name}×${typeB.name} scale ${scale.name} " +
+      s"${rows}x${cols} vec${vecSize} → INT8 blk${blk}"
+    )
+    emitVerilog(new PEArrayWrapperINT8(cfg), Array("--target-dir", EmitDir.int8(cfg)))
+  }
+}
+
+/** Emit all BF16 output configs: symmetric and asymmetric MAC pairs. */
+object AllPEArrayBF16Main extends App {
+  import mx.mac.{MXFormats, ScaleFormats, ScaleAddConfig}
+
+  val tileConfigs = Seq(
+    (4, 4),
+    (8, 8)
+  )
+
+  val macPairs = Seq(
+    (MXFormats.E5M2, MXFormats.E5M2),
+    (MXFormats.E4M3, MXFormats.E4M3),
+    (MXFormats.INT8, MXFormats.E5M2),
+    (MXFormats.INT8, MXFormats.E4M3),
+    (MXFormats.E5M2, MXFormats.E4M3)
+  )
+
+  val vecSize = 4
+  val scale   = ScaleFormats.UE8M0
+
+  for {
+    (typeA, typeB) <- macPairs
+    (rows, cols)   <- tileConfigs
+  } {
+    val cfg = PEArrayBF16Config(
+      macCfg     = ScaleAddConfig(typeA, typeB, scale),
+      vectorSize = vecSize,
+      tileRows   = rows,
+      tileCols   = cols
+    )
+    println(
+      s"[BF16] ${typeA.name}×${typeB.name} scale ${scale.name} " +
+      s"${rows}x${cols} vec${vecSize} → BF16"
+    )
+    emitVerilog(new PEArrayWrapperBF16(cfg), Array("--target-dir", EmitDir.bf16(cfg)))
   }
 }
