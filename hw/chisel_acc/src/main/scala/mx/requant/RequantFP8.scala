@@ -274,8 +274,7 @@ class RequantBlock(val cfg: RequantConfig) extends Module {
  */
 class RequantFP8(val cfg: RequantConfig) extends Module {
   override def desiredName =
-    s"RequantFP${cfg.outputType.totalWidth}_${cfg.outputType.name}_${cfg.scaleType.name}_blk${cfg.blockSize}" +
-    s"_${cfg.tileRows}x${cfg.tileCols}"
+    s"requant"
 
   private val B     = cfg.batchesPerBlock
   private val elemW = cfg.outputType.totalWidth

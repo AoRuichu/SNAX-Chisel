@@ -7,6 +7,7 @@ generated/*
 !generated/fused_dot
 !generated/adaptive
 !generated/pe_array
+!generated/post_scale
 test_run_dir
 
 # Files

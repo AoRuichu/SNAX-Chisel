@@ -14,6 +14,132 @@ class CustomFP(val expW: Int, val mantW: Int) extends Bundle {
   val mant = UInt(mantW.W)
 }
 
+/** Fixed-point reduction tree for CustomFP inputs.
+ *
+ *  Replaces a conventional per-node FP adder tree (align + LZC + round at every node)
+ *  with a single-pass approach:
+ *    1. Find maxExp across all N inputs (log-depth comparator tree).
+ *    2. Align each mantissa once: right-shift by (maxExp − expᵢ), zero-extending with
+ *       (productExpRange + G) fractional/guard bits below.
+ *    3. Sum as 2's-complement signed integers (N−1 plain adders, no normalisation).
+ *    4. One LZC + barrel-shift normalisation, then RNE round to outMantW bits.
+ *
+ *  This eliminates (N−1) × (alignment shift + LZC + round) blocks, replacing them with
+ *  N bounded alignment shifts and a single normalisation path.
+ *
+ *  Class mapping (determined by productExpRange, see ScaleAddConfig):
+ *    INT8×INT8  → productExpRange=0  → pure integer adder tree (alignment shifts are 0)
+ *    INT8×FP8   → small range (~13–29) → narrow bounded shifts
+ *    FP8×FP8    → moderate/wide range → wider integer accumulator, still one normalisation
+ *
+ *  @param expW           SInt exponent field width (bits); matches CustomFP.exp.
+ *  @param inMantW        Input mantissa width (bits); matches CustomFP.mant from CustomOperator.
+ *  @param outMantW       Output mantissa width (bits); should be ≤ inMantW.
+ *  @param vectorSize     Number of parallel inputs N (≥ 1).
+ *  @param productExpRange Maximum possible exponent spread across the N inputs
+ *                        (= maxProductExp − minProductExp from ScaleAddConfig).
+ */
+class FixedFPReductionTree(
+  val expW: Int,
+  val inMantW: Int,
+  val outMantW: Int,
+  val vectorSize: Int,
+  val productExpRange: Int
+) extends Module {
+  require(vectorSize >= 1, "vectorSize must be >= 1")
+  require(outMantW <= inMantW, "outMantW must be <= inMantW")
+  override def desiredName =
+    s"FixedFPTree_exp${expW}_mant${inMantW}_out${outMantW}_vec${vectorSize}_range${productExpRange}"
+
+  val io = IO(new Bundle {
+    val inputs = Input(Vec(vectorSize, new CustomFP(expW, inMantW)))
+    val out    = Output(new CustomFP(expW, outMantW))
+  })
+
+  private val G       = 3   // guard bits for RNE at the final rounding step
+  private val log2N   = log2Ceil(vectorSize.max(2))
+  // fracBits: bits below the mantissa MSB in the integer representation.
+  // Includes productExpRange (alignment headroom) + G (guard bits for rounding).
+  private val fracBits = productExpRange + G
+  // Width of the magnitude accumulator (sign bit separate).
+  // = inMantW integer bits + fracBits fractional bits + log2N carry-overflow bits.
+  private val absMagW  = inMantW + fracBits + log2N
+
+  // ── 1. Maximum exponent across all inputs ───────────────────────────────
+  val maxExp = io.inputs.map(_.exp).reduce { (a, b) => Mux(a > b, a, b) }
+
+  // ── 2. Align each input as a signed 2's-complement integer ───────────────
+  // Layout in the absMagW-bit integer (before sign conversion):
+  //   [absMagW-1 : fracBits+log2N]  ← inMantW bits of mantissa (most-significant input)
+  //   [fracBits+log2N-1 : fracBits] ← log2N carry-overflow bits (normally 0 per input)
+  //   [fracBits-1 : 0]              ← productExpRange fractional bits + G guard bits
+  // After right-shifting by shiftAmt = (maxExp − expᵢ), the mantissa slides down
+  // into the fractional region; all inMantW bits are preserved since shiftAmt ≤ fracBits.
+  val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
+  for (i <- 0 until vectorSize) {
+    val diffRaw  = (maxExp - io.inputs(i).exp).asUInt        // ≥ 0, SInt subtraction
+    val shiftAmt = Mux(diffRaw > fracBits.U, fracBits.U(log2Ceil(fracBits + 1).W),
+                       diffRaw(log2Ceil(fracBits + 1) - 1, 0))
+    val extended = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W))  // absMagW bits
+    val shifted  = (extended >> shiftAmt)(absMagW - 1, 0)                   // absMagW bits, UInt
+    // Sign-magnitude → 2's complement
+    val posVal = shifted.zext.asSInt  // absMagW+1 SInt (MSB=0)
+    aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)
+  }
+
+  // ── 3. Integer adder tree (plain signed adds, width grows by 1 per level) ──
+  def addTree(vals: Seq[SInt]): SInt =
+    if (vals.length == 1) vals.head
+    else addTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)
+
+  val rawSum = addTree(aligned.toSeq)
+  // Truncate to absMagW+1 signed bits; sum magnitude ≤ N×2^(inMantW+fracBits) ≤ 2^absMagW.
+  val sum = rawSum(absMagW, 0).asSInt
+
+  // ── 4. Normalise + RNE round → CustomFP(expW, outMantW) ─────────────────
+  val isNeg  = sum < 0.S
+  val sumU   = sum.asUInt
+  // Magnitude in absMagW bits (2's complement negation for negative sum)
+  val absMag = Mux(isNeg, (~sumU + 1.U)(absMagW - 1, 0), sumU(absMagW - 1, 0))
+  val isZero = absMag === 0.U
+
+  // LZC: PriorityEncoder(Reverse(x)) = number of leading zeros in x.
+  val lzc        = PriorityEncoder(Reverse(absMag))          // up to log2Ceil(absMagW+1) bits
+  val normalized = (absMag << lzc)(absMagW - 1, 0)           // MSB aligned to top
+
+  // RNE round from absMagW bits → outMantW:
+  //   mantissa bits:  normalized[absMagW-1 : absMagW-outMantW]
+  //   guard bit:      normalized[absMagW-outMantW-1]
+  //   round bit:      normalized[absMagW-outMantW-2]
+  //   sticky bits:    OR(normalized[absMagW-outMantW-3 : 0])
+  // absMagW-outMantW = fracBits+log2N ≥ G=3, so guard/round/sticky always exist.
+  private val gPos = absMagW - outMantW - 1  // guard bit position
+  private val rPos = absMagW - outMantW - 2  // round bit position
+  private val sTop = absMagW - outMantW - 3  // top of sticky region
+
+  val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
+  val guardBit = normalized(gPos).asBool
+  val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
+  val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
+  val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
+  val roundedM = (mantRaw +& roundUp.asUInt)               // outMantW+1 bits
+  val mCarry   = roundedM(outMantW).asBool
+  val finalMant = Mux(mCarry,
+    (1 << (outMantW - 1)).U(outMantW.W),
+    roundedM(outMantW - 1, 0))
+
+  // outExp = maxExp + (inMantW + log2N − outMantW) − lzc  [+ 1 if mCarry]
+  // The (inMantW + log2N − outMantW) term accounts for the integer bit-position offset;
+  // lzc corrects for leading zeros in the sum (normalization left-shift).
+  val lzcS    = Cat(false.B, lzc).asSInt                      // non-negative SInt
+  val expBase = maxExp + (inMantW + log2N - outMantW).S - lzcS
+  val outExp  = Mux(mCarry, expBase + 1.S, expBase)
+
+  io.out.sign := Mux(isZero, 0.U, isNeg.asUInt)
+  io.out.mant := Mux(isZero, 0.U, finalMant)
+  io.out.exp  := outExp(expW - 1, 0).asSInt
+}
+
 /** Combinational adder for the CustomFP format.
  *
  *  Algorithm:

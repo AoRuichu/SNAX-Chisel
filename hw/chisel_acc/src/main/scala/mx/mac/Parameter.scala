@@ -87,6 +87,18 @@ case class ScaleAddConfig(
 
     // Use a custom reduction tree when mantissa is narrow enough to be cheaper than FP32 adders
     def useCustomTree: Boolean = resScaleAddMantWidth < 24
+
+    // Maximum possible exponent of a product (both operands at their largest value).
+    private def maxExpOf(t: ElementType): Int =
+      if (t.elementWidthExp == 0) t.implicitScaleExp
+      else {
+        val bias = (1 << (t.elementWidthExp - 1)) - 1
+        ((1 << t.elementWidthExp) - 2) - bias + t.implicitScaleExp
+      }
+    // Range of product exponents: used by FixedFPReductionTree to bound alignment shifts.
+    // INT8×INT8 → 0 (all products have the same implicit exponent, no alignment needed).
+    val productExpRange: Int =
+      (maxExpOf(elementTypeA) + maxExpOf(elementTypeB)) - (minAdjExp(elementTypeA) + minAdjExp(elementTypeB))
 }
 
 
@@ -103,6 +115,40 @@ object ScaleFormats{
 
     val allScaleTypes = List(UE8M0,UE7M1,UE6M2,UE5M3,UE4M4,UE3M5,UE2M6)
   
+}
+
+/** Elaboration-time accumulator precision advisor.
+ *
+ *  Computes the minimum FP32 mantissa bits needed in the accumulator register
+ *  so that accumulation noise stays below the requant noise floor.
+ *
+ *  Derivation (from Cuyckens et al. 2026 + empirical sweep, K ∈ {4..64}):
+ *    - Each accumulation step contributes rounding noise ∝ 2^(−accMantBits).
+ *    - After K steps the noise power grows by ~K (worst-case uncorrelated).
+ *    - Required: K × 2^(−2M) ≤ 2^(−2·rqFloor)
+ *      → M ≥ rqFloor + ceil(log2(K)/2)
+ *    - Wide productExpRange adds alignment noise → extra correction term.
+ *
+ *  Conservative defaults — safe across the full tested K range:
+ *    │ productExpRange  │ formula base │ K scaling  │ typical result   │
+ *    │ 0  (INT8×INT8)   │ 7            │ ceil(log2K/2) │ K=32→9, K=64→10 │
+ *    │ 1..49 (FP8 mix)  │ 7            │ same       │ K=32→9, flat=7  │
+ *    │ ≥50 (E5M2×E5M2)  │ 7 + 3        │ same       │ K=64→13         │
+ */
+object AccPrecision {
+  /** Recommended accumulator mantissa bits for a given config and K. */
+  def recommended(scfg: ScaleAddConfig, K: Int): Int = {
+    require(K >= 1)
+    val kBits       = math.ceil(math.log(K.toDouble) / math.log(2.0)).toInt
+    val kBonus      = (kBits / 2).max(0)
+    val rangePenalty = if (scfg.productExpRange >= 50) 3
+                       else if (scfg.productExpRange >= 30) 1
+                       else 0
+    math.min(23, 7 + kBonus + rangePenalty)
+  }
+
+  /** Full accumulator register width: 1 (sign) + 8 (exp) + mantissa bits. */
+  def accRegWidth(scfg: ScaleAddConfig, K: Int): Int = 1 + 8 + recommended(scfg, K)
 }
 
 object MXFormats{

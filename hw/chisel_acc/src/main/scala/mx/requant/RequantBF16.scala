@@ -51,7 +51,7 @@ class FP32ToBF16 extends Module {
  * Output : tileRows × tileCols × 16 bits (element order preserved)
  */
 class RequantBF16(val tileRows: Int, val tileCols: Int) extends Module {
-  override def desiredName = s"RequantBF16_${tileRows}x${tileCols}"
+  override def desiredName = s"requant"
 
   private val nElems = tileRows * tileCols
 

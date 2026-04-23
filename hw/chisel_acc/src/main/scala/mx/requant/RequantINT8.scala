@@ -157,7 +157,7 @@ class RequantBlockINT8(val cfg: RequantINT8Config) extends Module {
  */
 class RequantINT8(val cfg: RequantINT8Config) extends Module {
   override def desiredName =
-    s"RequantINT8_blk${cfg.blockSize}_${cfg.tileRows}x${cfg.tileCols}"
+    s"requant"
 
   private val B   = cfg.batchesPerBlock
   private val nIn = cfg.tileRows * cfg.tileCols

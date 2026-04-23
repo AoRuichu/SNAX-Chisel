@@ -2,7 +2,7 @@ package mx.array
 
 import chisel3._
 import chisel3.util._
-import mx.mac.FDPUWithCustomReductionTree
+import mx.mac.FDPUPostScaleReductionTree
 import mx.requant.{RequantFP8, RequantINT8, RequantBF16}
 
 // ============================================================
@@ -71,7 +71,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FDPUWithCustomReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUPostScaleReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -161,7 +161,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FDPUWithCustomReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUPostScaleReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -250,7 +250,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FDPUWithCustomReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUPostScaleReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
