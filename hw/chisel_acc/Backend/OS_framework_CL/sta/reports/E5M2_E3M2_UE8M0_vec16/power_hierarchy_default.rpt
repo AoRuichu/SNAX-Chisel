@@ -1,0 +1,6 @@
+Submodule                                       N Total_Power_W
+------------------------------------------------------------
+CustomOperator_E5M2_to_E3M2                    16 n/a
+DirectToFP10b_E5M2_x_E3M2_UE8M0                 1 n/a
+FPNAdder                                        1 n/a
+FixedFPTree_exp7_mant6_out6_vec16_range34       1 n/a

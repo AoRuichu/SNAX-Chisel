@@ -1,0 +1,6 @@
+Submodule                                       N Total_Power_W
+------------------------------------------------------------
+CustomOperator_E3M2_to_E3M2                     4 n/a
+FP32Adder                                       4 n/a
+ScaleAddition_E3M2_to_E3M2_scale_UE8M0          4 n/a
+ScaleToFP32_E3M2_x_E3M2_UE8M0                   4 n/a

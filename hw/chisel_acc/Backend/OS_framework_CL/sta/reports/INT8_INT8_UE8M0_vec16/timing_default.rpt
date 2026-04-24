@@ -1,0 +1,153 @@
+Startpoint: reset (input port clocked by CORE_CLK)
+Endpoint: _40_ (recovery check against rising-edge clock CORE_CLK)
+Path Group: asynchronous
+Path Type: max
+
+    Delay      Time   Description
+-------------------------------------------------------------
+   0.0000    0.0000   clock CORE_CLK (rise edge)
+   0.0000    0.0000   clock network delay (ideal)
+   0.0000    0.0000 ^ input external delay
+   0.0000    0.0000 ^ reset (in)
+   0.0000    0.0000 ^ _40_/CDN (DFCNQD1BWP30P140)
+             0.0000   data arrival time
+
+   2.0000    2.0000   clock CORE_CLK (rise edge)
+   0.0000    2.0000   clock network delay (ideal)
+  -0.0500    1.9500   clock uncertainty
+   0.0000    1.9500   clock reconvergence pessimism
+             1.9500 ^ _40_/CP (DFCNQD1BWP30P140)
+   0.0258    1.9758   library recovery time
+             1.9758   data required time
+-------------------------------------------------------------
+             1.9758   data required time
+            -0.0000   data arrival time
+-------------------------------------------------------------
+             1.9758   slack (MET)
+
+
+Startpoint: io_op_b_i[8] (input port clocked by CORE_CLK)
+Endpoint: _42_ (rising edge-triggered flip-flop clocked by CORE_CLK)
+Path Group: CORE_CLK
+Path Type: max
+
+    Delay      Time   Description
+-------------------------------------------------------------
+   0.0000    0.0000   clock CORE_CLK (rise edge)
+   0.0000    0.0000   clock network delay (ideal)
+   0.0000    0.0000 v input external delay
+   0.0000    0.0000 v io_op_b_i[8] (in)
+   0.0263    0.0263 v op_1/_246_/Z (OR3D0BWP30P140)
+   0.0326    0.0589 ^ op_1/_296_/ZN (OAI31D0BWP30P140)
+   0.0422    0.1011 v op_1/_297_/Z (XOR2UD0BWP30P140)
+   0.0340    0.1350 v op_1/_301_/ZN (IND2D0BWP30P140)
+   0.0676    0.2026 v op_1/_388_/Z (XOR3UD0BWP30P140)
+   0.0713    0.2739 ^ op_1/_407_/ZN (XNR4D0BWP30P140)
+   0.0320    0.3059 ^ op_1/_415_/Z (XOR2UD0BWP30P140)
+   0.0481    0.3540 v op_1/_421_/ZN (XNR3UD0BWP30P140)
+   0.0164    0.3704 ^ op_1/_422_/ZN (CKND2D0BWP30P140)
+   0.0189    0.3893 ^ op_1/_425_/ZN (INR2D0BWP30P140)
+   0.0341    0.4234 ^ op_1/_447_/ZN (XNR2UD0BWP30P140)
+   0.0197    0.4430 v tree/_2064_/Z (XOR2UD0BWP30P140)
+   0.0668    0.5098 v tree/_2127_/ZN (XNR3UD0BWP30P140)
+   0.0571    0.5670 v tree/_2185_/ZN (XNR3UD0BWP30P140)
+   0.0652    0.6322 v tree/_2248_/Z (XOR3UD0BWP30P140)
+   0.0652    0.6974 v tree/_2315_/Z (XOR3UD0BWP30P140)
+   0.0663    0.7637 v tree/_2376_/Z (XOR3UD0BWP30P140)
+   0.0581    0.8218 v tree/_2440_/ZN (XNR3UD0BWP30P140)
+   0.0311    0.8529 ^ tree/_2536_/ZN (MAOI222D0BWP30P140)
+   0.0301    0.8830 v tree/_2537_/ZN (MAOI222D0BWP30P140)
+   0.0394    0.9224 ^ tree/_2539_/ZN (MAOI222D0BWP30P140)
+   0.0317    0.9541 v tree/_2541_/ZN (MAOI222D0BWP30P140)
+   0.0397    0.9938 ^ tree/_2543_/ZN (MAOI222D0BWP30P140)
+   0.0296    1.0234 ^ tree/_2545_/ZN (IAO21D0BWP30P140)
+   0.0278    1.0512 ^ tree/_2547_/ZN (IAO21D0BWP30P140)
+   0.0223    1.0735 v tree/_2549_/ZN (OAI21D0BWP30P140)
+   0.0385    1.1120 ^ tree/_2551_/ZN (MAOI222D0BWP30P140)
+   0.0289    1.1409 v tree/_2554_/ZN (OAI211D0BWP30P140)
+   0.0297    1.1706 ^ tree/_2556_/ZN (AOI31D0BWP30P140)
+   0.0363    1.2069 ^ tree/_2564_/Z (XOR2UD0BWP30P140)
+   0.0422    1.2492 v tree/_2565_/ZN (CKND0BWP30P140)
+   0.0208    1.2700 ^ tree/_2622_/ZN (CKND2D0BWP30P140)
+   0.0378    1.3078 v tree/_2623_/ZN (ND4D0BWP30P140)
+   0.0321    1.3399 v tree/_2625_/Z (AO21D0BWP30P140)
+   0.0167    1.3565 ^ tree/_2626_/ZN (AOI21D0BWP30P140)
+   0.0223    1.3788 ^ tree/_2634_/Z (AO21D0BWP30P140)
+   0.0319    1.4107 ^ tree/_2635_/ZN (XNR2UD0BWP30P140)
+   0.0230    1.4337 v tree/_2636_/ZN (CKND0BWP30P140)
+   0.1062    1.5399 ^ tree/_2660_/ZN (AOI211D0BWP30P140)
+   0.0750    1.6150 v tree/_2661_/ZN (CKND0BWP30P140)
+   0.0592    1.6742 ^ tree/_2702_/ZN (MUX4ND0BWP30P140)
+   0.0323    1.7065 v tree/_2741_/ZN (ND4D0BWP30P140)
+   0.0315    1.7380 ^ tree/_2743_/ZN (NR4D0BWP30P140)
+   0.0451    1.7831 v tree/_2751_/ZN (ND4D0BWP30P140)
+   0.0409    1.8240 ^ tree/_2760_/ZN (NR4D0BWP30P140)
+   0.0359    1.8599 v tree/_2762_/ZN (ND4D0BWP30P140)
+   0.0357    1.8957 ^ tree/_2763_/ZN (NR2D0BWP30P140)
+   0.0163    1.9120 v tree/_2788_/ZN (OAI21D0BWP30P140)
+   0.0345    1.9465 v tree/_2789_/ZN (XNR2UD0BWP30P140)
+   0.0313    1.9778 v d2fpn/_078_/Z (OR2D0BWP30P140)
+   0.0471    2.0249 v d2fpn/_085_/ZN (XNR3UD0BWP30P140)
+   0.0326    2.0575 v d2fpn/_092_/Z (XOR2UD0BWP30P140)
+   0.0289    2.0864 ^ d2fpn/_093_/ZN (AOI21D0BWP30P140)
+   0.0300    2.1164 v d2fpn/_095_/ZN (MAOI222D0BWP30P140)
+   0.0359    2.1523 ^ d2fpn/_097_/ZN (MAOI222D0BWP30P140)
+   0.0323    2.1846 v d2fpn/_098_/ZN (MAOI222D0BWP30P140)
+   0.0349    2.2196 ^ d2fpn/_105_/ZN (MAOI222D0BWP30P140)
+   0.0193    2.2389 v d2fpn/_109_/ZN (XNR2UD0BWP30P140)
+   0.0595    2.2984 v d2fpn/_127_/Z (OR3D0BWP30P140)
+   0.0387    2.3371 ^ d2fpn/_133_/ZN (NR2D0BWP30P140)
+   0.0243    2.3614 ^ accAdder/_461_/ZN (XNR2UD0BWP30P140)
+   0.0293    2.3906 ^ accAdder/_462_/Z (AO21D0BWP30P140)
+   0.0165    2.4071 v accAdder/_465_/ZN (AOI211D0BWP30P140)
+   0.0332    2.4403 ^ accAdder/_467_/ZN (OAI31D0BWP30P140)
+   0.0299    2.4702 v accAdder/_470_/ZN (OAI211D0BWP30P140)
+   0.0294    2.4996 ^ accAdder/_492_/ZN (AOI21D0BWP30P140)
+   0.0467    2.5463 v accAdder/_494_/ZN (OAI211D0BWP30P140)
+   0.0876    2.6339 v accAdder/_518_/ZN (MUX2ND0BWP30P140)
+   0.0860    2.7198 ^ accAdder/_543_/ZN (AOI31D0BWP30P140)
+   0.0611    2.7809 v accAdder/_549_/ZN (ND3D0BWP30P140)
+   0.0399    2.8208 v accAdder/_566_/Z (OA21D0BWP30P140)
+   0.0311    2.8519 ^ accAdder/_589_/ZN (MUX3ND0BWP30P140)
+   0.0331    2.8850 v accAdder/_677_/ZN (AOI221D0BWP30P140)
+   0.0251    2.9102 ^ accAdder/_678_/ZN (ND3D0BWP30P140)
+   0.0175    2.9276 v accAdder/_680_/ZN (OAI21D0BWP30P140)
+   0.0236    2.9512 ^ accAdder/_681_/ZN (AOI21D0BWP30P140)
+   0.0255    2.9767 v accAdder/_682_/ZN (MAOI222D0BWP30P140)
+   0.0329    3.0096 ^ accAdder/_684_/ZN (MAOI222D0BWP30P140)
+   0.0301    3.0397 v accAdder/_686_/ZN (MAOI222D0BWP30P140)
+   0.0324    3.0721 ^ accAdder/_687_/ZN (AOI211D0BWP30P140)
+   0.0238    3.0959 v accAdder/_688_/ZN (OAI32D0BWP30P140)
+   0.0302    3.1261 ^ accAdder/_698_/ZN (AOI211D0BWP30P140)
+   0.0230    3.1491 ^ accAdder/_700_/Z (OR2D0BWP30P140)
+   0.1489    3.2980 v accAdder/_751_/ZN (AOI31D0BWP30P140)
+   0.0882    3.3862 v accAdder/_791_/ZN (MUX4ND0BWP30P140)
+   0.0430    3.4292 ^ accAdder/_792_/ZN (NR4D0BWP30P140)
+   0.0345    3.4637 v accAdder/_798_/ZN (IND4D0BWP30P140)
+   0.0296    3.4933 ^ accAdder/_801_/ZN (NR3D0BWP30P140)
+   0.0291    3.5224 v accAdder/_803_/ZN (IND3D0BWP30P140)
+   0.0406    3.5630 ^ accAdder/_805_/ZN (MAOI222D0BWP30P140)
+   0.0426    3.6057 v accAdder/_810_/ZN (IND4D0BWP30P140)
+   0.0444    3.6501 ^ accAdder/_820_/ZN (AOI211D0BWP30P140)
+   0.0333    3.6834 ^ accAdder/_821_/Z (AN3D0BWP30P140)
+   0.0241    3.7075 ^ accAdder/_828_/ZN (MAOI22D0BWP30P140)
+   0.0569    3.7644 v accAdder/_855_/ZN (OAI31D0BWP30P140)
+   0.0427    3.8071 ^ accAdder/_877_/ZN (INR4D0BWP30P140)
+   0.0262    3.8333 ^ _32_/Z (AO22D0BWP30P140)
+   0.0000    3.8333 ^ _42_/D (DFCNQD1BWP30P140)
+             3.8333   data arrival time
+
+   2.0000    2.0000   clock CORE_CLK (rise edge)
+   0.0000    2.0000   clock network delay (ideal)
+  -0.0500    1.9500   clock uncertainty
+   0.0000    1.9500   clock reconvergence pessimism
+             1.9500 ^ _42_/CP (DFCNQD1BWP30P140)
+  -0.0170    1.9330   library setup time
+             1.9330   data required time
+-------------------------------------------------------------
+             1.9330   data required time
+            -3.8333   data arrival time
+-------------------------------------------------------------
+            -1.9004   slack (VIOLATED)
+
+

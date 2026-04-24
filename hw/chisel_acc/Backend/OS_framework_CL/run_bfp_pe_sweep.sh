@@ -1,23 +1,27 @@
 #! /usr/bin/bash
 #
-# run_bfp_pe_sweep.sh — Batch synthesis sweep over all BFP_PE variants.
+# run_bfp_pe_sweep.sh — Batch synthesis sweep over BFP_PE variants.
 #
-# Iterates every BFP_PE.sv under generated/fused_dot/, runs the full
-# OS_framework_CL pipeline (syn → sim-syn → sta) for each variant, and
-# aggregates results into data_to_excel/bfp_pe_manifest.csv.
-#
-# Uses the SAME stage scripts as out_loop.sh (syn.sh, sim-syn.sh, sta.sh)
-# with per-variant variable overrides.  All outputs are namespaced by
-# the variant directory name, which is used as RUN_ID.
+# Supports three RTL source directories:
+#   generated/adaptive    — Single BFP_PE variants (no array, no requant).
+#                           Top module: BFP_PE  File: BFP_PE.sv
+#   generated/pe_array    — Array variants (with or without requant block).
+#                           Old (no _blk suffix): BFP_PE.sv → synthesised as BFP_PE
+#                           New (with _blk suffix): BFP_PE_16.sv or BFP_PE_64.sv
+#                                                   → synthesised as BFP_PE_16/64
+#   generated/post_scale  — Post-scale reduction-tree variants (single BFP_PE.sv).
+#                           Top module: BFP_PE  File: BFP_PE.sv
+#                           Reports max_freq_mhz = 1000 / critical_path_ns.
 #
 # Usage:
 #   ./run_bfp_pe_sweep.sh [options]
 #
 # Options:
-#   --skip-sim          Skip VCD simulation (step 3); use static 10% toggle power
-#   --skip-verify-syn   Skip gate-level functional verification (default: skipped)
-#   --filter=GLOB       Only process variants matching GLOB (e.g. '*_vec4')
-#   --resume            Skip variants already listed in bfp_pe_done.txt
+#   --source=adaptive|pe_array|post_scale   RTL source directory (default: post_scale)
+#   --skip-sim                              Skip VCD simulation (step 2); use static 10% toggle
+#   --skip-verify-syn                       Skip gate-level functional verification (default: skipped)
+#   --filter=GLOB                           Only process variants matching GLOB (e.g. '*_vec4')
+#   --resume                                Skip variants already listed in bfp_pe_done.txt
 #
 
 set -euo pipefail
@@ -49,12 +53,14 @@ trap 'echo "=== run_bfp_pe_sweep.sh exited with code $? at $(date) ==="' EXIT
 # Parse CLI arguments
 # ----------------------------------------------------------------
 SKIP_SIM=false
-SKIP_VERIFY_SYN=true    # always true: no verify TB for BFP_PE
+SKIP_VERIFY_SYN=true    # always true: no verify TB for these designs
 FILTER_GLOB="*"
 RESUME=false
+SOURCE_DIR="post_scale"   # adaptive | pe_array | post_scale
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --source=*)          SOURCE_DIR="${1#--source=}"; shift ;;
         --skip-sim)          SKIP_SIM=true; shift ;;
         --skip-verify-syn)   SKIP_VERIFY_SYN=true; shift ;;
         --filter=*)          FILTER_GLOB="${1#--filter=}"; shift ;;
@@ -62,48 +68,47 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
-export SKIP_SIM
+
+case "$SOURCE_DIR" in
+    adaptive|pe_array|post_scale) ;;
+    *) echo "ERROR: --source must be 'adaptive', 'pe_array', or 'post_scale', got: $SOURCE_DIR"; exit 1 ;;
+esac
+export SKIP_SIM SOURCE_DIR
 
 # ----------------------------------------------------------------
-# BFP_PE sweep configuration
-# (replaces config.sh for BFP_PE variants)
+# Common synthesis configuration
+# (DESIGN_NAME is resolved per-variant inside the loop)
 # ----------------------------------------------------------------
 
-DESIGN_NAME="BFP_PE"
 CLOCK_PORT="clock"           # BFP_PE uses 'clock', not 'clk_i'
 TB_SIM="tb_pt_bfp_pe"
-VCD_INSTANCE_SUFFIX=""       # scope: {TB_SIM}/{DESIGN_NAME}  →  tb_pt_bfp_pe/BFP_PE
-TB_VERIFY=""                 # no RTL verify TB for BFP_PE
-export DESIGN_NAME CLOCK_PORT TB_SIM VCD_INSTANCE_SUFFIX
+VCD_INSTANCE_SUFFIX=""       # scope: {TB_SIM}/{DESIGN_NAME}
+TB_VERIFY=""                 # no RTL verify TB
+export CLOCK_PORT TB_SIM VCD_INSTANCE_SUFFIX
 
 declare -a WORKLOADS=("default")
 export WORKLOADS
 
-# Associative arrays used by sim-syn.sh placeholder substitution
 declare -A PREC_MODE=(["default"]="2'b00")
 declare -A FP_MODE=(["default"]="2'b00")
 export PREC_MODE FP_MODE
 
-# RTL / tech parameters — none for BFP_PE sweep
 declare -a RTL_PARAM_NAMES=()
 declare -a TECH_PARAM_NAMES=()
 export RTL_PARAM_NAMES TECH_PARAM_NAMES
 
-# Frequency
-# Set below the design's natural limit so the critical path is identifiable
-# by its smallest positive WNS.  500 MHz leaves the slack too wide to be
-# informative; 200 MHz gives a 5 ns period that exposes which path is binding.
-FREQ=50
+# Frequency: 500 MHz (2 ns period) drives ABC to optimise timing;
+# max_freq_mhz is then reported as 1000/critical_path_ns after STA.
+FREQ=500
 export FREQ
 
-# Synthesis compile flags (same defaults as config.sh)
+# Synthesis compile flags
 COMPILE_NO_AUTOUNGROUP=""
 COMPILE_RETIME=""
 COMPILE_CLOCK_GATING="-gate_clock"
 export COMPILE_NO_AUTOUNGROUP COMPILE_RETIME COMPILE_CLOCK_GATING
 
-# SDC constraints (same values as config.sh)
-# Clear any leftover SDC_* from a previous run
+# SDC constraints
 for _v in $(compgen -v SDC_); do unset "$_v"; done
 
 SDC_MAX_TRANSITION="set_max_transition {MAX_TRANSITION} [current_design]"
@@ -123,21 +128,13 @@ export SDC_MAX_FANOUT MAX_FANOUT
 export SDC_CLK_UNCERTAINTY_SETUP CLK_UNCERTAINTY_SETUP
 export SDC_CLK_UNCERTAINTY_HOLD CLK_UNCERTAINTY_HOLD
 
-# Without set_output_delay, output ports are not valid timing endpoints in
-# OpenSTA, so report_checks only finds paths to flip-flop D pins (the tiny
-# 0.1% sequential component) and misses the full combinational datapath.
-# IO_DELAY=0 makes every input port a proper startpoint (arrival = 0 ns) and
-# every output port a proper endpoint (required = clk_period), so the true
-# worst-case combinational path is captured.  Warning 441 for the clock port
-# is benign — OpenSTA skips just that port and applies the constraint to all
-# data inputs.  data_arrival_time in the report = raw combinational delay.
 SDC_IO_DELAY="set_input_delay  {IO_DELAY} -clock CORE_CLK [all_inputs]
 set_output_delay {IO_DELAY} -clock CORE_CLK [all_outputs]"
 IO_DELAY=0
 export SDC_IO_DELAY IO_DELAY
 
 # ----------------------------------------------------------------
-# Source stage scripts (same as out_loop.sh)
+# Source stage scripts
 # ----------------------------------------------------------------
 . tech.sh
 . syn.sh
@@ -199,11 +196,11 @@ resolve_tech_paths() {
 resolve_tech_paths
 
 # ----------------------------------------------------------------
-# Locate generated RTL variants
+# Locate RTL variants directory
 # ----------------------------------------------------------------
-FUSED_DOT_DIR="$(realpath "$PROJ_DIR/../../generated/fused_dot")"
+FUSED_DOT_DIR="$(realpath "$PROJ_DIR/../../generated/${SOURCE_DIR}")"
 if [[ ! -d "$FUSED_DOT_DIR" ]]; then
-    echo "ERROR: Fused-dot variants directory not found: $FUSED_DOT_DIR"
+    echo "ERROR: RTL source directory not found: $FUSED_DOT_DIR"
     exit 1
 fi
 
@@ -216,67 +213,114 @@ if [[ ${#ALL_VARIANTS[@]} -eq 0 ]]; then
     echo "ERROR: No variants found under $FUSED_DOT_DIR matching '$FILTER_GLOB'"
     exit 1
 fi
-echo "Found ${#ALL_VARIANTS[@]} BFP_PE variant(s) matching '$FILTER_GLOB'"
+echo "Found ${#ALL_VARIANTS[@]} variant(s) in ${SOURCE_DIR} matching '$FILTER_GLOB'"
 
 # ----------------------------------------------------------------
-# Done-tracking and results CSV
+# Done-tracking
 # ----------------------------------------------------------------
 DONE_FILE="$PROJ_DIR/bfp_pe_done.txt"
 [[ ! -f "$DONE_FILE" ]] && touch "$DONE_FILE"
 
+# ----------------------------------------------------------------
+# Results CSV — format depends on source
+# ----------------------------------------------------------------
 mkdir -p "$PROJ_DIR/data_to_excel"
-MANIFEST="$PROJ_DIR/data_to_excel/bfp_pe_manifest.csv"
 
-if [[ ! -f "$MANIFEST" ]]; then
-    echo "variant,elem_a,elem_b,scale_type,vec_size,freq_mhz,area_um2,power_default_W,critical_path_ns" \
-        > "$MANIFEST"
+if [[ "$SOURCE_DIR" == "adaptive" ]]; then
+    MANIFEST="$PROJ_DIR/data_to_excel/adaptive_manifest.csv"
+    if [[ ! -f "$MANIFEST" ]]; then
+        echo "variant,elem_a,elem_b,scale_type,vec_size,freq_mhz,area_um2,submodule_areas,power_default_W,submodule_powers,critical_path_ns" \
+            > "$MANIFEST"
+    fi
+elif [[ "$SOURCE_DIR" == "post_scale" ]]; then
+    MANIFEST="$PROJ_DIR/data_to_excel/post_scale_manifest.csv"
+    if [[ ! -f "$MANIFEST" ]]; then
+        echo "variant,elem_a,elem_b,scale_type,vec_size,synth_freq_mhz,area_um2,submodule_areas,power_default_W,submodule_powers,critical_path_ns,max_freq_mhz" \
+            > "$MANIFEST"
+    fi
+else
+    MANIFEST="$PROJ_DIR/data_to_excel/array_manifest.csv"
+    if [[ ! -f "$MANIFEST" ]]; then
+        echo "variant,array_size,elem_a,elem_b,scale_type,vec_size,requant_type,blk_size,freq_mhz,area_um2,submodule_areas,power_default_W,submodule_powers,critical_path_ns" \
+            > "$MANIFEST"
+    fi
 fi
 
 # ----------------------------------------------------------------
-# Helper: remove large intermediate files for a finished variant.
-# Keeps all report files (area, power, timing, terminal logs) but
-# deletes VCDs, mapped netlists, compiled .vvp binaries, preprocessed
-# RTL copies, and debug TCL/SV files that accumulate to GBs over the
-# full 90-variant sweep and can cause tool or filesystem errors.
+# Helper: resolve RTL filename and top-level design name per variant.
+# Sets globals: RTL_FNAME, DESIGN_NAME
 # ----------------------------------------------------------------
-cleanup_variant() {
-    local vid="$1"
-    echo "  [cleanup] removing intermediates for $vid"
-
-    # VCD switching-activity files (can be 100s of MB each)
-    rm -rf "$PROJ_DIR/sim-syn/vcd/${vid}"
-
-    # Yosys-mapped gate netlist (not needed after area is extracted)
-    rm -f  "$PROJ_DIR/syn/outputs/${vid}/${DESIGN_NAME}_mapped.v"
-
-    # Preprocessed RTL copies used by iverilog
-    rm -rf "$PROJ_DIR/sim-syn/logs/${vid}/pp_rtl"
-
-    # Compiled iverilog binaries
-    rm -f  "$PROJ_DIR/sim-syn/logs/${vid}"/*.vvp
-
-    # Debug copies of filled STA TCL scripts
-    rm -rf "$PROJ_DIR/sta/debug/${vid}"
-
-    # Debug copies of filled testbench SV
-    rm -rf "$PROJ_DIR/rtl/tb/debug/${vid}"
-
-    echo "  [cleanup] done"
+resolve_rtl_file() {
+    local var_dir="$1"
+    if [[ -f "$var_dir/BFP_PE_16.sv" ]]; then
+        RTL_FNAME="BFP_PE_16.sv"
+        DESIGN_NAME="BFP_PE_16"
+    elif [[ -f "$var_dir/BFP_PE_64.sv" ]]; then
+        RTL_FNAME="BFP_PE_64.sv"
+        DESIGN_NAME="BFP_PE_64"
+    else
+        RTL_FNAME="BFP_PE.sv"
+        DESIGN_NAME="BFP_PE"
+    fi
 }
 
 # ----------------------------------------------------------------
-# Helper: parse variant directory name into metadata fields
+# Helper: parse variant directory name into metadata fields.
+# Sets globals: ARRAY_SIZE, ELEM_A, ELEM_B, SCALE_TYPE, VEC_SIZE,
+#               REQUANT_TYPE, BLK_SIZE
+#
+# Supported formats:
+#   adaptive  : {ELEM_A}_{ELEM_B}_{SCALE}_vec{N}
+#   pe_array  : {SIZE}_{ELEM_A}_{ELEM_B}_{SCALE}_vec{N}
+#               {SIZE}_{ELEM_A}_{ELEM_B}_{SCALE}_vec{N}_{REQUANT}_blk{M}
 # ----------------------------------------------------------------
 parse_variant_name() {
     local vname="$1"
-    # Format: {ELEM_A}_{ELEM_B}_{SCALE}_vec{N}
-    # Example: E4M3_E2M1_UE8M0_vec4  →  elem_a=E4M3 elem_b=E2M1 scale=UE8M0 vec=4
-    VEC_SIZE="${vname##*_vec}"
-    local prefix="${vname%_vec*}"
-    IFS='_' read -ra _parts <<< "$prefix"
+    ARRAY_SIZE="" ELEM_A="" ELEM_B="" SCALE_TYPE="" VEC_SIZE="" REQUANT_TYPE="" BLK_SIZE=""
+
+    local rest="$vname"
+
+    # Strip array-size prefix (e.g. "4x4_" or "8x8_")
+    if [[ "$rest" =~ ^([0-9]+x[0-9]+)_(.+)$ ]]; then
+        ARRAY_SIZE="${BASH_REMATCH[1]}"
+        rest="${BASH_REMATCH[2]}"
+    fi
+
+    # Strip _blk{M} suffix → REQUANT_TYPE is the segment between _vec{N}_ and _blk
+    if [[ "$rest" =~ _blk([0-9]+)$ ]]; then
+        BLK_SIZE="${BASH_REMATCH[1]}"
+        rest="${rest%_blk${BLK_SIZE}}"
+        # rest is now like: ELEM_A_ELEM_B_SCALE_vec{N}_REQUANT
+        if [[ "$rest" =~ ^(.+)_vec([0-9]+)_(.+)$ ]]; then
+            VEC_SIZE="${BASH_REMATCH[2]}"
+            REQUANT_TYPE="${BASH_REMATCH[3]}"
+            rest="${BASH_REMATCH[1]}"   # ELEM_A_ELEM_B_SCALE
+        fi
+    else
+        # No blk: rest ends with _vec{N}
+        VEC_SIZE="${rest##*_vec}"
+        rest="${rest%_vec*}"
+    fi
+
+    IFS='_' read -ra _parts <<< "$rest"
     ELEM_A="${_parts[0]}"
     ELEM_B="${_parts[1]}"
     SCALE_TYPE="${_parts[2]}"
+}
+
+# ----------------------------------------------------------------
+# Helper: remove large intermediate files after a finished variant.
+# ----------------------------------------------------------------
+cleanup_variant() {
+    local vid="$1" dname="$2"
+    echo "  [cleanup] removing intermediates for $vid"
+    rm -rf "$PROJ_DIR/sim-syn/vcd/${vid}"
+    rm -f  "$PROJ_DIR/syn/outputs/${vid}/${dname}_mapped.v"
+    rm -rf "$PROJ_DIR/sim-syn/logs/${vid}/pp_rtl"
+    rm -f  "$PROJ_DIR/sim-syn/logs/${vid}"/*.vvp
+    rm -rf "$PROJ_DIR/sta/debug/${vid}"
+    rm -rf "$PROJ_DIR/rtl/tb/debug/${vid}"
+    echo "  [cleanup] done"
 }
 
 # ----------------------------------------------------------------
@@ -290,7 +334,7 @@ for variant in "${ALL_VARIANTS[@]}"; do
     run_num=$(( run_num + 1 ))
     echo ""
     echo "================================================================"
-    echo "[$run_num/$total]  $variant"
+    echo "[$run_num/$total]  $variant  (source: $SOURCE_DIR)"
     echo "================================================================"
 
     # ------ Resume check ------
@@ -301,25 +345,31 @@ for variant in "${ALL_VARIANTS[@]}"; do
 
     # ------ Parse metadata ------
     parse_variant_name "$variant"
-    echo "  elem_a=$ELEM_A  elem_b=$ELEM_B  scale=$SCALE_TYPE  vec=$VEC_SIZE"
+    echo "  array_size=${ARRAY_SIZE:-n/a}  elem_a=$ELEM_A  elem_b=$ELEM_B  scale=$SCALE_TYPE  vec=$VEC_SIZE  requant=${REQUANT_TYPE:-n/a}  blk=${BLK_SIZE:-n/a}"
+
+    # ------ Resolve RTL file and top-level design name ------
+    local_variant_dir="$FUSED_DOT_DIR/$variant"
+    resolve_rtl_file "$local_variant_dir"
+    export DESIGN_NAME
+    echo "  RTL file: ${RTL_FNAME}  design: ${DESIGN_NAME}"
 
     # ------ Set per-variant variables ------
     RUN_ID="$variant"
     export RUN_ID
 
-    # RTL path relative to PROJ_DIR (syn.sh prepends PROJ_DIR/)
-    BFP_PE_SV="$FUSED_DOT_DIR/$variant/BFP_PE.sv"
-    RTL_FILES=("../../generated/fused_dot/${variant}/BFP_PE.sv")
+    # Path relative to PROJ_DIR (syn.sh prepends PROJ_DIR/)
+    RTL_FILES=("../../generated/${SOURCE_DIR}/${variant}/${RTL_FNAME}")
     export RTL_FILES
 
-    if [[ ! -f "$BFP_PE_SV" ]]; then
-        echo "  ERROR: BFP_PE.sv not found: $BFP_PE_SV"
-        fails+=("$variant (BFP_PE.sv missing)")
+    VARIANT_RTL="$local_variant_dir/$RTL_FNAME"
+    if [[ ! -f "$VARIANT_RTL" ]]; then
+        echo "  ERROR: RTL not found: $VARIANT_RTL"
+        fails+=("$variant (RTL missing)")
         continue
     fi
 
     # ------ Step 1: Synthesis ------
-    echo "  [step 1] syn"
+    echo "  [step 1] syn (design: $DESIGN_NAME)"
     if ! syn_main; then
         echo "  FAILED: syn"
         fails+=("$variant (syn)")
@@ -331,7 +381,7 @@ for variant in "${ALL_VARIANTS[@]}"; do
         echo "  [step 2] gen_bfp_pe_tb + sim-syn"
 
         TB_TEMPLATE="$PROJ_DIR/rtl/tb/templates/${TB_SIM}.sv"
-        python3 "$PROJ_DIR/gen_bfp_pe_tb.py" "$BFP_PE_SV" "$TB_TEMPLATE"
+        python3 "$PROJ_DIR/gen_bfp_pe_tb.py" "$VARIANT_RTL" "$TB_TEMPLATE"
         if [[ $? -ne 0 ]]; then
             echo "  FAILED: gen_bfp_pe_tb.py"
             fails+=("$variant (gen_tb)")
@@ -358,24 +408,42 @@ for variant in "${ALL_VARIANTS[@]}"; do
     # ------ Gather results ------
     area_file="$PROJ_DIR/syn/reports/${RUN_ID}/area_report.rpt"
     area=$(grep -m1 "Chip area for top module" "$area_file" 2>/dev/null | sed "s/.*: //")
+    submod_areas=$(parse_area_hierarchy "$area_file" "$DESIGN_NAME")
 
     power_file="$PROJ_DIR/sta/reports/${RUN_ID}/power_default.rpt"
     power=$(awk '/^Total[[:space:]]/ { print $5 }' "$power_file" 2>/dev/null | head -1)
+    submod_powers=$(parse_submodule_powers \
+        "$PROJ_DIR/sta/reports/${RUN_ID}/power_hierarchy_default.rpt")
 
-    # Critical path delay: exported by sta_main() as CP_RESULT
     cp_ns="${CP_RESULT:-}"
 
-    echo "  area=${area} um2   power=${power} W   critical_path=${cp_ns} ns"
+    # Compute max achievable frequency from critical path
+    max_freq_mhz=""
+    if [[ -n "$cp_ns" ]] && awk "BEGIN{exit !($cp_ns > 0)}" 2>/dev/null; then
+        max_freq_mhz=$(awk "BEGIN{printf \"%.1f\", 1000 / $cp_ns}")
+    fi
 
-    # Append row to BFP_PE manifest
-    echo "${variant},${ELEM_A},${ELEM_B},${SCALE_TYPE},${VEC_SIZE},${FREQ},${area},${power},${cp_ns}" \
-        >> "$MANIFEST"
+    echo "  area=${area} um2   power=${power} W   critical_path=${cp_ns} ns   max_freq=${max_freq_mhz} MHz"
+    echo "  submodule_areas=${submod_areas}"
+    echo "  submodule_powers=${submod_powers}"
+
+    # Append row to manifest (format depends on source)
+    if [[ "$SOURCE_DIR" == "adaptive" ]]; then
+        echo "${variant},${ELEM_A},${ELEM_B},${SCALE_TYPE},${VEC_SIZE},${FREQ},${area},\"${submod_areas}\",${power},\"${submod_powers}\",${cp_ns}" \
+            >> "$MANIFEST"
+    elif [[ "$SOURCE_DIR" == "post_scale" ]]; then
+        echo "${variant},${ELEM_A},${ELEM_B},${SCALE_TYPE},${VEC_SIZE},${FREQ},${area},\"${submod_areas}\",${power},\"${submod_powers}\",${cp_ns},${max_freq_mhz}" \
+            >> "$MANIFEST"
+    else
+        echo "${variant},${ARRAY_SIZE},${ELEM_A},${ELEM_B},${SCALE_TYPE},${VEC_SIZE},${REQUANT_TYPE},${BLK_SIZE},${FREQ},${area},\"${submod_areas}\",${power},\"${submod_powers}\",${cp_ns}" \
+            >> "$MANIFEST"
+    fi
 
     # Mark done
     echo "$variant" >> "$DONE_FILE"
 
     # Remove large intermediates now that results are captured
-    cleanup_variant "$RUN_ID"
+    cleanup_variant "$RUN_ID" "$DESIGN_NAME"
 done
 
 # ----------------------------------------------------------------
@@ -383,7 +451,7 @@ done
 # ----------------------------------------------------------------
 echo ""
 echo "==================================================================="
-echo "BFP_PE sweep complete: $run_num variant(s) processed"
+echo "Sweep complete: $run_num variant(s) processed  (source: $SOURCE_DIR)"
 echo "Results: $MANIFEST"
 
 if [[ ${#fails[@]} -gt 0 ]]; then

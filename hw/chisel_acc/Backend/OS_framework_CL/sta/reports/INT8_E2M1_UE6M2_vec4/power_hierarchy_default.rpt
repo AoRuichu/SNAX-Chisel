@@ -1,0 +1,7 @@
+Submodule                                       N Total_Power_W
+------------------------------------------------------------
+CustomOperator_INT8_to_E2M1                     4 n/a
+FPNAdder                                        1 n/a
+FixedFPTree_exp5_mant9_out9_vec4_range1         1 n/a
+ScaleAddition_INT8_to_E2M1_scale_UE6M2          1 n/a
+ScaleToFP9b_INT8_x_E2M1_UE6M2                   1 n/a

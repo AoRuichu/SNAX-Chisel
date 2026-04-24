@@ -1,0 +1,7 @@
+Submodule                                       N Total_Power_W
+------------------------------------------------------------
+CustomOperator_E4M3_to_E2M1                    16 n/a
+FPNAdder                                        1 n/a
+FixedFPTree_exp6_mant6_out6_vec16_range14       1 n/a
+ScaleAddition_E4M3_to_E2M1_scale_UE6M2          1 n/a
+ScaleToFP9b_E4M3_x_E2M1_UE6M2                   1 n/a

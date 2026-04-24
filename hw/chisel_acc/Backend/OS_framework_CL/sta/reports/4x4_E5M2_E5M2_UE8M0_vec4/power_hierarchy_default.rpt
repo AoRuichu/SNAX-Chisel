@@ -1,0 +1,6 @@
+Submodule                                       N Total_Power_W
+------------------------------------------------------------
+CustomOperator_E5M2_to_E5M2                     4 n/a
+FP32Adder                                       4 n/a
+ScaleAddition_E5M2_to_E5M2_scale_UE8M0          4 n/a
+ScaleToFP32_E5M2_x_E5M2_UE8M0                   4 n/a
