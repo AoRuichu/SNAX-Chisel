@@ -20,7 +20,7 @@ import mx.requant.{RequantFP8, RequantINT8, RequantBF16}
  *       → elem_out / shared_scale_out / valid_out
  */
 class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
-  override def desiredName = "BFP_PE"
+  override def desiredName = "PE_Array"
 
   val io = IO(new Bundle {
     // ── CSR & Control ────────────────────────────────────────────────────
@@ -66,12 +66,15 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   io.B_ready_o := !io.send_output_i
   val internal_valid = io.A_valid_i && io.B_valid_i
 
-  // ── PE Array: tileRows × tileCols FDPUWithCustomReductionTree units ──────
-  val peValidOut = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, Bool())))
+  // ── PE Array: tileRows × tileCols FDPUPostScaleReductionTree units ───────
+  // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
+  // tap a single one for the requant block.
+  val peValidOut = Wire(Bool())
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FDPUPostScaleReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUPostScaleReductionTree(
+        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -81,7 +84,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
       pe.io.resetAcc      := io.acc_reset_i
 
       io.results_o(r)(c) := pe.io.accOut
-      peValidOut(r)(c)   := pe.io.validOut
+      if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
 
@@ -94,7 +97,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield io.results_o(r)(c)
   )
-  rq.io.valid_in := peValidOut(0)(0)
+  rq.io.valid_in := peValidOut
 
   io.shared_scale_out := rq.io.shared_scale_out
   io.elem_out         := rq.io.elem_out
@@ -115,7 +118,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
  *       → int8_out / shared_scale_out / valid_out
  */
 class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
-  override def desiredName = "BFP_PE"
+  override def desiredName = "PE_Array"
 
   val io = IO(new Bundle {
     // ── CSR & Control ────────────────────────────────────────────────────
@@ -157,11 +160,14 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   val internal_valid = io.A_valid_i && io.B_valid_i
 
   // ── PE Array ──────────────────────────────────────────────────────────────
-  val peValidOut = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, Bool())))
+  // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
+  // tap a single one for the requant block.
+  val peValidOut = Wire(Bool())
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FDPUPostScaleReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUPostScaleReductionTree(
+        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -171,7 +177,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
       pe.io.resetAcc      := io.acc_reset_i
 
       io.results_o(r)(c) := pe.io.accOut
-      peValidOut(r)(c)   := pe.io.validOut
+      if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
 
@@ -182,7 +188,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield io.results_o(r)(c)
   )
-  rq.io.valid_in := peValidOut(0)(0)
+  rq.io.valid_in := peValidOut
 
   io.shared_scale_out := rq.io.shared_scale_out
   io.int8_out         := rq.io.int8_out
@@ -206,7 +212,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
  *       → bf16_out / valid_out
  */
 class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
-  override def desiredName = "BFP_PE"
+  override def desiredName = "PE_Array"
 
   val io = IO(new Bundle {
     // ── CSR & Control ────────────────────────────────────────────────────
@@ -246,11 +252,14 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   val internal_valid = io.A_valid_i && io.B_valid_i
 
   // ── PE Array ──────────────────────────────────────────────────────────────
-  val peValidOut = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, Bool())))
+  // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
+  // tap a single one for the requant block.
+  val peValidOut = Wire(Bool())
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
-      val pe = Module(new FDPUPostScaleReductionTree(cfg.macCfg, cfg.vectorSize, istest = false))
+      val pe = Module(new FDPUPostScaleReductionTree(
+        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -260,7 +269,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
       pe.io.resetAcc      := io.acc_reset_i
 
       io.results_o(r)(c) := pe.io.accOut
-      peValidOut(r)(c)   := pe.io.validOut
+      if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
 
@@ -271,7 +280,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield io.results_o(r)(c)
   )
-  rq.io.valid_in := peValidOut(0)(0)
+  rq.io.valid_in := peValidOut
 
   io.bf16_out  := rq.io.bf16_out
   io.valid_out := rq.io.valid_out

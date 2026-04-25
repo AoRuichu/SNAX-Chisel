@@ -18,9 +18,11 @@ case class PEArrayConfig(
   vectorSize: Int,
   tileRows:   Int,
   tileCols:   Int,
-  requantCfg: RequantConfig
+  requantCfg: RequantConfig,
+  K:          Int = 32
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
+  require(K >= 1, "K must be >= 1")
   require(tileRows == requantCfg.tileRows,
     s"PEArrayConfig tileRows ($tileRows) must match requantCfg.tileRows (${requantCfg.tileRows})")
   require(tileCols == requantCfg.tileCols,
@@ -52,9 +54,11 @@ case class PEArrayINT8Config(
   vectorSize: Int,
   tileRows:   Int,
   tileCols:   Int,
-  requantCfg: RequantINT8Config
+  requantCfg: RequantINT8Config,
+  K:          Int = 32
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
+  require(K >= 1, "K must be >= 1")
   require(tileRows == requantCfg.tileRows,
     s"PEArrayINT8Config tileRows ($tileRows) must match requantCfg.tileRows (${requantCfg.tileRows})")
   require(tileCols == requantCfg.tileCols,
@@ -80,9 +84,11 @@ case class PEArrayBF16Config(
   macCfg:     ScaleAddConfig,
   vectorSize: Int,
   tileRows:   Int,
-  tileCols:   Int
+  tileCols:   Int,
+  K:          Int = 32
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
+  require(K >= 1, "K must be >= 1")
   require(Seq(4, 8).contains(tileRows), s"tileRows must be 4 or 8; got $tileRows")
   require(Seq(4, 8).contains(tileCols), s"tileCols must be 4 or 8; got $tileCols")
 

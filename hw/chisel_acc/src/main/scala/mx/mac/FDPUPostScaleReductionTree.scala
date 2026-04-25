@@ -77,10 +77,10 @@ class FDPUPostScaleReductionTree(
     val validIn  = Input(Bool())
     val resetAcc = Input(Bool())
     val validOut = Output(Bool())
-    // BF16 value presented as FP32: {sign[1], exp[8], mant[7], 0[16]}.
-    // The accumulator register stores (1+8+actualAccMantBits) bits; the output
-    // zero-extends the top-7 mantissa bits to a full FP32 word so that downstream
-    // requant blocks receive a valid IEEE-754 single-precision value.
+    // FP32 output: {sign[1], exp[8], mant[23]}. The accumulator register stores
+    // (1+8+actualAccMantBits) bits; the mantissa is zero-extended (right-padded)
+    // to 23 bits so downstream requant blocks receive a valid IEEE-754 single
+    // value with no rounding loss beyond what FPNAdder already produced.
     val accOut   = Output(UInt(32.W))
 
     // ── Debug ports (test mode only) ────────────────────────────────────────
@@ -195,7 +195,7 @@ class FDPUPostScaleReductionTree(
   // ── Reduced-precision FP accumulator register ────────────────────────────
   // Register stores fpNW = (1 + 8 + actualAccMantBits) bits.
   // FPNAdder natively operates at fpNW precision — no post-add truncation needed.
-  // accOut is BF16 (16-bit): sign(1) + exp(8) + mant(7), rounded from accReg.
+  // accOut is FP32: accReg's mantissa is zero-extended to 23 bits (no rounding).
   val accRegW   = fpNW
   val asyncRstN = (!reset.asBool).asAsyncReset
   val accReg    = withReset(asyncRstN)(RegInit(0.U(accRegW.W)))
@@ -216,14 +216,14 @@ class FDPUPostScaleReductionTree(
   }
 
   io.validOut := validReg
-  // Present BF16 as FP32: the top-7 mantissa bits of accReg form the BF16 value,
-  // which is placed in the HIGH 16 bits of the 32-bit output (Cat(bf16, 0.U(16.W))).
-  // This is the standard BF16→FP32 zero-extension, keeping the FP32 exponent field
-  // intact so downstream requant blocks receive a valid IEEE-754 single value.
-  val bf16Bits: UInt =
-    if (actualAccMantBits >= 7) accReg(accRegW - 1, accRegW - 16)
-    else Cat(accReg, 0.U((7 - actualAccMantBits).W))
-  io.accOut := Cat(bf16Bits, 0.U(16.W))
+  // FP32 output: accReg holds {sign[1], exp[8], mant[actualAccMantBits]}.
+  // Zero-extend (right-pad) the mantissa to 23 bits to form a valid IEEE-754
+  // single-precision word. This is exact — no rounding — because FPNAdder
+  // already produced the value at actualAccMantBits precision.
+  io.accOut := (
+    if (actualAccMantBits >= 23) accReg
+    else Cat(accReg, 0.U((23 - actualAccMantBits).W))
+  )
 }
 
 // ============================================================
