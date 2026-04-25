@@ -8,6 +8,7 @@ generated/*
 !generated/adaptive
 !generated/pe_array
 !generated/post_scale
+!generated/requant
 test_run_dir
 
 # Files
