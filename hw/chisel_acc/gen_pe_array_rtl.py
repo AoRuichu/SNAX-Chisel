@@ -242,7 +242,7 @@ def emit_pe_array_wrapper_sv(p: dict, out_dir: Path) -> Path:
         lines += [
             "",
             "    // BF16 requantised output: [TileRows][TileCols][16] packed; no shared scale.",
-            "    output logic [0:TileRows-1][0:TileCols-1][ELEM_WIDTH-1:0] result,",
+            "    output logic [0:TileRows-1][0:TileCols-1][ELEM_WIDTH-1:0] result_o,",
         ]
     else:
         lines += [
@@ -250,7 +250,7 @@ def emit_pe_array_wrapper_sv(p: dict, out_dir: Path) -> Path:
             f"    // {out_tag} requantised output: [TileRows][BlockSize][{elem_W}] packed,"
             " plus one 8-bit shared scale per row.",
             "    output logic [0:TileRows-1][7:0]                          shared_scale_out,",
-            "    output logic [0:TileRows-1][0:BlockSize-1][ELEM_WIDTH-1:0] result,",
+            "    output logic [0:TileRows-1][0:BlockSize-1][ELEM_WIDTH-1:0] result_o,",
         ]
 
     lines += [
@@ -283,10 +283,17 @@ def emit_pe_array_wrapper_sv(p: dict, out_dir: Path) -> Path:
     for c in range(cols):
         lines.append(f"        .io_shared_exp_B_i_{c}(shared_exp_B_i[{c}]),")
 
+    # Debug FP32 results_o ports on the inner PE_Array are intentionally left
+    # unconnected at the wrapper level — the snax_mx_alu_shell_wrapper does not
+    # consume them. Empty parens make the intent explicit (vs. silently dropping).
+    for r in range(rows):
+        for c in range(cols):
+            lines.append(f"        .io_results_o_{r}_{c}    (),")
+
     if not is_bf16:
         lines.append("        .io_shared_scale_out(shared_scale_out),")
     lines += [
-        "        .io_result          (result),",
+        "        .io_result          (result_o),",
         "        .io_valid_out       (valid_out)",
         "    );",
         "",

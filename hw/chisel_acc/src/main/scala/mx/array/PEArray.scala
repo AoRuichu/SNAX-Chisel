@@ -48,6 +48,10 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     // [0:TileCols-1][SCALE_WIDTH-1:0] — matches SV shared_exp_B_i
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
+    // ── Debug FP32 Accumulator Output (kept for tests; left unconnected by
+    //    PE_Array_wrapper, so it does not surface to snax_mx_alu_shell_wrapper)
+    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
+
     // ── Requantized FP8/FP6 Output ────────────────────────────────────────
     // One 8-bit shared scale per tile row
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
@@ -55,6 +59,10 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     val result           = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
     val valid_out        = Output(Bool())
   })
+
+  // Keep the FP32 results path elaborated even if downstream optimisers
+  // notice the SV wrapper leaves the ports dangling.
+  dontTouch(io.results_o)
 
   // ── Handshake logic ──────────────────────────────────────────────────────
   io.A_ready_o := !io.send_output_i
@@ -65,8 +73,6 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
   // tap a single one for the requant block.
   val peValidOut = Wire(Bool())
-  // Internal FP32 accumulator results — fed to RequantFP8, not exposed externally.
-  val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
@@ -80,7 +86,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
       pe.io.validIn       := internal_valid
       pe.io.resetAcc      := io.acc_reset_i
 
-      results(r)(c) := pe.io.accOut
+      io.results_o(r)(c) := pe.io.accOut
       if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
@@ -92,7 +98,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   //   (row=0, col=0) occupies the most-significant 32 bits.
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield results(r)(c)
+      yield io.results_o(r)(c)
   )
   rq.io.valid_in := peValidOut
 
@@ -139,6 +145,10 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
+    // ── Debug FP32 Accumulator Output (kept for tests; left unconnected by
+    //    PE_Array_wrapper, so it does not surface to snax_mx_alu_shell_wrapper)
+    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
+
     // ── Requantized INT8 Output ───────────────────────────────────────────
     // One 8-bit UE8M0 shared scale per tile row
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
@@ -146,6 +156,8 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     val result           = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * 8).W))
     val valid_out        = Output(Bool())
   })
+
+  dontTouch(io.results_o)
 
   // ── Handshake logic ──────────────────────────────────────────────────────
   io.A_ready_o := !io.send_output_i
@@ -156,8 +168,6 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
   // tap a single one for the requant block.
   val peValidOut = Wire(Bool())
-  // Internal FP32 accumulator results — fed to RequantINT8, not exposed externally.
-  val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
@@ -171,7 +181,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
       pe.io.validIn       := internal_valid
       pe.io.resetAcc      := io.acc_reset_i
 
-      results(r)(c) := pe.io.accOut
+      io.results_o(r)(c) := pe.io.accOut
       if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
@@ -181,7 +191,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
 
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield results(r)(c)
+      yield io.results_o(r)(c)
   )
   rq.io.valid_in := peValidOut
 
@@ -231,11 +241,17 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
     val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
+    // ── Debug FP32 Accumulator Output (kept for tests; left unconnected by
+    //    PE_Array_wrapper, so it does not surface to snax_mx_alu_shell_wrapper)
+    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
+
     // ── Requantized BF16 Output ───────────────────────────────────────────
     // Flat packed BF16: tileRows × tileCols elements, big-endian
     val result           = Output(UInt((cfg.tileRows * cfg.tileCols * 16).W))
     val valid_out        = Output(Bool())
   })
+
+  dontTouch(io.results_o)
 
   // ── Handshake logic ──────────────────────────────────────────────────────
   io.A_ready_o := !io.send_output_i
@@ -246,8 +262,6 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
   // tap a single one for the requant block.
   val peValidOut = Wire(Bool())
-  // Internal FP32 accumulator results — fed to RequantBF16, not exposed externally.
-  val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
@@ -261,7 +275,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
       pe.io.validIn       := internal_valid
       pe.io.resetAcc      := io.acc_reset_i
 
-      results(r)(c) := pe.io.accOut
+      io.results_o(r)(c) := pe.io.accOut
       if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
@@ -271,7 +285,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
 
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield results(r)(c)
+      yield io.results_o(r)(c)
   )
   rq.io.valid_in := peValidOut
 
