@@ -283,12 +283,9 @@ def emit_pe_array_wrapper_sv(p: dict, out_dir: Path) -> Path:
     for c in range(cols):
         lines.append(f"        .io_shared_exp_B_i_{c}(shared_exp_B_i[{c}]),")
 
-    # Debug FP32 results_o ports on the inner PE_Array are intentionally left
-    # unconnected at the wrapper level — the snax_mx_alu_shell_wrapper does not
-    # consume them. Empty parens make the intent explicit (vs. silently dropping).
-    for r in range(rows):
-        for c in range(cols):
-            lines.append(f"        .io_results_o_{r}_{c}    (),")
+    # Production-mode PE_Array (cfg.exposeResults=false) has no io_results_o
+    # ports. Tests construct PEArrayConfig with exposeResults=true directly in
+    # Scala and don't route through this SV adaptor.
 
     if not is_bf16:
         lines.append("        .io_shared_scale_out(shared_scale_out),")

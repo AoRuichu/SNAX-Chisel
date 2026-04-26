@@ -14,12 +14,13 @@ import mx.requant.{RequantConfig, RequantINT8Config}
  *                   Its tileRows/tileCols must match the array dimensions.
  */
 case class PEArrayConfig(
-  macCfg:     ScaleAddConfig,
-  vectorSize: Int,
-  tileRows:   Int,
-  tileCols:   Int,
-  requantCfg: RequantConfig,
-  K:          Int = 32
+  macCfg:        ScaleAddConfig,
+  vectorSize:    Int,
+  tileRows:      Int,
+  tileCols:      Int,
+  requantCfg:    RequantConfig,
+  K:             Int     = 32,
+  exposeResults: Boolean = false  // expose FP32 results_o IO for testing
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -50,12 +51,13 @@ case class PEArrayConfig(
  * @param requantCfg RequantINT8Config for FP32→INT8 requantization.
  */
 case class PEArrayINT8Config(
-  macCfg:     ScaleAddConfig,
-  vectorSize: Int,
-  tileRows:   Int,
-  tileCols:   Int,
-  requantCfg: RequantINT8Config,
-  K:          Int = 32
+  macCfg:        ScaleAddConfig,
+  vectorSize:    Int,
+  tileRows:      Int,
+  tileCols:      Int,
+  requantCfg:    RequantINT8Config,
+  K:             Int     = 32,
+  exposeResults: Boolean = false  // expose FP32 results_o IO for testing
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -81,11 +83,12 @@ case class PEArrayINT8Config(
  * @param tileCols   Number of PE columns (4 or 8).
  */
 case class PEArrayBF16Config(
-  macCfg:     ScaleAddConfig,
-  vectorSize: Int,
-  tileRows:   Int,
-  tileCols:   Int,
-  K:          Int = 32
+  macCfg:        ScaleAddConfig,
+  vectorSize:    Int,
+  tileRows:      Int,
+  tileCols:      Int,
+  K:             Int     = 32,
+  exposeResults: Boolean = false  // expose FP32 results_o IO for testing
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")

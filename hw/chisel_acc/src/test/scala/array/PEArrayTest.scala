@@ -180,7 +180,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
 
   /** Read results_o(r)(c) as Float. */
   def peekAcc(dut: PEArrayWrapper, r: Int, c: Int): Float =
-    intBitsToFloat(dut.io.results_o(r)(c).peek().litValue.toInt)
+    intBitsToFloat(dut.io.results_o.get(r)(c).peek().litValue.toInt)
 
   /** Extract shared_scale_out[row] (row 0 = MSB, SV [0:tileRows-1][7:0]). */
   def extractScale(packed: BigInt, tileRows: Int, row: Int): Int =
@@ -196,7 +196,8 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   // Shared test config — 4×4 tile, E5M2×E5M2/UE8M0, blockSize=32 → B=8 batches
   // =========================================================================
-  val cfg = DefaultPEArrayConfigs.e5m2_4x4
+  // Tests opt into the debug FP32 results_o IO — production gen leaves it off.
+  val cfg = DefaultPEArrayConfigs.e5m2_4x4.copy(exposeResults = true)
   // Convenience aliases
   val macCfg    = cfg.macCfg
   val rqCfg     = cfg.requantCfg
@@ -258,7 +259,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       for (_ <- 0 until 3) driveCycle(dut, cfg, aE, bE, aS, bS)
       // All accumulators should be non-zero
       for (r <- 0 until tileRows; c <- 0 until tileCols)
-        assert(dut.io.results_o(r)(c).peek().litValue != 0,
+        assert(dut.io.results_o.get(r)(c).peek().litValue != 0,
           s"PE[$r][$c] expected non-zero before reset")
 
       // Reset
@@ -268,7 +269,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
 
       // All accumulators should be cleared
       for (r <- 0 until tileRows; c <- 0 until tileCols)
-        dut.io.results_o(r)(c).expect(0.U, s"PE[$r][$c] should be 0 after reset")
+        dut.io.results_o.get(r)(c).expect(0.U, s"PE[$r][$c] should be 0 after reset")
     }
   }
 
