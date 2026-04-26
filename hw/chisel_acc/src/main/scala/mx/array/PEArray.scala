@@ -15,9 +15,8 @@ import mx.requant.{RequantFP8, RequantINT8, RequantBF16}
  * Data flow:
  *   op_a_i / op_b_i / shared_exp_*_i
  *       → FDPUWithCustomReductionTree (tileRows × tileCols)
- *       → results_o (FP32, tileRows × tileCols)
  *       → RequantFP8
- *       → elem_out / shared_scale_out / valid_out
+ *       → result / shared_scale_out / valid_out
  */
 class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   override def desiredName = "PE_Array"
@@ -49,15 +48,11 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     // [0:TileCols-1][SCALE_WIDTH-1:0] — matches SV shared_exp_B_i
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
-    // ── FP32 Accumulator Output ──────────────────────────────────────────
-    // [0:TileRows-1][0:TileCols-1][DST_WIDTH-1:0] — matches SV results_o
-    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
-
     // ── Requantized FP8/FP6 Output ────────────────────────────────────────
     // One 8-bit shared scale per tile row
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
     // Flat packed output: tileRows × blockSize elements
-    val elem_out         = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
+    val result           = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
     val valid_out        = Output(Bool())
   })
 
@@ -70,6 +65,8 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
   // tap a single one for the requant block.
   val peValidOut = Wire(Bool())
+  // Internal FP32 accumulator results — fed to RequantFP8, not exposed externally.
+  val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
@@ -83,7 +80,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
       pe.io.validIn       := internal_valid
       pe.io.resetAcc      := io.acc_reset_i
 
-      io.results_o(r)(c) := pe.io.accOut
+      results(r)(c) := pe.io.accOut
       if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
@@ -95,12 +92,12 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   //   (row=0, col=0) occupies the most-significant 32 bits.
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield io.results_o(r)(c)
+      yield results(r)(c)
   )
   rq.io.valid_in := peValidOut
 
   io.shared_scale_out := rq.io.shared_scale_out
-  io.elem_out         := rq.io.elem_out
+  io.result           := rq.io.elem_out
   io.valid_out        := rq.io.valid_out
 }
 
@@ -113,9 +110,8 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
  * Data flow:
  *   op_a_i / op_b_i / shared_exp_*_i
  *       → FDPUWithCustomReductionTree (tileRows × tileCols)
- *       → results_o (FP32)
  *       → RequantINT8
- *       → int8_out / shared_scale_out / valid_out
+ *       → result / shared_scale_out / valid_out
  */
 class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   override def desiredName = "PE_Array"
@@ -143,14 +139,11 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
-    // ── FP32 Accumulator Output ──────────────────────────────────────────
-    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
-
     // ── Requantized INT8 Output ───────────────────────────────────────────
     // One 8-bit UE8M0 shared scale per tile row
     val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
     // Flat packed INT8: tileRows × blockSize elements (two's complement)
-    val int8_out         = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * 8).W))
+    val result           = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * 8).W))
     val valid_out        = Output(Bool())
   })
 
@@ -163,6 +156,8 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
   // tap a single one for the requant block.
   val peValidOut = Wire(Bool())
+  // Internal FP32 accumulator results — fed to RequantINT8, not exposed externally.
+  val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
@@ -176,7 +171,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
       pe.io.validIn       := internal_valid
       pe.io.resetAcc      := io.acc_reset_i
 
-      io.results_o(r)(c) := pe.io.accOut
+      results(r)(c) := pe.io.accOut
       if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
@@ -186,12 +181,12 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
 
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield io.results_o(r)(c)
+      yield results(r)(c)
   )
   rq.io.valid_in := peValidOut
 
   io.shared_scale_out := rq.io.shared_scale_out
-  io.int8_out         := rq.io.int8_out
+  io.result           := rq.io.int8_out
   io.valid_out        := rq.io.valid_out
 }
 
@@ -207,9 +202,8 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
  * Data flow:
  *   op_a_i / op_b_i / shared_exp_*_i
  *       → FDPUWithCustomReductionTree (tileRows × tileCols)
- *       → results_o (FP32)
  *       → RequantBF16
- *       → bf16_out / valid_out
+ *       → result / valid_out
  */
 class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   override def desiredName = "PE_Array"
@@ -237,12 +231,9 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
     val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
-    // ── FP32 Accumulator Output ──────────────────────────────────────────
-    val results_o        = Output(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
-
     // ── Requantized BF16 Output ───────────────────────────────────────────
     // Flat packed BF16: tileRows × tileCols elements, big-endian
-    val bf16_out         = Output(UInt((cfg.tileRows * cfg.tileCols * 16).W))
+    val result           = Output(UInt((cfg.tileRows * cfg.tileCols * 16).W))
     val valid_out        = Output(Bool())
   })
 
@@ -255,6 +246,8 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   // All PEs share internal_valid / acc_reset_i, so all validOut are identical;
   // tap a single one for the requant block.
   val peValidOut = Wire(Bool())
+  // Internal FP32 accumulator results — fed to RequantBF16, not exposed externally.
+  val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
@@ -268,7 +261,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
       pe.io.validIn       := internal_valid
       pe.io.resetAcc      := io.acc_reset_i
 
-      io.results_o(r)(c) := pe.io.accOut
+      results(r)(c) := pe.io.accOut
       if (r == 0 && c == 0) peValidOut := pe.io.validOut
     }
   }
@@ -278,11 +271,11 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
 
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield io.results_o(r)(c)
+      yield results(r)(c)
   )
   rq.io.valid_in := peValidOut
 
-  io.bf16_out  := rq.io.bf16_out
+  io.result    := rq.io.bf16_out
   io.valid_out := rq.io.valid_out
 }
 

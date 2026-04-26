@@ -340,7 +340,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
 
       val (expScales, expFP8) = swRequant(swBlock.map(_.toSeq).toSeq, rqCfg.outputType)
       val hwScalePacked = dut.io.shared_scale_out.peek().litValue
-      val hwFP8Packed   = dut.io.elem_out.peek().litValue
+      val hwFP8Packed   = dut.io.result.peek().litValue
 
       for (row <- 0 until tileRows) {
         val hwScale = extractScale(hwScalePacked, tileRows, row)
@@ -395,7 +395,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
 
       val (expScales, expFP8) = swRequant(swBlock.map(_.toSeq).toSeq, rqCfg.outputType)
       val hwScalePacked = dut.io.shared_scale_out.peek().litValue
-      val hwFP8Packed   = dut.io.elem_out.peek().litValue
+      val hwFP8Packed   = dut.io.result.peek().litValue
 
       for (row <- 0 until tileRows) {
         val hwScale = extractScale(hwScalePacked, tileRows, row)
@@ -436,7 +436,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         dut.clock.step()  // flush: let last PE.validReg propagate into RequantFP8
         dut.io.valid_out.expect(true.B, "valid_out must fire at end of block")
         val hwScale = dut.io.shared_scale_out.peek().litValue
-        val hwFP8   = dut.io.elem_out.peek().litValue
+        val hwFP8   = dut.io.result.peek().litValue
         (swBlock.map(_.toSeq).toSeq, hwScale, hwFP8)
       }
 
@@ -527,7 +527,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       // Check MXFP8 outputs
       val (expScales, expFP8) = swRequant(swBlock.map(_.toSeq).toSeq, rqCfg.outputType)
       val hwScalePacked = dut.io.shared_scale_out.peek().litValue
-      val hwFP8Packed   = dut.io.elem_out.peek().litValue
+      val hwFP8Packed   = dut.io.result.peek().litValue
 
       var mismatchCount = 0
       for (row <- 0 until tileRows) {
