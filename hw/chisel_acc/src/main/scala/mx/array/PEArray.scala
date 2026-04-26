@@ -328,8 +328,7 @@ object AllPEArrayMain extends App {
 
   // ── Tile sizes + block sizes ────────────────────────────────────────────
   val tileConfigs = Seq(
-    (4, 4, 32),   // 4×4 tile, block-32
-    (8, 8, 16)    // 8×8 tile, block-16
+    (4, 16, 32)
   )
 
   // ── MAC input pairs (symmetric + asymmetric) ────────────────────────────
@@ -342,32 +341,28 @@ object AllPEArrayMain extends App {
     (MXFormats.E5M2, MXFormats.E4M3)
   )
 
-  // ── Output element types (FP8 and FP6) ──────────────────────────────────
-  val outputTypes = Seq(
-    MXFormats.E5M2,   // FP8
-    MXFormats.E4M3,   // FP8
-    MXFormats.E3M2,   // FP6
-    MXFormats.E2M3    // FP6
-  )
-
   val vecSize = 4
-  val scale   = ScaleFormats.UE8M0
+  val scale   = Seq(
+    ScaleFormats.UE8M0,   // shared exponent with no bias (unsigned 8-bit integer)
+    ScaleFormats.UE4M4,   // shared exponent with 4-bit signed mantissa (E5M2-style)
+    ScaleFormats.UE6M2    // shared exponent with 6-bit signed mantissa (E4M3-style)
+  )
 
   for {
     (typeA, typeB) <- macPairs
     (rows, cols, blk) <- tileConfigs
-    outType <- outputTypes
+    scale <- scale
   } {
     val cfg = PEArrayConfig(
       macCfg     = ScaleAddConfig(typeA, typeB, scale),
       vectorSize = vecSize,
       tileRows   = rows,
       tileCols   = cols,
-      requantCfg = RequantConfig(blk, rows, cols, outType)
+      requantCfg = RequantConfig(blk, rows, cols, typeA, scale)
     )
     println(
       s"[FP8/FP6] ${typeA.name}×${typeB.name} scale ${scale.name} " +
-      s"${rows}x${cols} vec${vecSize} → ${outType.name} blk${blk}"
+      s"${rows}x${cols} vec${vecSize} → ${typeA.name} blk${blk}"
     )
     emitVerilog(new PEArrayWrapper(cfg), Array("--target-dir", EmitDir.fp8(cfg)))
   }
@@ -379,8 +374,7 @@ object AllPEArrayINT8Main extends App {
   import mx.requant.RequantINT8Config
 
   val tileConfigs = Seq(
-    (4, 4, 32),
-    (8, 8, 16)
+    (4, 16, 32)
   )
 
   val macPairs = Seq(
@@ -392,11 +386,16 @@ object AllPEArrayINT8Main extends App {
   )
 
   val vecSize = 4
-  val scale   = ScaleFormats.UE8M0
+  val scale   = Seq(
+    ScaleFormats.UE8M0,   // shared exponent with no bias (unsigned 8-bit integer)
+    ScaleFormats.UE4M4,   // shared exponent with 4-bit signed mantissa (E5M2-style)
+    ScaleFormats.UE6M2    // shared exponent with 6-bit signed mantissa (E4M3-style)
+  )
 
   for {
     (typeA, typeB) <- macPairs
     (rows, cols, blk) <- tileConfigs
+    scale <- scale
   } {
     val cfg = PEArrayINT8Config(
       macCfg     = ScaleAddConfig(typeA, typeB, scale),
@@ -418,8 +417,7 @@ object AllPEArrayBF16Main extends App {
   import mx.mac.{MXFormats, ScaleFormats, ScaleAddConfig}
 
   val tileConfigs = Seq(
-    (4, 4),
-    (8, 8)
+    (4, 16)
   )
 
   val macPairs = Seq(

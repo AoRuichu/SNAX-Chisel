@@ -89,8 +89,8 @@ case class PEArrayBF16Config(
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
-  require(Seq(4, 8).contains(tileRows), s"tileRows must be 4 or 8; got $tileRows")
-  require(Seq(4, 8).contains(tileCols), s"tileCols must be 4 or 8; got $tileCols")
+  require(Seq(4, 8, 16).contains(tileRows), s"tileRows must be 4 or 8; got $tileRows")
+  require(Seq(4, 8, 16).contains(tileCols), s"tileCols must be 4 or 8; got $tileCols")
 
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize

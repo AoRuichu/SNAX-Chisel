@@ -109,6 +109,26 @@ object DefaultRequantConfigs {
     scaleType  = ScaleFormats.UE4M4
   )
 
+    /** 4×4 tile, block-32, E5M2 output, UE4M4 scale */
+  val e5m2_block32_4x16_e4m4 = RequantConfig(
+    blockSize  = 32,
+    tileRows   = 4,
+    tileCols   = 16,
+    outputType = MXFormats.E5M2,
+    scaleType  = ScaleFormats.UE4M4
+  )
+
+    /** 4×4 tile, block-32, E5M2 output, UE4M4 scale */
+  val e5m2_block32_4x16_e6m2 = RequantConfig(
+    blockSize  = 32,
+    tileRows   = 4,
+    tileCols   = 16,
+    outputType = MXFormats.E5M2,
+    scaleType  = ScaleFormats.UE6M2
+  )
+
+
+
   // ── FP6 E3M2 (1+3+2=6 bits) ────────────────────────────────
   /** 4×4 tile, block-32, E3M2 output, UE8M0 scale */
   val e3m2_block32_4x4 = RequantConfig(
