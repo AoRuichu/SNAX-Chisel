@@ -23,27 +23,15 @@ import sys
 import hjson
 from pathlib import Path
 
-# Mappings from params.hjson integer codes to Chisel type names
-_ELEMENT_TYPE_MAP  = {0: "INT8", 1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3", 5: "E2M1"}
-_SCALE_FORMAT_MAP  = {0: "UE8M0", 1: "UE7M1", 2: "UE6M2", 3: "UE5M3", 4: "UE4M4", 5: "UE3M5", 6: "UE2M6"}
-
-# MX float output types for RequantFP8 (covers both FP8 and FP6 element formats)
-_MX_FLOAT_OUT_TYPE_MAP = {1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3"}
-
-# requant_mode: selects which requantizer RTL to generate
-#   0 = MX float (FP8 / FP6) — GenerateRequantFP8, uses out_format + shared_format
-#   1 = INT8                  — GenerateRequantINT8, uses block_size only
-#   2 = BF16                  — GenerateRequantBF16, no extra params
-#   (absent / None)           = no requant RTL generated
-_REQUANT_MODE_NAMES = {0: "MX_FLOAT", 1: "INT8", 2: "BF16"}
-
 # ---------------------------------------------------------------------------
 # Default paths (relative to this script's location)
 # ---------------------------------------------------------------------------
 SCRIPT_DIR    = Path(__file__).parent.resolve()
+CHISEL_DIR    = (SCRIPT_DIR / "../../../../../hw/chisel_acc").resolve()
 DEFAULT_SWCFG  = SCRIPT_DIR / "data" / "params.hjson"
 DEFAULT_HWCFG  = SCRIPT_DIR / "../../../cfg/snax_mx_cluster_template.hjson"
 DEFAULT_GEN_HW = SCRIPT_DIR / "../../../cfg/snax_mx_cluster.hjson"
+DEFAULT_GEN_PE = (SCRIPT_DIR / "../../../../../hw/snax_mx_alu/source").resolve()
 DEFAULT_OUTPUT = SCRIPT_DIR / "data" / "data.h"
 DATAGEN_PY     = SCRIPT_DIR / "data" / "datagen.py"
 
@@ -52,9 +40,43 @@ DATAGEN_PY     = SCRIPT_DIR / "data" / "datagen.py"
 # HW parameter derivation
 # ---------------------------------------------------------------------------
 
-def _o_bitwidth(quantize_mode) -> int:
-    """Map requant_mode to per-element output bit-width used for streamer sizing."""
-    return {0: 8, 1: 8, 2: 16}.get(quantize_mode, 32)   # None / unknown → 32 (FP32 passthrough)
+_DTYPE_BITS = {
+    'fp8_e4m3': 8, 'fp8_e5m2': 8,
+    'fp6_e3m2': 6, 'fp6_e2m3': 6,
+    'fp4_e2m1': 4, 'mxint8':   8,
+}
+
+# Mappings from params.hjson integer codes to Chisel type names
+_ELEMENT_TYPE_MAP = {0: "INT8", 1: "E5M2", 2: "E4M3", 3: "E3M2", 4: "E2M3", 5: "E2M1"}
+_SCALE_FORMAT_MAP = {0: "UE8M0", 1: "UE7M1", 2: "UE6M2", 3: "UE5M3", 4: "UE4M4", 5: "UE3M5", 6: "UE2M6"}
+# quantize_mode → requant output type string (used for Chisel gen directory naming)
+# 0: fp32 (no requant), 1: bf16, 2: fp8_e5m2, 3: fp8_e4m3, 4: mxint8, 5: fp6_e2m3, 6: fp6_e3m2
+_REQUNAT_TYPE_MAP = {1: "bf16", 2: "fp8_e5m2", 3: "fp8_e4m3", 4: "mxint8", 5: "fp6_e2m3", 6: "fp6_e3m2"}
+
+# requant_mode → (Chisel output element name, output element width in bits) — used by the SV adaptor.
+# BF16: per-element 16-bit pass-through; FP8: 8-bit elements; FP6: 6-bit; mxint8: 8-bit.
+_REQUANT_OUT_TAG = {
+    1: ("BF16", 16),
+    2: ("E5M2",  8),
+    3: ("E4M3",  8),
+    4: ("INT8",  8),
+    5: ("E2M3",  6),
+    6: ("E3M2",  6),
+}
+
+# Mapping from params.hjson dtype strings to _ELEMENT_TYPE_MAP integer codes
+_DTYPE_TO_ELEMENT_TYPE = {
+    'mxint8':   0,  # INT8
+    'fp8_e5m2': 1,  # E5M2
+    'fp8_e4m3': 2,  # E4M3
+    'fp6_e3m2': 3,  # E3M2
+    'fp6_e2m3': 4,  # E2M3
+    'fp4_e2m1': 5,  # E2M1
+}
+
+
+def _o_bitwidth(quantize_mode: int) -> int:
+    return {0: 32, 1: 16, 2: 8, 3: 8, 4: 8, 5: 6, 6: 6}.get(quantize_mode, 32)
 
 
 def compute_hw_cfg(p: dict) -> dict:
@@ -78,16 +100,20 @@ def compute_hw_cfg(p: dict) -> dict:
     parfor_M   = p["parfor_M"]
     parfor_N   = p["parfor_N"]
     parfor_K   = p["parfor_K"]
-    A_bits     = p["A_bit_width"]
-    B_bits     = p["B_bit_width"]
-    o_bits     = _o_bitwidth(p.get("quantize_mode", None))
+    A_dtype    = p["A_dtype"]
+    B_dtype    = p["B_dtype"]
+    A_bits     = _DTYPE_BITS[A_dtype]
+    B_bits     = _DTYPE_BITS[B_dtype]
+    quantize_mode = p.get("quantize_mode", 0)
+    o_bits     = _o_bitwidth(quantize_mode)
     stationary = p.get("stationary", 0)
+    
 
     # Tile sizes in bytes, aligned to 8
     A_tile = math.ceil(parfor_M * parfor_K * A_bits / 8 / 8) * 8
     B_tile = math.ceil(parfor_K * parfor_N * B_bits / 8 / 8) * 8
     S_tile = math.ceil((parfor_M + parfor_N) / 8) * 8
-    O_tile = parfor_M * parfor_N * o_bits // 8
+    O_tile = math.ceil(parfor_M * parfor_N * o_bits / 8 / 8) * 8
 
     ch_A   = A_tile // 8
     ch_B   = B_tile // 8
@@ -95,25 +121,41 @@ def compute_hw_cfg(p: dict) -> dict:
     ch_out = O_tile // 8
     total_channels = ch_A + ch_B + ch_S + ch_out
 
-
+    writer_spatial_bounds = [[ch_out]]
+    writer_num_channel = [ch_out]
+    writer_fifo_depth  = [8]
     # Scale reader: 4 loops (within-block stride=0 / k_block / n_tile / m_tile)
     # output_stationary writer: 2 temporal loops; other modes: 3
     writer_tdim = 2 if stationary == 0 else 3
+    writer_temporal_dim = [writer_tdim]
+
+    #for requantizaiton
+    if quantize_mode in [2, 3, 4, 5, 6]:
+        O_shared_tile = math.ceil((parfor_M) / 8) * 8
+        ch_share_out = O_shared_tile // 8
+        total_channels += ch_share_out
+        writer_spatial_bounds.append([ch_share_out])
+        writer_num_channel.append(ch_share_out)
+        writer_temporal_dim.append(writer_tdim)
+        writer_fifo_depth.append(8)
+
 
     return {
         "reader_spatial_bounds": [[ch_A], [ch_B], [ch_S]],
         "reader_num_channel":    [ch_A, ch_B, ch_S],
         "reader_temporal_dim":   [3, 3, 4],
-        "writer_spatial_bounds": [[ch_out]],
-        "writer_num_channel":    [ch_out],
-        "writer_temporal_dim":   [writer_tdim],
+        "writer_spatial_bounds": writer_spatial_bounds,
+        "writer_num_channel":    writer_num_channel,
+        "writer_temporal_dim":   writer_temporal_dim,
+        "writer_fifo_depth":     writer_fifo_depth,
         "snax_tcdm_ports":       total_channels,
         "sparse_interconnect_config": [[total_channels, 1]],
-        "TileRows":    parfor_M,
-        "TileCols":    parfor_N,
-        "VectorSize":  parfor_K,
-        "InputDataWidth": 8,
-        "OutputDataWidth": 32,
+        "TileRows":       parfor_M,
+        "TileCols":       parfor_N,
+        "VectorSize":     parfor_K,
+        "A_Width":        A_bits,
+        "B_Width":        B_bits,
+        "OutputDataWidth": o_bits,
     }
 
 
@@ -141,6 +183,7 @@ def patch_hwcfg(src: Path, dst: Path, hw: dict) -> None:
     wp["spatial_bounds"] = hw["writer_spatial_bounds"]
     wp["num_channel"]    = hw["writer_num_channel"]
     wp["temporal_dim"]   = hw["writer_temporal_dim"]
+    wp["fifo_depth"]     = hw["writer_fifo_depth"]
 
     # --- snax_tcdm_ports in the core template (resolved via $ref at build time) ---
     for acc in cfg["snax_alu_core_template"]["snax_acc_cfg"]:
@@ -150,8 +193,9 @@ def patch_hwcfg(src: Path, dst: Path, hw: dict) -> None:
             acc["snax_acc_params"]["TileRows"]        = hw["TileRows"]
             acc["snax_acc_params"]["TileCols"]        = hw["TileCols"]
             acc["snax_acc_params"]["VectorSize"]      = hw["VectorSize"]
-            acc["snax_acc_params"]["InputDataWidth"]  = hw["InputDataWidth"]
             acc["snax_acc_params"]["OutputDataWidth"] = hw["OutputDataWidth"]
+            acc["snax_acc_params"]["A_Width"]         = hw["A_Width"]
+            acc["snax_acc_params"]["B_Width"]         = hw["B_Width"]
 
     with open(dst, "w", encoding="utf-8") as f:
         hjson.dump(cfg, f, indent=4)
@@ -163,144 +207,212 @@ def patch_hwcfg(src: Path, dst: Path, hw: dict) -> None:
 # Chisel RTL generation
 # ---------------------------------------------------------------------------
 
-def run_mac_gen(p: dict) -> Path:
+def emit_pe_array_wrapper_sv(p: dict, out_dir: Path) -> Path:
+    """Emit a thin SV adaptor module (PE_Array_wrapper) that exposes packed
+    multi-dim IO around the Chisel-emitted PE_Array module, matching the
+    connection style used by snax_mx_alu_shell_wrapper.
+
+    Sizes are baked in to match the elaborated Chisel module (no SV-side
+    parameterisation of the connections).
     """
-    Derive FusedDotProductUnit parameters from params and invoke sbt to
-    generate SystemVerilog.
+    rqmode  = p["quantize_mode"]
+    rows    = p["parfor_M"]
+    cols    = p["parfor_N"]
+    vec     = p["parfor_K"]
+    blk     = p.get("block_size", 32)
+    A_W     = _DTYPE_BITS[p["A_dtype"]]
+    B_W     = _DTYPE_BITS[p["B_dtype"]]
+    scale_W = 8       # all ScaleFormats are 8 bits total (UE8M0..UE2M6)
+    dst_W   = 32      # FP32 accumulator output
+    out_tag, elem_W = _REQUANT_OUT_TAG[rqmode]
+    scale_name = _SCALE_FORMAT_MAP[p.get("shared_format", 0)]
+
+    lines: list[str] = [
+        "// AUTO-GENERATED by orchestrator.py — DO NOT EDIT.",
+        "// Adaptor wrapper around Chisel-emitted PE_Array. Re-packs the flat",
+        "// scalar Chisel ports (io_op_a_i_0, io_op_a_i_1, …) into packed",
+        "// multi-dim arrays expected by snax_mx_alu_shell_wrapper.",
+        f"// Config: A={p['A_dtype']} B={p['B_dtype']} scale={scale_name}"
+        f" {rows}x{cols} vec{vec} blk{blk} requant_mode={rqmode} ({_REQUNAT_TYPE_MAP[rqmode]})",
+        "`timescale 1ns / 1ps",
+        "",
+        "module PE_Array_wrapper #(",
+        f"    parameter int unsigned A_WIDTH     = {A_W},",
+        f"    parameter int unsigned B_WIDTH     = {B_W},",
+        f"    parameter int unsigned DST_WIDTH   = {dst_W},",
+        f"    parameter int unsigned TileRows    = {rows},",
+        f"    parameter int unsigned TileCols    = {cols},",
+        f"    parameter int unsigned VectorSize  = {vec},",
+        f"    parameter int unsigned SCALE_WIDTH = {scale_W}",
+        ")(",
+        "    input  logic clk_i,",
+        "    input  logic rst_ni,",
+        "",
+        "    // CSR / control",
+        "    input  logic [2:0] A_mode,",
+        "    input  logic [2:0] B_mode,",
+        "    input  logic [1:0] Result_mode_quan,",
+        "    input  logic [1:0] group_size,",
+        "    input  logic [3:0] shared_format_i,",
+        "",
+        "    input  logic acc_reset_i,",
+        "    input  logic send_output_i,",
+        "    input  logic A_valid_i,",
+        "    input  logic B_valid_i,",
+        "    output logic A_ready_o,",
+        "    output logic B_ready_o,",
+        "",
+        "    // Packed operand / shared-exp inputs",
+        "    input  logic [0:TileRows-1][A_WIDTH*VectorSize-1:0]      op_a_i,",
+        "    input  logic [0:TileCols-1][B_WIDTH*VectorSize-1:0]      op_b_i,",
+        "    input  logic [0:TileRows-1][SCALE_WIDTH-1:0]             shared_exp_A_i,",
+        "    input  logic [0:TileCols-1][SCALE_WIDTH-1:0]             shared_exp_B_i,",
+        "",
+        "    // FP32 accumulator outputs (TileRows × TileCols)",
+        "    output logic [0:TileRows-1][0:TileCols-1][DST_WIDTH-1:0] results_o,",
+    ]
+
+    if rqmode == 1:
+        lines += [
+            "",
+            "    // BF16 requantised output (TileRows × TileCols × 16-bit, big-endian)",
+            f"    output logic [{rows*cols*16}-1:0]            bf16_out,",
+        ]
+    elif rqmode == 4:
+        lines += [
+            "",
+            "    // mxint8 requantised output",
+            f"    output logic [{rows*8}-1:0]                  shared_scale_out,",
+            f"    output logic [{rows*blk*8}-1:0]              int8_out,",
+        ]
+    else:
+        lines += [
+            "",
+            f"    // {out_tag} requantised output ({elem_W}-bit elements)",
+            f"    output logic [{rows*8}-1:0]                  shared_scale_out,",
+            f"    output logic [{rows*blk*elem_W}-1:0]         elem_out,",
+        ]
+
+    lines += [
+        "    output logic                                  valid_out",
+        ");",
+        "",
+        "    // Chisel emits positive-asserted reset; shell uses active-low async rst_ni.",
+        "    PE_Array u_pe (",
+        "        .clock              (clk_i),",
+        "        .reset              (~rst_ni),",
+        "        .io_A_mode          (A_mode),",
+        "        .io_B_mode          (B_mode),",
+        "        .io_result_mode_quan(Result_mode_quan),",
+        "        .io_group_size      (group_size),",
+        "        .io_shared_format_i (shared_format_i),",
+        "        .io_acc_reset_i     (acc_reset_i),",
+        "        .io_send_output_i   (send_output_i),",
+        "        .io_A_valid_i       (A_valid_i),",
+        "        .io_B_valid_i       (B_valid_i),",
+        "        .io_A_ready_o       (A_ready_o),",
+        "        .io_B_ready_o       (B_ready_o),",
+    ]
+
+    for r in range(rows):
+        lines.append(f"        .io_op_a_i_{r}        (op_a_i[{r}]),")
+    for c in range(cols):
+        lines.append(f"        .io_op_b_i_{c}        (op_b_i[{c}]),")
+    for r in range(rows):
+        lines.append(f"        .io_shared_exp_A_i_{r}(shared_exp_A_i[{r}]),")
+    for c in range(cols):
+        lines.append(f"        .io_shared_exp_B_i_{c}(shared_exp_B_i[{c}]),")
+    for r in range(rows):
+        for c in range(cols):
+            lines.append(f"        .io_results_o_{r}_{c}    (results_o[{r}][{c}]),")
+
+    if rqmode == 1:
+        lines.append("        .io_bf16_out        (bf16_out),")
+    elif rqmode == 4:
+        lines.append("        .io_shared_scale_out(shared_scale_out),")
+        lines.append("        .io_int8_out        (int8_out),")
+    else:
+        lines.append("        .io_shared_scale_out(shared_scale_out),")
+        lines.append("        .io_elem_out        (elem_out),")
+
+    lines += [
+        "        .io_valid_out       (valid_out)",
+        "    );",
+        "",
+        "endmodule",
+        "",
+    ]
+
+    sv_path = out_dir / "PE_Array_wrapper.sv"
+    sv_path.write_text("\n".join(lines), encoding="utf-8")
+    return sv_path
+
+
+def run_pe_array_gen(p: dict) -> Path:
+    """
+    Generate the combined PE-Array + Requant RTL via `mx.GeneratePEArray`,
+    and emit the SV adaptor wrapper next to it.
 
     Mapping from params.hjson:
-      data_type     (int, default 0) → type_a and type_b element format
-      shared_format (int, default 0) → scale format
-      parfor_K                       → vectorSize (parallel MACs per cycle)
+      A_dtype, B_dtype           → MAC element formats
+      shared_format (int 0..6)   → block-scale format
+      parfor_M / parfor_N        → tileRows / tileCols
+      parfor_K                   → vectorSize (parallel MACs per PE per cycle)
+      block_size  (default 32)   → MX block size (16, 32, or 64)
+      quantize_mode (int 1..6)   → output requant variant:
+                                    1=bf16, 2=fp8_e5m2, 3=fp8_e4m3,
+                                    4=mxint8, 5=fp6_e2m3, 6=fp6_e3m2
     """
-    data_type     = p.get("data_type",     0)
-    shared_format = p.get("shared_format", 0)
-    vec           = p["parfor_K"]
+    requant_mode = p.get("quantize_mode")
+    if requant_mode not in _REQUNAT_TYPE_MAP:
+        sys.exit(f"[orchestrator] quantize_mode={requant_mode} is not a requant mode. "
+                 f"Valid: {list(_REQUNAT_TYPE_MAP)}")
 
-    type_a = _ELEMENT_TYPE_MAP.get(data_type)
-    type_b = _ELEMENT_TYPE_MAP.get(data_type)
+    A_dtype       = p["A_dtype"]
+    B_dtype       = p["B_dtype"]
+    shared_format = p.get("shared_format", 0)
+
+    type_a = _ELEMENT_TYPE_MAP.get(_DTYPE_TO_ELEMENT_TYPE.get(A_dtype))
+    type_b = _ELEMENT_TYPE_MAP.get(_DTYPE_TO_ELEMENT_TYPE.get(B_dtype))
     scale  = _SCALE_FORMAT_MAP.get(shared_format)
 
     if type_a is None:
-        sys.exit(f"[orchestrator] unknown data_type={data_type}, "
-                 f"valid: {_ELEMENT_TYPE_MAP}")
+        sys.exit(f"[orchestrator] unknown A_dtype={A_dtype!r}, "
+                 f"valid: {list(_DTYPE_TO_ELEMENT_TYPE)}")
+    if type_b is None:
+        sys.exit(f"[orchestrator] unknown B_dtype={B_dtype!r}, "
+                 f"valid: {list(_DTYPE_TO_ELEMENT_TYPE)}")
     if scale is None:
         sys.exit(f"[orchestrator] unknown shared_format={shared_format}, "
                  f"valid: {_SCALE_FORMAT_MAP}")
 
-    out_dir = SCRIPT_DIR / "generated" / "fused_dot" / f"{type_a}_{type_b}_{scale}_vec{vec}"
-
+    out_dir = DEFAULT_GEN_PE
     sbt_cmd = (
-        f"runMain mx.GenerateFusedDotProduct"
+        f"runMain mx.GeneratePEArray"
         f" --type-a {type_a}"
         f" --type-b {type_b}"
         f" --scale  {scale}"
-        f" --vec    {vec}"
+        f" --vec    {p['parfor_K']}"
+        f" --tile-rows  {p['parfor_M']}"
+        f" --tile-cols  {p['parfor_N']}"
+        f" --block-size {p.get('block_size', 32)}"
+        f" --requant-mode {requant_mode}"
         f" --out-dir {out_dir}"
     )
 
-    print(f"[orchestrator] Chisel RTL: {type_a} x {type_b}, scale={scale}, vec={vec}")
+    print(f"[orchestrator] PE-Array RTL: {type_a}×{type_b} scale={scale} "
+          f"{p['parfor_M']}x{p['parfor_N']} vec{p['parfor_K']} "
+          f"blk{p.get('block_size', 32)} → {_REQUNAT_TYPE_MAP[requant_mode]}")
     print(f"[orchestrator] sbt {sbt_cmd}")
-    result = subprocess.run(["sbt", sbt_cmd], cwd=SCRIPT_DIR)
+    result = subprocess.run(["sbt", sbt_cmd], cwd=CHISEL_DIR)
     if result.returncode != 0:
-        sys.exit(f"[orchestrator] Chisel generation failed (exit {result.returncode})")
+        sys.exit(f"[orchestrator] PE-Array RTL generation failed (exit {result.returncode})")
 
-    sv_path = out_dir / "BFP_PE.sv"
-    print(f"[orchestrator] RTL written → {sv_path}")
-    return out_dir
+    sv_path = out_dir / "PE_Array.sv"
+    print(f"[orchestrator] PE-Array RTL written → {sv_path}")
 
-
-def run_requant_gen(p: dict) -> Path:
-    """
-    Dispatch requantizer RTL generation based on requant_mode in params.hjson.
-
-    params.hjson fields:
-      requant_mode  (int, required) — selects the requantizer:
-                      0 = MX float (FP8 / FP6) → GenerateRequantFP8
-                      1 = INT8                  → GenerateRequantINT8
-                      2 = BF16                  → GenerateRequantBF16
-      out_format    (int, default 1) — for requant_mode=0 only:
-                      1=E5M2 (FP8)  2=E4M3 (FP8)
-                      3=E3M2 (FP6)  4=E2M3 (FP6)
-      shared_format (int, default 0) — for requant_mode=0 only:
-                      scale format, see _SCALE_FORMAT_MAP
-      block_size    (int, default 32) — for requant_mode=0/1 only:
-                      MX block size (16, 32, or 64)
-      parfor_M → tileRows,  parfor_N → tileCols  (all modes)
-    """
-    requant_mode = p.get("requant_mode")
-    if requant_mode is None:
-        sys.exit("[orchestrator] 'requant_mode' not set in params.hjson. "
-                 "Valid values: 0=MX_FLOAT(FP8/FP6), 1=INT8, 2=BF16")
-
-    tile_rows  = p["parfor_M"]
-    tile_cols  = p["parfor_N"]
-    block_size = p.get("block_size", 32)
-
-    # ── Mode 0: MX float (FP8 or FP6) ────────────────────────────────────
-    if requant_mode == 0:
-        out_format    = p.get("out_format", p.get("fp8_out_type", 1))  # backward-compat alias
-        shared_format = p.get("shared_format", 0)
-
-        out_type = _MX_FLOAT_OUT_TYPE_MAP.get(out_format)
-        scale    = _SCALE_FORMAT_MAP.get(shared_format)
-
-        if out_type is None:
-            sys.exit(f"[orchestrator] unknown out_format={out_format}, "
-                     f"valid: {_MX_FLOAT_OUT_TYPE_MAP}")
-        if scale is None:
-            sys.exit(f"[orchestrator] unknown shared_format={shared_format}, "
-                     f"valid: {_SCALE_FORMAT_MAP}")
-
-        out_dir = SCRIPT_DIR / "generated" / "requant" / \
-                  f"{out_type}_{scale}_blk{block_size}_{tile_rows}x{tile_cols}"
-        sbt_cmd = (
-            f"runMain mx.GenerateRequantFP8or6"
-            f" --out-type   {out_type}"
-            f" --scale      {scale}"
-            f" --block-size {block_size}"
-            f" --tile-rows  {tile_rows}"
-            f" --tile-cols  {tile_cols}"
-            f" --out-dir    {out_dir}"
-        )
-        label = f"MX_FLOAT outType={out_type} scale={scale} blk={block_size} {tile_rows}x{tile_cols}"
-
-    # ── Mode 1: INT8 ──────────────────────────────────────────────────────
-    elif requant_mode == 1:
-        out_dir = SCRIPT_DIR / "generated" / "requant" / \
-                  f"INT8_UE8M0_blk{block_size}_{tile_rows}x{tile_cols}"
-        sbt_cmd = (
-            f"runMain mx.GenerateRequantINT8"
-            f" --block-size {block_size}"
-            f" --tile-rows  {tile_rows}"
-            f" --tile-cols  {tile_cols}"
-            f" --out-dir    {out_dir}"
-        )
-        label = f"INT8 blk={block_size} {tile_rows}x{tile_cols}"
-
-    # ── Mode 2: BF16 ─────────────────────────────────────────────────────
-    elif requant_mode == 2:
-        out_dir = SCRIPT_DIR / "generated" / "requant" / \
-                  f"BF16_{tile_rows}x{tile_cols}"
-        sbt_cmd = (
-            f"runMain mx.GenerateRequantBF16"
-            f" --tile-rows {tile_rows}"
-            f" --tile-cols {tile_cols}"
-            f" --out-dir   {out_dir}"
-        )
-        label = f"BF16 {tile_rows}x{tile_cols}"
-
-    else:
-        sys.exit(f"[orchestrator] unknown requant_mode={requant_mode}, "
-                 f"valid: {_REQUANT_MODE_NAMES}")
-
-    print(f"[orchestrator] Requant RTL ({_REQUANT_MODE_NAMES.get(requant_mode)}): {label}")
-    print(f"[orchestrator] sbt {sbt_cmd}")
-    result = subprocess.run(["sbt", sbt_cmd], cwd=SCRIPT_DIR)
-    if result.returncode != 0:
-        sys.exit(f"[orchestrator] Requant RTL generation failed (exit {result.returncode})")
-
-    print(f"[orchestrator] Requant RTL written → {out_dir}")
+    wrapper_path = emit_pe_array_wrapper_sv(p, out_dir)
+    print(f"[orchestrator] SV adaptor wrapper → {wrapper_path}")
     return out_dir
 
 
@@ -320,16 +432,17 @@ def run_datagen(swcfg: Path, hwcfg: Path, output: Path) -> None:
     print(f"[orchestrator] test data written → {output}")
 
 
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="SNAX-MX workflow orchestrator")
-    ap.add_argument("--swcfg",    default=DEFAULT_SWCFG,  help="params.hjson (sw config)")
-    ap.add_argument("--hwcfg",    default=DEFAULT_HWCFG,  help="snax_mx_cluster.hjson template")
-    ap.add_argument("--genhw",    default=DEFAULT_GEN_HW, help="generated hw config output path")
-    ap.add_argument("--output",   default=DEFAULT_OUTPUT, help="data.h output path")
+    ap.add_argument("--swcfg",  default=DEFAULT_SWCFG,  help="params.hjson (sw config)")
+    ap.add_argument("--hwcfg",  default=DEFAULT_HWCFG,  help="snax_mx_cluster.hjson template")
+    ap.add_argument("--genhw",  default=DEFAULT_GEN_HW, help="generated hw config output path")
+    ap.add_argument("--output", default=DEFAULT_OUTPUT, help="data.h output path")
     ap.add_argument("--skip-rtl", action="store_true",    help="skip Chisel RTL generation step")
     args = ap.parse_args()
 
@@ -349,18 +462,31 @@ def main() -> None:
     for k, v in hw.items():
         print(f"               {k} = {v}")
 
-    # 3. Generate Chisel RTL
+    # 3. Generate Chisel RTL (combined PE-Array + Requant in one PE_Array module,
+    #    plus a thin SV adaptor that exposes packed multi-dim IO).
     if not args.skip_rtl:
-        run_mac_gen(params)
-        if params.get("requant_mode") is not None:
-            run_requant_gen(params)
+        if params.get("quantize_mode", 0) in _REQUNAT_TYPE_MAP:
+            run_pe_array_gen(params)
         else:
-            print("[orchestrator] 'requant_mode' not set — skipping requant RTL generation")
+            sys.exit(f"[orchestrator] quantize_mode={params.get('quantize_mode')} "
+                     f"has no requant mode; valid: {list(_REQUNAT_TYPE_MAP)}")
     else:
         print("[orchestrator] skipping Chisel RTL generation (--skip-rtl)")
 
     # 4. Patch hwcfg → genhw
     patch_hwcfg(hwcfg, genhw, hw)
+
+    # 4.5. Write RTL defines Makefile fragment for conditional wrapper ports
+    defines_mk = genhw.parent / "snax_mx_defines.mk"
+    qmode = params.get("quantize_mode", 0)
+    with open(defines_mk, "w") as f:
+        f.write("# Auto-generated by orchestrator.py — do not edit manually\n")
+        if qmode >= 2:
+            f.write("VLT_FLAGS  += +define+SCALE_OUTPUT_EN\n")
+            f.write("VLOG_FLAGS += +define+SCALE_OUTPUT_EN\n")
+        else:
+            f.write("# quantize_mode < 2: SCALE_OUTPUT_EN not defined\n")
+    print(f"[orchestrator] wrote RTL defines  → {defines_mk}")
 
     # 5. Run datagen
     run_datagen(swcfg, genhw, output)
