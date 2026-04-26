@@ -82,6 +82,29 @@ case class PEArrayINT8Config(
  * @param tileRows   Number of PE rows (4 or 8).
  * @param tileCols   Number of PE columns (4 or 8).
  */
+/**
+ * Combined elaboration-time configuration for a PEArrayWrapperFP32 (no requant).
+ *
+ * Used by quantize_mode = 0: the PE array's FP32 accumulator output IS the
+ * primary result, packed [tileRows × tileCols × 32]. No requant block, no
+ * shared-scale output.
+ */
+case class PEArrayFP32Config(
+  macCfg:     ScaleAddConfig,
+  vectorSize: Int,
+  tileRows:   Int,
+  tileCols:   Int,
+  K:          Int = 32
+) {
+  require(vectorSize >= 1, "vectorSize must be >= 1")
+  require(K >= 1, "K must be >= 1")
+
+  val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
+  val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
+  val scaleWidth = macCfg.stype.totalScaleWidth
+  val dstWidth   = 32
+}
+
 case class PEArrayBF16Config(
   macCfg:        ScaleAddConfig,
   vectorSize:    Int,

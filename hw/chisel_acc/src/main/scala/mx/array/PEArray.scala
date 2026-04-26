@@ -316,6 +316,88 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
 }
 
 // ============================================================
+// FP32 pass-through wrapper (quantize_mode = 0, no requant)
+// ============================================================
+/**
+ * PE array with FDPUPostScaleReductionTree PEs and NO requantization — the
+ * FP32 accumulator outputs are packed straight into `result`.
+ *
+ * Data flow:
+ *   op_a_i / op_b_i / shared_exp_*_i
+ *       → FDPUPostScaleReductionTree (tileRows × tileCols)
+ *       → result (tileRows × tileCols × 32-bit, big-endian flat UInt)
+ *       → valid_out
+ *
+ * No `shared_scale_out` — FP32 carries its own per-element exponent.
+ * No `results_o` debug port — `result` already exposes the FP32 path.
+ */
+class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
+  override def desiredName = "PE_Array"
+
+  val io = IO(new Bundle {
+    // ── CSR & Control ────────────────────────────────────────────────────
+    val A_mode           = Input(UInt(3.W))
+    val B_mode           = Input(UInt(3.W))
+    val result_mode_quan = Input(UInt(2.W))
+    val group_size       = Input(UInt(2.W))
+    val shared_format_i  = Input(UInt(4.W))
+
+    val acc_reset_i      = Input(Bool())
+    val send_output_i    = Input(Bool())
+
+    // ── Handshakes ────────────────────────────────────────────────────────
+    val A_valid_i        = Input(Bool())
+    val B_valid_i        = Input(Bool())
+    val A_ready_o        = Output(Bool())
+    val B_ready_o        = Output(Bool())
+
+    // ── Data Input ───────────────────────────────────────────────────────
+    val op_a_i           = Input(Vec(cfg.tileRows, UInt(cfg.srcWidthA.W)))
+    val op_b_i           = Input(Vec(cfg.tileCols, UInt(cfg.srcWidthB.W)))
+    val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
+    val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
+
+    // ── FP32 Output ───────────────────────────────────────────────────────
+    // Flat packed FP32: tileRows × tileCols elements, big-endian.
+    val result           = Output(UInt((cfg.tileRows * cfg.tileCols * cfg.dstWidth).W))
+    val valid_out        = Output(Bool())
+  })
+
+  // ── Handshake logic ──────────────────────────────────────────────────────
+  io.A_ready_o := !io.send_output_i
+  io.B_ready_o := !io.send_output_i
+  val internal_valid = io.A_valid_i && io.B_valid_i
+
+  // ── PE Array ──────────────────────────────────────────────────────────────
+  val peValidOut = Wire(Bool())
+  val results    = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
+
+  for (r <- 0 until cfg.tileRows) {
+    for (c <- 0 until cfg.tileCols) {
+      val pe = Module(new FDPUPostScaleReductionTree(
+        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
+
+      pe.io.op_a_i        := io.op_a_i(r)
+      pe.io.op_b_i        := io.op_b_i(c)
+      pe.io.share_exp_A_i := io.shared_exp_A_i(r)
+      pe.io.share_exp_B_i := io.shared_exp_B_i(c)
+      pe.io.validIn       := internal_valid
+      pe.io.resetAcc      := io.acc_reset_i
+
+      results(r)(c) := pe.io.accOut
+      if (r == 0 && c == 0) peValidOut := pe.io.validOut
+    }
+  }
+
+  // Pack FP32 outputs row-major, big-endian: (row=0, col=0) at the MSB.
+  io.result := Cat(
+    for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
+      yield results(r)(c)
+  )
+  io.valid_out := peValidOut
+}
+
+// ============================================================
 // Emission helpers — shared directory-name utility
 // ============================================================
 

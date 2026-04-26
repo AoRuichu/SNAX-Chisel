@@ -4,9 +4,11 @@ import chisel3._
 import mx.array.{
   PEArrayBF16Config,
   PEArrayConfig,
+  PEArrayFP32Config,
   PEArrayINT8Config,
   PEArrayWrapper,
   PEArrayWrapperBF16,
+  PEArrayWrapperFP32,
   PEArrayWrapperINT8
 }
 import mx.mac.{MXFormats, ScaleAddConfig, ScaleFormats}
@@ -16,6 +18,7 @@ import mx.requant.{RequantConfig, RequantINT8Config}
  * Parametrised generator for the combined PE-Array + Requant RTL.
  *
  * Picks the right wrapper from PEArray.scala based on `--requant-mode`:
+ *   0 → PEArrayWrapperFP32   (FP32 pass-through, no requant)
  *   1 → PEArrayWrapperBF16   (BF16 element output, no MX scale, no block)
  *   2 → PEArrayWrapper       (FP8  E5M2 output via RequantFP8)
  *   3 → PEArrayWrapper       (FP8  E4M3 output via RequantFP8)
@@ -23,7 +26,7 @@ import mx.requant.{RequantConfig, RequantINT8Config}
  *   5 → PEArrayWrapper       (FP6  E2M3 output via RequantFP8)
  *   6 → PEArrayWrapper       (FP6  E3M2 output via RequantFP8)
  *
- * Mapping mirrors orchestrator(5).py's `_REQUNAT_TYPE_MAP`.
+ * Mapping mirrors orchestrator.py's `_REQUNAT_TYPE_MAP`.
  *
  * Usage:
  *   sbt "runMain mx.GeneratePEArray \
@@ -73,6 +76,7 @@ object GeneratePEArray extends App {
 
   // Default output directory mirrors EmitDir.* naming from PEArray.scala.
   val outTagDefault: String = requantMode match {
+    case 0 => "FP32"
     case 1 => "BF16"
     case 2 => s"E5M2_blk$blockSize"
     case 3 => s"E4M3_blk$blockSize"
@@ -80,7 +84,7 @@ object GeneratePEArray extends App {
     case 5 => s"E2M3_blk$blockSize"
     case 6 => s"E3M2_blk$blockSize"
     case other =>
-      sys.error(s"--requant-mode must be 1..6 (1=BF16, 2=E5M2, 3=E4M3, 4=mxint8, 5=E2M3, 6=E3M2); got $other")
+      sys.error(s"--requant-mode must be 0..6 (0=FP32, 1=BF16, 2=E5M2, 3=E4M3, 4=mxint8, 5=E2M3, 6=E3M2); got $other")
   }
   val outDirDefault =
     s"generated/pe_array/${tileRows}x${tileCols}_${typeAName}_${typeBName}" +
@@ -93,6 +97,10 @@ object GeneratePEArray extends App {
   )
 
   requantMode match {
+    case 0 =>
+      val cfg = PEArrayFP32Config(macCfg, vectorSize, tileRows, tileCols)
+      emitVerilog(new PEArrayWrapperFP32(cfg), Array("--target-dir", outDir))
+
     case 1 =>
       val cfg = PEArrayBF16Config(macCfg, vectorSize, tileRows, tileCols)
       emitVerilog(new PEArrayWrapperBF16(cfg), Array("--target-dir", outDir))
