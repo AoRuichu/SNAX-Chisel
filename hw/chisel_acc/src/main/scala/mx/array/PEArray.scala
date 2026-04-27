@@ -99,6 +99,28 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     dontTouch(ro)
   }
 
+  // ── Accumulator-aware "result valid" gate ───────────────────────────────
+  // The PE accumulator runs accReg += MAC every PE-cycle until acc_reset_i
+  // clears it; one full dot product takes K/vectorSize PE-cycles.  Pulse
+  // resultDone only on the K/vec-th peValidOut so the requant block samples
+  // a complete dot product, not a partial sum.
+  require(cfg.K % cfg.vectorSize == 0,
+    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
+  val accumCycles = cfg.K / cfg.vectorSize
+  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
+  val resultDone  = WireDefault(false.B)
+  when (peValidOut) {
+    when (accCnt === (accumCycles - 1).U) {
+      accCnt     := 0.U
+      resultDone := true.B
+    } .otherwise {
+      accCnt := accCnt + 1.U
+    }
+  }
+  when (io.acc_reset_i) {
+    accCnt := 0.U
+  }
+
   // ── RequantFP8: FP32 → MXFP8/FP6 ────────────────────────────────────────
   val rq = Module(new RequantFP8(cfg.requantCfg))
 
@@ -108,7 +130,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield results(r)(c)
   )
-  rq.io.valid_in := peValidOut
+  rq.io.valid_in := resultDone
 
   io.shared_scale_out := rq.io.shared_scale_out
   io.result           := rq.io.elem_out
@@ -201,6 +223,26 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     dontTouch(ro)
   }
 
+  // ── Accumulator-aware "result valid" gate ───────────────────────────────
+  // See PEArrayWrapper for the rationale: pulse resultDone only on the
+  // K/vec-th peValidOut so the requant block samples complete dot products.
+  require(cfg.K % cfg.vectorSize == 0,
+    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
+  val accumCycles = cfg.K / cfg.vectorSize
+  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
+  val resultDone  = WireDefault(false.B)
+  when (peValidOut) {
+    when (accCnt === (accumCycles - 1).U) {
+      accCnt     := 0.U
+      resultDone := true.B
+    } .otherwise {
+      accCnt := accCnt + 1.U
+    }
+  }
+  when (io.acc_reset_i) {
+    accCnt := 0.U
+  }
+
   // ── RequantINT8: FP32 → INT8 ──────────────────────────────────────────────
   val rq = Module(new RequantINT8(cfg.requantCfg))
 
@@ -208,7 +250,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield results(r)(c)
   )
-  rq.io.valid_in := peValidOut
+  rq.io.valid_in := resultDone
 
   io.shared_scale_out := rq.io.shared_scale_out
   io.result           := rq.io.int8_out
@@ -302,6 +344,27 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
     dontTouch(ro)
   }
 
+  // ── Accumulator-aware "result valid" gate ───────────────────────────────
+  // BF16 mode is per-element pass-through (no block buffering), but valid_out
+  // must still fire only when accReg holds a complete dot product, not on
+  // every PE-cycle.  See PEArrayWrapper for full rationale.
+  require(cfg.K % cfg.vectorSize == 0,
+    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
+  val accumCycles = cfg.K / cfg.vectorSize
+  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
+  val resultDone  = WireDefault(false.B)
+  when (peValidOut) {
+    when (accCnt === (accumCycles - 1).U) {
+      accCnt     := 0.U
+      resultDone := true.B
+    } .otherwise {
+      accCnt := accCnt + 1.U
+    }
+  }
+  when (io.acc_reset_i) {
+    accCnt := 0.U
+  }
+
   // ── RequantBF16: FP32 → BF16 ─────────────────────────────────────────────
   val rq = Module(new RequantBF16(cfg.tileRows, cfg.tileCols))
 
@@ -309,7 +372,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield results(r)(c)
   )
-  rq.io.valid_in := peValidOut
+  rq.io.valid_in := resultDone
 
   io.result    := rq.io.bf16_out
   io.valid_out := rq.io.valid_out
@@ -394,7 +457,26 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield results(r)(c)
   )
-  io.valid_out := peValidOut
+
+  // Accumulator-aware valid_out: fire only on the K/vec-th peValidOut so the
+  // downstream consumer sees a complete dot product, not a partial sum.
+  require(cfg.K % cfg.vectorSize == 0,
+    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
+  val accumCycles = cfg.K / cfg.vectorSize
+  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
+  val resultDone  = WireDefault(false.B)
+  when (peValidOut) {
+    when (accCnt === (accumCycles - 1).U) {
+      accCnt     := 0.U
+      resultDone := true.B
+    } .otherwise {
+      accCnt := accCnt + 1.U
+    }
+  }
+  when (io.acc_reset_i) {
+    accCnt := 0.U
+  }
+  io.valid_out := resultDone
 }
 
 // ============================================================
