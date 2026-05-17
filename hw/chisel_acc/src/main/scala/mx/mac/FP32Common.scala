@@ -419,3 +419,114 @@ class ScaleToFPn(val scfg: ScaleAddConfig, val outMantBits: Int) extends Module 
             Mux(isOverflow,             Cat(io.inSign, 255.U(8.W), 0.U(outMantBits.W)),
                                         Cat(io.inSign, finalExp, finalMant)))
 }
+
+// ============================================================
+// FPxScale: apply (scaleA × scaleB) to a 1+8+M FP value, producing another
+// 1+8+M FP value.  Used by FDPUPostScaleReductionTree.buildBlockDeferred as
+// the block-boundary bridge — after inner FP accumulator finishes a block,
+// scaleA / scaleB (constant within the block by MX semantics) get applied
+// once.
+// ============================================================
+/** value(fpOut) = value(fpIn) × scale_A × scale_B (with appropriate
+ *  saturation/flush-to-zero on overflow/underflow).
+ *
+ *  - UE8M0 (mantScaleWidth == 0): degenerates to pure biased-exp arithmetic.
+ *    No mantissa multiplier, no LZC, no normalize.
+ *  - non-UE8M0: full path with scaleMantA × scaleMantB × innerMantFull +
+ *    LZC + RNE + exp correction.
+ *
+ *  Exp math (non-UE8M0 path):
+ *    new_biased_exp = old_biased_exp + scaleExpSum_real + 2 - lzc + mCarry
+ *  with the constant `+2` coming from productW − 1 − M − 2·M_s = 2 after
+ *  simplifying productW = (M+1) + 2·(M_s+1).
+ */
+class FPxScale(val scfg: ScaleAddConfig, val mantBits: Int) extends Module {
+  require(mantBits >= 1 && mantBits <= 23)
+  override def desiredName =
+    s"FPxScale${mantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}"
+
+  private val fpNW       = 1 + 8 + mantBits
+  private val scaleW     = scfg.stype.totalScaleWidth
+  private val mantScaleW = scfg.stype.mantScaleWidth
+  private val scaleBias  = scfg.stype.bias
+
+  val io = IO(new Bundle {
+    val fpIn   = Input(UInt(fpNW.W))
+    val scaleA = Input(UInt(scaleW.W))
+    val scaleB = Input(UInt(scaleW.W))
+    val fpOut  = Output(UInt(fpNW.W))
+  })
+
+  // ── Decompose fpIn ──────────────────────────────────────────────────────
+  val inSign      = io.fpIn(fpNW - 1)
+  val inBiasedExp = io.fpIn(fpNW - 2, fpNW - 1 - 8)   // 8-bit biased
+  val inExplicit  = io.fpIn(mantBits - 1, 0)          // M-bit explicit
+  val inImplicit  = inBiasedExp.orR                   // 0 ⇒ zero / denormal
+  val isInZero    = !inImplicit                       // flush denormals to zero
+  val innerMantFull = Cat(inImplicit, inExplicit)     // (M+1) bits
+
+  // ── Decompose scaleA, scaleB ────────────────────────────────────────────
+  def decomposeScale(s: UInt): (UInt, UInt) = {
+    if (mantScaleW == 0) {
+      (s, 1.U(1.W))                                    // UE8M0: exp only, mant ≡ 1
+    } else {
+      val sExp   = s(scaleW - 1, mantScaleW)
+      val sMantE = s(mantScaleW - 1, 0)
+      val sImp   = sExp.orR
+      (sExp, Cat(sImp, sMantE))                        // (M_s+1) bits with implicit
+    }
+  }
+  val (scaleExpA, scaleMantA) = decomposeScale(io.scaleA)
+  val (scaleExpB, scaleMantB) = decomposeScale(io.scaleB)
+  val scaleExpSum =
+    (scaleExpA.zext - scaleBias.S) +& (scaleExpB.zext - scaleBias.S)
+
+  if (mantScaleW == 0) {
+    // ── UE8M0 fast path: pure biased-exp arithmetic ───────────────────────
+    val newExpRaw   = inBiasedExp.zext +& scaleExpSum
+    val isOverflow  = newExpRaw >= 255.S
+    val isUnderflow = newExpRaw <= 0.S
+    io.fpOut := Mux(isInZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
+                Mux(isOverflow, Cat(inSign, 255.U(8.W), 0.U(mantBits.W)),
+                                Cat(inSign, newExpRaw.asUInt(7, 0), inExplicit)))
+  } else {
+    // ── Non-UE8M0: scaleMantProd × innerMantFull + normalize + RNE ────────
+    val scaleMantProd = scaleMantA * scaleMantB                     // 2·(M_s+1) bits
+    val rawProduct    = innerMantFull * scaleMantProd               // productW bits
+    val productW      = rawProduct.getWidth                         // = (M+1) + 2·(M_s+1)
+
+    val isProductZero = rawProduct === 0.U || isInZero
+    val lzc           = PriorityEncoder(Reverse(rawProduct))
+    val normalized    = (rawProduct << lzc)(productW - 1, 0)
+
+    // After normalize, bit (productW-1) is the implicit-1 of the result.
+    // Top mantBits below that = explicit mantissa.
+    val mantRaw  = normalized(productW - 2, productW - 1 - mantBits)
+    val gPos     = productW - 2 - mantBits
+    val rPos     = productW - 3 - mantBits
+    val sTop     = productW - 4 - mantBits
+    val guardBit = if (gPos >= 0) normalized(gPos).asBool else false.B
+    val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
+    val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR else false.B
+    val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
+    val roundedM = mantRaw +& roundUp.asUInt                         // mantBits+1
+    val mCarry   = roundedM(mantBits).asBool
+    val finalMantExp = Mux(mCarry, 0.U(mantBits.W), roundedM(mantBits - 1, 0))
+
+    // new_biased_exp = inBiasedExp + 2 + scaleExpSum - lzc (+ 1 if mCarry)
+    val constOffset = 2
+    val lzcS        = Cat(false.B, lzc).asSInt
+    val newExpBase  = inBiasedExp.zext +& constOffset.S +& scaleExpSum -& lzcS
+    val newExpRaw   = Mux(mCarry, newExpBase + 1.S, newExpBase)
+
+    val isOverflow  = newExpRaw >= 255.S
+    val isUnderflow = newExpRaw <= 0.S
+
+    val finalBiasedExp = Mux(isOverflow,                       255.U(8.W),
+                         Mux(isUnderflow || isProductZero,     0.U(8.W),
+                                                               newExpRaw.asUInt(7, 0)))
+    io.fpOut := Mux(isProductZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
+                Mux(isOverflow, Cat(inSign, 255.U(8.W), 0.U(mantBits.W)),
+                                Cat(inSign, finalBiasedExp, finalMantExp)))
+  }
+}

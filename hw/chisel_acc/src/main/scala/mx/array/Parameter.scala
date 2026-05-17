@@ -19,7 +19,7 @@ case class PEArrayConfig(
   tileRows:      Int,
   tileCols:      Int,
   requantCfg:    RequantConfig,
-  K:             Int     = 32,
+  K:             Int     = 16384,
   exposeResults: Boolean = false  // expose FP32 results_o IO for testing
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
@@ -39,6 +39,12 @@ case class PEArrayConfig(
   val dstWidth   = 32
   /** Single output element bit width. */
   val fp8Width   = requantCfg.outputType.totalWidth
+  /** Number of PE-cycles spanning one MX block — used by FDPU's block-deferred
+   *  scale-apply path so scale_A × scale_B is applied only at block boundary
+   *  instead of every PE-cycle.  See FDPUPostScaleReductionTree.buildBlockDeferred. */
+  val cyclesPerBlock = requantCfg.blockSize / vectorSize
+  require(requantCfg.blockSize % vectorSize == 0,
+    s"blockSize (${requantCfg.blockSize}) must be divisible by vectorSize ($vectorSize)")
 }
 
 /**
@@ -56,7 +62,7 @@ case class PEArrayINT8Config(
   tileRows:      Int,
   tileCols:      Int,
   requantCfg:    RequantINT8Config,
-  K:             Int     = 32,
+  K:             Int     = 16384,
   exposeResults: Boolean = false  // expose FP32 results_o IO for testing
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
@@ -70,6 +76,10 @@ case class PEArrayINT8Config(
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
   val dstWidth   = 32
+  /** PE-cycles per MX block (block-deferred scale apply). See PEArrayConfig. */
+  val cyclesPerBlock = requantCfg.blockSize / vectorSize
+  require(requantCfg.blockSize % vectorSize == 0,
+    s"blockSize (${requantCfg.blockSize}) must be divisible by vectorSize ($vectorSize)")
 }
 
 /**
@@ -94,7 +104,7 @@ case class PEArrayFP32Config(
   vectorSize: Int,
   tileRows:   Int,
   tileCols:   Int,
-  K:          Int = 32
+  K:          Int = 16384
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -103,6 +113,9 @@ case class PEArrayFP32Config(
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
   val dstWidth   = 32
+  /** FP32 pass-through carries no block structure here — keep scale-apply
+   *  per-cycle for simplicity (cyclesPerBlock=1 ⇒ FDPU uses buildSingleAcc). */
+  val cyclesPerBlock = 1
 }
 
 case class PEArrayBF16Config(
@@ -110,7 +123,7 @@ case class PEArrayBF16Config(
   vectorSize:    Int,
   tileRows:      Int,
   tileCols:      Int,
-  K:             Int     = 32,
+  K:             Int     = 16384,
   exposeResults: Boolean = false  // expose FP32 results_o IO for testing
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
@@ -122,6 +135,9 @@ case class PEArrayBF16Config(
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
   val dstWidth   = 32
+  /** BF16 wrapper has no requantCfg.blockSize exposed — keep scale-apply
+   *  per-cycle for simplicity (cyclesPerBlock=1 ⇒ FDPU uses buildSingleAcc). */
+  val cyclesPerBlock = 1
 }
 
 object DefaultPEArrayConfigs {
@@ -141,7 +157,10 @@ object DefaultPEArrayConfigs {
     )
   )
 
-  /** 4×4 tile, vec4, E5M2×E5M2 / UE8M0, block-32, E5M2 output */
+  /** 8×8 tile, vec4, E5M2×E5M2 / UE8M0, block-16, E5M2 output.
+   *  K = 16 (small for test simulation speed; production users should set K
+   *  to their model's worst-case accumulation depth so AccPrecision sizes
+   *  the FP32 accumulator mantissa accordingly). */
   val e5m2_8x8 = PEArrayConfig(
     macCfg     = ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE8M0),
     vectorSize = 4,
@@ -152,7 +171,8 @@ object DefaultPEArrayConfigs {
       tileRows   = 8,
       tileCols   = 8,
       outputType = MXFormats.E5M2
-    )
+    ),
+    K = 16
   )
 
   /** 4×4 tile, vec4, E4M3×E4M3 / UE8M0, block-32, E4M3 output */

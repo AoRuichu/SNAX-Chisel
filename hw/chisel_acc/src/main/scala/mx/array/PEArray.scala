@@ -2,7 +2,7 @@ package mx.array
 
 import chisel3._
 import chisel3.util._
-import mx.mac.FDPUPostScaleReductionTree
+import mx.mac.{FDPUPostScaleReductionTree, TreeArch}
 import mx.requant.{RequantFP8, RequantINT8, RequantBF16}
 
 // ============================================================
@@ -31,6 +31,13 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
 
     val acc_reset_i      = Input(Bool())
     val send_output_i    = Input(Bool())
+    // Runtime threshold: number of PE-cycles per dot product (= K / vectorSize).
+    // Driven by snax_mx_alu_shell_wrapper's csr_reg_set_buffer[1].  When
+    // peValidOut has fired this many times since acc_reset_i, the wrapper
+    // pulses RequantFP8.valid_in (resultDone) so it samples a complete dot
+    // product instead of a partial sum.  cfg.K is no longer used at runtime —
+    // it only sizes the PE accumulator's mantissa width via AccPrecision.
+    val accumulation_count_i = Input(UInt(32.W))
 
     // ── Handshakes ────────────────────────────────────────────────────────
     val A_valid_i        = Input(Bool())
@@ -80,7 +87,10 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
-        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
+        cfg.macCfg, cfg.vectorSize, K = cfg.K,
+        treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
+        cyclesPerBlock = cfg.cyclesPerBlock,
+        istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -101,16 +111,21 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
 
   // ── Accumulator-aware "result valid" gate ───────────────────────────────
   // The PE accumulator runs accReg += MAC every PE-cycle until acc_reset_i
-  // clears it; one full dot product takes K/vectorSize PE-cycles.  Pulse
-  // resultDone only on the K/vec-th peValidOut so the requant block samples
-  // a complete dot product, not a partial sum.
-  require(cfg.K % cfg.vectorSize == 0,
-    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
-  val accumCycles = cfg.K / cfg.vectorSize
-  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
-  val resultDone  = WireDefault(false.B)
+  // clears it; one full dot product takes K/vectorSize PE-cycles.  The
+  // threshold is supplied at RUNTIME via io.accumulation_count_i (= K/vec,
+  // driven by snax shell's csr_reg_set_buffer[1]) — NOT derived from cfg.K
+  // at elaboration time.  cfg.K is now used only by AccPrecision to size
+  // the FP32 accumulator mantissa for the worst-case K.
+  //
+  // Reset convention matches FDPUPostScaleReductionTree / RequantFP8: the
+  // implicit Chisel reset is treated as ACTIVE-LOW (dut.reset=true means
+  // "not in reset"), so we lift it through (!reset).asAsyncReset to get
+  // accCnt held at 0 only when reset is deasserted at the IO.
+  val rqAsyncRstN  = (!reset.asBool).asAsyncReset
+  val accCnt       = withReset(rqAsyncRstN)(RegInit(0.U(32.W)))
+  val resultDone   = WireDefault(false.B)
   when (peValidOut) {
-    when (accCnt === (accumCycles - 1).U) {
+    when (accCnt === io.accumulation_count_i - 1.U) {
       accCnt     := 0.U
       resultDone := true.B
     } .otherwise {
@@ -162,6 +177,8 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
 
     val acc_reset_i      = Input(Bool())
     val send_output_i    = Input(Bool())
+    // Runtime threshold = K/vectorSize.  See PEArrayWrapper for full rationale.
+    val accumulation_count_i = Input(UInt(32.W))
 
     // ── Handshakes ────────────────────────────────────────────────────────
     val A_valid_i        = Input(Bool())
@@ -204,7 +221,10 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
-        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
+        cfg.macCfg, cfg.vectorSize, K = cfg.K,
+        treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
+        cyclesPerBlock = cfg.cyclesPerBlock,
+        istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -224,15 +244,13 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   }
 
   // ── Accumulator-aware "result valid" gate ───────────────────────────────
-  // See PEArrayWrapper for the rationale: pulse resultDone only on the
-  // K/vec-th peValidOut so the requant block samples complete dot products.
-  require(cfg.K % cfg.vectorSize == 0,
-    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
-  val accumCycles = cfg.K / cfg.vectorSize
-  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
-  val resultDone  = WireDefault(false.B)
+  // See PEArrayWrapper for the rationale + reset convention.  Runtime
+  // threshold via io.accumulation_count_i (no compile-time K/vec).
+  val rqAsyncRstN  = (!reset.asBool).asAsyncReset
+  val accCnt       = withReset(rqAsyncRstN)(RegInit(0.U(32.W)))
+  val resultDone   = WireDefault(false.B)
   when (peValidOut) {
-    when (accCnt === (accumCycles - 1).U) {
+    when (accCnt === io.accumulation_count_i - 1.U) {
       accCnt     := 0.U
       resultDone := true.B
     } .otherwise {
@@ -285,6 +303,8 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
 
     val acc_reset_i      = Input(Bool())
     val send_output_i    = Input(Bool())
+    // Runtime threshold = K/vectorSize.  See PEArrayWrapper for full rationale.
+    val accumulation_count_i = Input(UInt(32.W))
 
     // ── Handshakes ────────────────────────────────────────────────────────
     val A_valid_i        = Input(Bool())
@@ -325,7 +345,10 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
-        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
+        cfg.macCfg, cfg.vectorSize, K = cfg.K,
+        treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
+        cyclesPerBlock = cfg.cyclesPerBlock,
+        istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -347,14 +370,13 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   // ── Accumulator-aware "result valid" gate ───────────────────────────────
   // BF16 mode is per-element pass-through (no block buffering), but valid_out
   // must still fire only when accReg holds a complete dot product, not on
-  // every PE-cycle.  See PEArrayWrapper for full rationale.
-  require(cfg.K % cfg.vectorSize == 0,
-    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
-  val accumCycles = cfg.K / cfg.vectorSize
-  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
-  val resultDone  = WireDefault(false.B)
+  // every PE-cycle.  Runtime threshold via io.accumulation_count_i; see
+  // PEArrayWrapper for full rationale + reset convention.
+  val rqAsyncRstN  = (!reset.asBool).asAsyncReset
+  val accCnt       = withReset(rqAsyncRstN)(RegInit(0.U(32.W)))
+  val resultDone   = WireDefault(false.B)
   when (peValidOut) {
-    when (accCnt === (accumCycles - 1).U) {
+    when (accCnt === io.accumulation_count_i - 1.U) {
       accCnt     := 0.U
       resultDone := true.B
     } .otherwise {
@@ -407,6 +429,8 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
 
     val acc_reset_i      = Input(Bool())
     val send_output_i    = Input(Bool())
+    // Runtime threshold = K/vectorSize.  See PEArrayWrapper for full rationale.
+    val accumulation_count_i = Input(UInt(32.W))
 
     // ── Handshakes ────────────────────────────────────────────────────────
     val A_valid_i        = Input(Bool())
@@ -438,7 +462,10 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
-        cfg.macCfg, cfg.vectorSize, K = cfg.K, istest = false))
+        cfg.macCfg, cfg.vectorSize, K = cfg.K,
+        treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
+        cyclesPerBlock = cfg.cyclesPerBlock,
+        istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
       pe.io.op_b_i        := io.op_b_i(c)
@@ -460,47 +487,55 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
 
   // Accumulator-aware valid_out: fire only on the K/vec-th peValidOut so the
   // downstream consumer sees a complete dot product, not a partial sum.
-  require(cfg.K % cfg.vectorSize == 0,
-    s"K (${cfg.K}) must be divisible by vectorSize (${cfg.vectorSize})")
-  val accumCycles = cfg.K / cfg.vectorSize
-  val accCnt      = RegInit(0.U(log2Ceil((accumCycles + 1).max(2)).W))
-  val resultDone  = WireDefault(false.B)
-  when (peValidOut) {
-    when (accCnt === (accumCycles - 1).U) {
-      accCnt     := 0.U
-      resultDone := true.B
+  // Runtime threshold via io.accumulation_count_i; reset convention: see
+  // PEArrayWrapper.
+  val rqAsyncRstN = (!reset.asBool).asAsyncReset                  // ① 反向 reset
+  val accCnt      = withReset(rqAsyncRstN)(RegInit(0.U(32.W)))    // ② 32-bit 计数器
+  val resultDone  = WireDefault(false.B)                           // ③ 默认 false 的 wire
+
+  when (peValidOut) {                                              // ④ 只在 PE 输出有效时计数
+    when (accCnt === io.accumulation_count_i - 1.U) {              //   ⑤ 数到 N-1 ⇒ 完整 dot product
+      accCnt     := 0.U                                            //   ⑥ 清零计数器
+      resultDone := true.B                                         //   ⑦ 单周期脉冲,通知 rq 采样
     } .otherwise {
-      accCnt := accCnt + 1.U
+      accCnt := accCnt + 1.U                                       //   ⑧ 否则继续累加
     }
   }
-  when (io.acc_reset_i) {
+  when (io.acc_reset_i) {                                          // ⑨ 外部 acc_reset 来 → 同步重置
     accCnt := 0.U
   }
-  io.valid_out := resultDone
+  io.valid_out := resultDone    
 }
-
 // ============================================================
 // Emission helpers — shared directory-name utility
 // ============================================================
 
 private object EmitDir {
-  /** Common target-dir pattern: <tileRows>x<tileCols>_<typeA>_<typeB>_<scale>_vec<v>_<outTag> */
-  def fp8(cfg: PEArrayConfig): String =
-    s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
+  /** Common target-dir pattern: <root>/<rows>x<cols>_<typeA>_<typeB>_<scale>_vec<v>_<outTag>.
+   *  `root` defaults to "generated/pe_array" so existing emitters are unaffected;
+   *  pass `root = "generated/baseline"` (or another tag) to snapshot a sweep alongside.
+   */
+  def fp8(cfg: PEArrayConfig, root: String = "generated/pe_array"): String =
+    s"$root/${cfg.tileRows}x${cfg.tileCols}" +
     s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
     s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}" +
     s"_${cfg.requantCfg.outputType.name}_blk${cfg.requantCfg.blockSize}"
 
-  def int8(cfg: PEArrayINT8Config): String =
-    s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
+  def int8(cfg: PEArrayINT8Config, root: String = "generated/pe_array"): String =
+    s"$root/${cfg.tileRows}x${cfg.tileCols}" +
     s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
     s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}" +
     s"_INT8_blk${cfg.requantCfg.blockSize}"
 
-  def bf16(cfg: PEArrayBF16Config): String =
-    s"generated/pe_array/${cfg.tileRows}x${cfg.tileCols}" +
+  def bf16(cfg: PEArrayBF16Config, root: String = "generated/pe_array"): String =
+    s"$root/${cfg.tileRows}x${cfg.tileCols}" +
     s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
     s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}_BF16"
+
+  def fp32(cfg: PEArrayFP32Config, root: String = "generated/pe_array"): String =
+    s"$root/${cfg.tileRows}x${cfg.tileCols}" +
+    s"_${cfg.macCfg.elementTypeA.name}_${cfg.macCfg.elementTypeB.name}" +
+    s"_${cfg.macCfg.stype.name}_vec${cfg.vectorSize}_FP32"
 }
 
 // ============================================================
@@ -524,13 +559,13 @@ object AllPEArrayMain extends App {
     (4, 16, 32)
   )
 
-  // ── MAC input pairs (symmetric + asymmetric) ────────────────────────────
+  // ── MAC input pairs (FP8/FP6 activations only).
+  // INT8-activation pairs use the RequantINT8 path (AllPEArrayINT8Main),
+  // so they are intentionally excluded here.
   val macPairs = Seq(
     (MXFormats.E5M2, MXFormats.E5M2),
     (MXFormats.E4M3, MXFormats.E4M3),
     (MXFormats.E3M2, MXFormats.E3M2),
-    (MXFormats.INT8, MXFormats.E5M2),
-    (MXFormats.INT8, MXFormats.E4M3),
     (MXFormats.E5M2, MXFormats.E4M3)
   )
 
@@ -595,7 +630,7 @@ object AllPEArrayINT8Main extends App {
       vectorSize = vecSize,
       tileRows   = rows,
       tileCols   = cols,
-      requantCfg = RequantINT8Config(blk, rows, cols)
+      requantCfg = RequantINT8Config(blk, rows, cols, scale)
     )
     println(
       s"[INT8] ${typeA.name}×${typeB.name} scale ${scale.name} " +
@@ -640,4 +675,114 @@ object AllPEArrayBF16Main extends App {
     )
     emitVerilog(new PEArrayWrapperBF16(cfg), Array("--target-dir", EmitDir.bf16(cfg)))
   }
+}
+
+/** Snapshot all output-mode variants under `generated/baseline/` using the
+ *  current default reduction-tree micro-architecture (TreeArch.Generic).
+ *
+ *  This is the DSE *reference* RTL.  When specialised tree archs
+ *  (IntOnlySigned, GroupAnchor, …) get wired into the wrappers, the regular
+ *  `AllPEArray*Main` emitters will start producing dispatched RTL while this
+ *  folder remains frozen so we can do area / equivalence comparisons.
+ *
+ *  Pair list = union of the existing `AllPEArray*Main` pair lists PLUS
+ *  (INT8,INT8) so Arch-I (productExpRange == 0) has a baseline to diff
+ *  against.  Per-pair productExpRange annotations:
+ *
+ *    (E5M2, E5M2) → 58  ← Arch-IV target
+ *    (E5M2, E4M3) → 42  ← Arch-IV target
+ *    (INT8, E5M2) → 29  ← Arch-III
+ *    (E4M3, E4M3) → 26  ← Arch-III
+ *    (INT8, E4M3) → 13  ← Arch-III
+ *    (E3M2, E3M2) → 10  ← Arch-III
+ *    (INT8, INT8) →  0  ← Arch-I target
+ */
+object AllPEArrayBaselineMain extends App {
+  import mx.mac.{MXFormats, ScaleFormats, ScaleAddConfig}
+  import mx.requant.{RequantConfig, RequantINT8Config}
+
+  val Root = "generated/baseline"
+
+  // Pair list spanning the productExpRange spectrum.
+  val basePairs = Seq(
+    (MXFormats.E5M2, MXFormats.E5M2),
+    (MXFormats.E5M2, MXFormats.E4M3),
+    (MXFormats.INT8, MXFormats.E5M2),
+    (MXFormats.E4M3, MXFormats.E4M3),
+    (MXFormats.INT8, MXFormats.E4M3),
+    (MXFormats.E3M2, MXFormats.E3M2),
+    (MXFormats.INT8, MXFormats.INT8)
+  )
+
+  val vecSize   = 4
+  val tileRows  = 4
+  val tileCols  = 16
+  val blkSize   = 32
+  val fpScales  = Seq(ScaleFormats.UE8M0, ScaleFormats.UE4M4, ScaleFormats.UE6M2)
+  val bfFp32Sc  = ScaleFormats.UE8M0  // BF16 / FP32 sweeps use a single scale
+
+  // ── FP8 / FP6 output: both operands must be FP (RequantFP8 packs MXFP) ────
+  val fpOnlyPairs = basePairs.filter { case (a, b) =>
+    a.name != "INT8" && b.name != "INT8"
+  }
+  for {
+    (typeA, typeB) <- fpOnlyPairs
+    scale          <- fpScales
+  } {
+    val cfg = PEArrayConfig(
+      macCfg     = ScaleAddConfig(typeA, typeB, scale),
+      vectorSize = vecSize,
+      tileRows   = tileRows,
+      tileCols   = tileCols,
+      requantCfg = RequantConfig(blkSize, tileRows, tileCols, typeA, scale)
+    )
+    val dir = EmitDir.fp8(cfg, Root)
+    println(s"[baseline FP8 ] ${typeA.name}×${typeB.name} scale ${scale.name} → $dir")
+    emitVerilog(new PEArrayWrapper(cfg), Array("--target-dir", dir))
+  }
+
+  // ── INT8 output: all pairs valid ──────────────────────────────────────────
+  for {
+    (typeA, typeB) <- basePairs
+    scale          <- fpScales
+  } {
+    val cfg = PEArrayINT8Config(
+      macCfg     = ScaleAddConfig(typeA, typeB, scale),
+      vectorSize = vecSize,
+      tileRows   = tileRows,
+      tileCols   = tileCols,
+      requantCfg = RequantINT8Config(blkSize, tileRows, tileCols, scale)
+    )
+    val dir = EmitDir.int8(cfg, Root)
+    println(s"[baseline INT8] ${typeA.name}×${typeB.name} scale ${scale.name} → $dir")
+    emitVerilog(new PEArrayWrapperINT8(cfg), Array("--target-dir", dir))
+  }
+
+  // ── BF16 output: single scale, all pairs valid ────────────────────────────
+  basePairs.foreach { case (typeA, typeB) =>
+    val cfg = PEArrayBF16Config(
+      macCfg     = ScaleAddConfig(typeA, typeB, bfFp32Sc),
+      vectorSize = vecSize,
+      tileRows   = tileRows,
+      tileCols   = tileCols
+    )
+    val dir = EmitDir.bf16(cfg, Root)
+    println(s"[baseline BF16] ${typeA.name}×${typeB.name} → $dir")
+    emitVerilog(new PEArrayWrapperBF16(cfg), Array("--target-dir", dir))
+  }
+
+  // ── FP32 pass-through: single scale, all pairs valid ──────────────────────
+  basePairs.foreach { case (typeA, typeB) =>
+    val cfg = PEArrayFP32Config(
+      macCfg     = ScaleAddConfig(typeA, typeB, bfFp32Sc),
+      vectorSize = vecSize,
+      tileRows   = tileRows,
+      tileCols   = tileCols
+    )
+    val dir = EmitDir.fp32(cfg, Root)
+    println(s"[baseline FP32] ${typeA.name}×${typeB.name} → $dir")
+    emitVerilog(new PEArrayWrapperFP32(cfg), Array("--target-dir", dir))
+  }
+
+  println(s"[baseline] All variants emitted under $Root/")
 }

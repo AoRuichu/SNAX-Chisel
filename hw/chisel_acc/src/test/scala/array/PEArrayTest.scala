@@ -105,11 +105,18 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   //                                  RNE round)
   // =========================================================================
 
-  /** Shared scale for one row, scale-type aware. */
-  def swMaxScale(fp32s: Seq[Float], st: ScaleType): Int = {
+  /**
+   * Shared scale for one row, scale-type aware (OCP MX semantics).
+   * Subtracts emax_element = (1 << outExpBits) − 2 − outBias so that the
+   * block's max-magnitude element lands at the element format's max-normal
+   * exponent — matches the hardware MaxScaleFinder.
+   */
+  def swMaxScale(fp32s: Seq[Float], t: ElementType, st: ScaleType): Int = {
+    val emaxElem = ((1 << t.elementWidthExp) - 2) - t.bias
     if (st.mantScaleWidth == 0) {
-      // UE8M0 — max biased FP32 exp
-      fp32s.map(f => (floatToRawIntBits(f) >>> 23) & 0xFF).max
+      // UE8M0 — (max biased FP32 exp) − emax_element, clamped to [0, 255]
+      val maxBiasedExp = fp32s.map(f => (floatToRawIntBits(f) >>> 23) & 0xFF).max
+      (maxBiasedExp - emaxElem).max(0).min(255)
     } else {
       // ExMy — floor-encode max-magnitude FP32 as {biasedExp[E-1:0], mant[M-1:0]}
       val M             = st.mantScaleWidth
@@ -122,7 +129,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       val maxBiasedExp = (maxMag31 >>> 23) & 0xFF
       val maxMant23    = maxMag31 & 0x7FFFFF
 
-      val expRaw = maxBiasedExp - 127 + scaleBias
+      val expRaw = maxBiasedExp - 127 + scaleBias - emaxElem
       val expClamped =
         if (expRaw <= 0) 0
         else if (expRaw >= maxScaleExpV) maxScaleExpV
@@ -233,7 +240,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
 
   /** Full SW requant model for a tileRows × blockSize FP32 block, scale-type aware. */
   def swRequant(block: Seq[Seq[Float]], t: ElementType, st: ScaleType): (Seq[Int], Seq[Seq[Int]]) = {
-    val scales = block.map(swMaxScale(_, st))
+    val scales = block.map(swMaxScale(_, t, st))
     val elems  = block.zip(scales).map { case (row, sc) => row.map(swFP32toFP8(_, sc, t, st)) }
     (scales, elems)
   }
@@ -242,8 +249,10 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // DUT helpers
   // =========================================================================
 
-  /** Active-low async reset: drive reset=1 for "not in reset" (matches FusedDotProductUnit). */
-  def initDut(dut: PEArrayWrapper): Unit = {
+  /** Active-low async reset: drive reset=1 for "not in reset" (matches FusedDotProductUnit).
+   *  Also pokes io.accumulation_count_i = cfg.K / cfg.vectorSize so the
+   *  wrapper's accum-aware gate fires every K/vec PE-cycles. */
+  def initDut(dut: PEArrayWrapper, cfg: PEArrayConfig): Unit = {
     dut.reset.poke(true.B)
     dut.io.A_valid_i.poke(false.B)
     dut.io.B_valid_i.poke(false.B)
@@ -254,6 +263,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
     dut.io.result_mode_quan.poke(0.U)
     dut.io.group_size.poke(0.U)
     dut.io.shared_format_i.poke(0.U)
+    dut.io.accumulation_count_i.poke((cfg.K / cfg.vectorSize).U)
   }
 
   /** Drive all rows/cols with the given element/scale values and step one clock.
@@ -335,19 +345,18 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   def peekAcc(dut: PEArrayWrapper, r: Int, c: Int): Float =
     intBitsToFloat(dut.io.results_o.get(r)(c).peek().litValue.toInt)
 
-  /** Extract shared_scale_out[row] (row 0 = MSB, SV [0:tileRows-1][7:0]). */
+  /** Extract shared_scale_out[row] (row 0 = LSB, little-endian byte order). */
   def extractScale(packed: BigInt, tileRows: Int, row: Int): Int =
-    ((packed >> ((tileRows - row - 1) * 8)) & 0xFF).toInt
+    ((packed >> (row * 8)) & 0xFF).toInt
 
-  /** Extract elem_out[row][col] (row-major, row 0 / col 0 = MSB).
+  /** Extract elem_out[row][col] (row-major, row 0 / col 0 = LSB).
    *  `elemBits` defaults to 8 for FP8/INT8; pass 6 for FP6 outputs. */
   def extractFP8(
     packed: BigInt, tileRows: Int, blockSize: Int, row: Int, col: Int, elemBits: Int = 8
   ): Int = {
     val k    = row * blockSize + col
-    val nOut = tileRows * blockSize
     val mask = (BigInt(1) << elemBits) - 1
-    ((packed >> ((nOut - k - 1) * elemBits)) & mask).toInt
+    ((packed >> (k * elemBits)) & mask).toInt
   }
 
   // =========================================================================
@@ -505,7 +514,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("PEArray: valid_out fires exactly after batchesPerBlock dot products") {
     test(new PEArrayWrapper(cfg)).withAnnotations(Seq(WriteVcdAnnotation))  { dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       dut.io.valid_out.expect(false.B)
 
       val aE = Seq.fill(tileRows)(e_1)
@@ -518,10 +527,10 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         driveBatch(dut, cfg, aE, bE, aS, bS)
         dut.io.valid_out.expect(false.B, s"valid_out must stay low after batch $b")
       }
-      // B-th batch: blockDone fires inside RequantFP8 during the reset step.
-      // Need one more clock step to let validOutReg latch.
+      // B-th batch: driveBatch's own acc_reset step IS the edge that latches
+      // blockDone into validOutReg, so valid_out is already high in the cycle
+      // right after driveBatch returns — no extra step needed.
       driveBatch(dut, cfg, aE, bE, aS, bS)
-      dut.clock.step()
       dut.io.valid_out.expect(true.B, "valid_out must assert after B batches")
 
       // De-asserts on next idle cycle
@@ -535,7 +544,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("PEArray: acc_reset_i clears all PE accumulators") {
     test(new PEArrayWrapper(cfg)) { dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       val aE = Seq.fill(tileRows)(e_1)
       val bE = Seq.fill(tileCols)(e_1)
       val aS = Seq.fill(tileRows)(s_1)
@@ -567,7 +576,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("PEArray: all-ones input — FP32 accumulators match SW model") {
     test(new PEArrayWrapper(cfg)){ dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       dut.io.acc_reset_i.poke(true.B); dut.clock.step()
       dut.io.acc_reset_i.poke(false.B)
 
@@ -601,7 +610,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("PEArray: all-ones → MXFP8 output matches SW requant model") {
     test(new PEArrayWrapper(cfg)) { dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       dut.io.acc_reset_i.poke(true.B); dut.clock.step()
       dut.io.acc_reset_i.poke(false.B)
 
@@ -619,8 +628,8 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         for (r <- 0 until tileRows; c <- 0 until tileCols)
           swBlock(r)(b * tileCols + c) = perBatchDot
       }
-      dut.clock.step()  // let validOutReg latch the last blockDone
-
+      // The B-th driveBatch's acc_reset step latches blockDone → validOutReg
+      // — valid_out is already high in the cycle right after driveBatch returns.
       dut.io.valid_out.expect(true.B, "valid_out must fire after full block")
 
       val (expScales, expFP8) = swRequant(swBlock.map(_.toSeq).toSeq, rqCfg.outputType, rqCfg.scaleType)
@@ -653,7 +662,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("PEArray: heterogeneous row scales — per-row MXFP8 scale selection") {
     test(new PEArrayWrapper(cfg)) { dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       dut.io.acc_reset_i.poke(true.B); dut.clock.step()
       dut.io.acc_reset_i.poke(false.B)
 
@@ -675,8 +684,6 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         for (r <- 0 until tileRows; c <- 0 until tileCols)
           swBlock(r)(b * tileCols + c) = perRowBatchDot(r)
       }
-      dut.clock.step()
-
       dut.io.valid_out.expect(true.B)
 
       val (expScales, expFP8) = swRequant(swBlock.map(_.toSeq).toSeq, rqCfg.outputType, rqCfg.scaleType)
@@ -702,7 +709,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
   test("PEArray: two consecutive blocks — valid_out fires twice correctly") {
     test(new PEArrayWrapper(cfg)) { dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       dut.io.acc_reset_i.poke(true.B); dut.clock.step()
       dut.io.acc_reset_i.poke(false.B)
 
@@ -719,7 +726,6 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
           for (r <- 0 until tileRows; c <- 0 until tileCols)
             swBlock(r)(b * tileCols + c) = perBatchDot
         }
-        dut.clock.step()
         dut.io.valid_out.expect(true.B, "valid_out must fire at end of block")
         val hwScale = dut.io.shared_scale_out.peek().litValue
         val hwFP8   = dut.io.result.peek().litValue
@@ -771,7 +777,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
     def randUE8M0(): Int = 120 + rng.nextInt(8)  // exponent ~1.0, avoids scale extremes
 
     test(new PEArrayWrapper(cfg)) { dut =>
-      initDut(dut)
+      initDut(dut, cfg)
       dut.io.acc_reset_i.poke(true.B); dut.clock.step()
       dut.io.acc_reset_i.poke(false.B)
 
@@ -818,7 +824,8 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         dut.io.acc_reset_i.poke(false.B)
       }
 
-      dut.clock.step()  // let validOutReg latch the final blockDone
+      // The last batch's acc_reset step IS the edge that latched blockDone
+      // into validOutReg — valid_out is already high in the current cycle.
       dut.io.valid_out.expect(true.B, "valid_out must fire after full block")
 
       // Use HW FP32 (hwBlock) as the requant reference — it isolates the
@@ -913,7 +920,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       var localFailed = 0
       try {
         test(new PEArrayWrapper(sweepCfg)) { dut =>
-          initDut(dut)
+          initDut(dut, sweepCfg)
           dut.io.acc_reset_i.poke(true.B); dut.clock.step()
           dut.io.acc_reset_i.poke(false.B)
 
@@ -1027,7 +1034,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       var localFailed = 0
       try {
         test(new PEArrayWrapper(sweepCfg)) { dut =>
-          initDut(dut)
+          initDut(dut, sweepCfg)
           dut.io.acc_reset_i.poke(true.B); dut.clock.step()
           dut.io.acc_reset_i.poke(false.B)
 
@@ -1260,6 +1267,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
           dut.io.result_mode_quan.poke(0.U)
           dut.io.group_size.poke(0.U)
           dut.io.shared_format_i.poke(0.U)
+          dut.io.accumulation_count_i.poke((sweepCfg.K / sweepCfg.vectorSize).U)
           dut.io.acc_reset_i.poke(true.B); dut.clock.step()
           dut.io.acc_reset_i.poke(false.B)
 
@@ -1386,13 +1394,15 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
     val aS = Seq.fill(tileRows)(s_1)
     val bS = Seq.fill(tileCols)(s_1)
 
-    test(new PEArrayWrapper(cfg)) { dut =>
+    test(new PEArrayWrapper(cfg)).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
 
       // Drive a hard reset that flushes both PE accumulators AND the requant
-      // block's batch counter.  initDut alone resets the PE side; we also
-      // need to bounce dut.reset to clear RequantFP8's internal state.
+      // block's batch counter.  Active-low async reset: dut.reset=false means
+      // "assert internal reset" (registers held at init), dut.reset=true means
+      // "deassert" (operating).  Pulse reset=false for one cycle, then leave
+      // reset=true so the design runs after fullReset returns.
       def fullReset(): Unit = {
-        dut.reset.poke(true.B)
+        dut.reset.poke(false.B)
         dut.io.A_valid_i.poke(false.B)
         dut.io.B_valid_i.poke(false.B)
         dut.io.acc_reset_i.poke(false.B)
@@ -1402,8 +1412,9 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         dut.io.result_mode_quan.poke(0.U)
         dut.io.group_size.poke(0.U)
         dut.io.shared_format_i.poke(0.U)
+        dut.io.accumulation_count_i.poke((cfg.K / cfg.vectorSize).U)
         dut.clock.step(2)
-        dut.reset.poke(false.B)
+        dut.reset.poke(true.B)
         dut.clock.step()
       }
 
@@ -1478,7 +1489,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       dut.io.acc_reset_i.poke(false.B)
       // Drive remaining B-1 batches normally
       for (_ <- 0 until B - 1) driveBatch(dut, cfg, aE, bE, aS, bS)
-      dut.clock.step()  // let validOutReg latch the last blockDone
+      // The B-th driveBatch's own acc_reset step latches blockDone → validOutReg.
       dut.io.valid_out.expect(true.B,
         s"valid_out fires after $B batches even with an idle gap inside batch 0")
       dut.clock.step()
@@ -1494,7 +1505,6 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
           dut.io.valid_out.expect(false.B, s"block $blockIdx batch $b: valid_out=0")
         }
         driveBatch(dut, cfg, aE, bE, aS, bS)
-        dut.clock.step()
         dut.io.valid_out.expect(true.B,  s"block $blockIdx: valid_out fires after $B batches")
         dut.clock.step()
         dut.io.valid_out.expect(false.B, s"block $blockIdx: valid_out=0 next cycle")
@@ -1504,6 +1514,134 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       runOneBlock(2)
 
       log("[Test 11] handshake state machine PASSED")
+    }
+  }
+
+  // =========================================================================
+  // Test 12: Custom 4×4 / K=32 / vec=4 / blk=16 — VCD waveform verification
+  //
+  // Config:
+  //   tileRows = tileCols = 4
+  //   K = 32, vectorSize = 4   →  accumCycles = K/vec = 8 PE-cycles / dot prod
+  //   blockSize = 16, tileCols = 4   →  B = blockSize/tileCols = 4 batches
+  //   Total cycles per block ≈ accumCycles × B = 32 PE-cycles + B reset pulses
+  //   E5M2 × E5M2 / UE8M0 → E5M2 (default types)
+  //
+  // Inputs vary per batch so each batch's dot product is distinguishable in
+  // the waveform:
+  //   batch 0 : A = +1.0 → dot = 8  × 1   = +8.0   (col 0..3 of block)
+  //   batch 1 : A = +2.0 → dot = 8  × 2   = +16.0  (col 4..7)
+  //   batch 2 : A = -1.0 → dot = 8  × -1  = -8.0   (col 8..11)
+  //   batch 3 : A = +0.5 → dot = 8  × 0.5 = +4.0   (col 12..15)
+  //
+  // Encoded MXFP8 (UE8M0 shared scale = max biased exp of 16.0 = 131 = 0x83):
+  //   element / 2^4: 8/16=0.5 → 0x38, 16/16=1.0 → 0x3C, -8/16=-0.5 → 0xB8,
+  //                  4/16=0.25 → 0x34
+  //
+  // VCD lands at test_run_dir/PEArray_*/<dut>.vcd.  Look for:
+  //   - accReg (per PE) ramping over each 8-cycle batch then clearing on reset
+  //   - peValidOut pulsing every cycle that has had a prior validIn
+  //   - rq.io.valid_in / shared_scale_out / result asserting once after all 4
+  //     batches complete
+  //   - io.valid_out: exactly ONE cycle high after the 4th acc_reset_i pulse
+  // =========================================================================
+  test("PEArray: custom K=32 vec=4 4x4 blk16 — VCD waveform verification") {
+    val customCfg = PEArrayConfig(
+      macCfg     = ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE8M0),
+      vectorSize = 4,
+      tileRows   = 4,
+      tileCols   = 4,
+      requantCfg = RequantConfig(
+        blockSize  = 16,
+        tileRows   = 4,
+        tileCols   = 4,
+        outputType = MXFormats.E5M2
+      ),
+      K             = 32,
+      exposeResults = true
+    )
+    val cR    = customCfg.tileRows
+    val cC    = customCfg.tileCols
+    val cBlk  = customCfg.requantCfg.blockSize
+    val cB    = customCfg.requantCfg.batchesPerBlock         // 4
+    val cAcc  = customCfg.K / customCfg.vectorSize            // 8
+
+    log("\n[TEST 12] Custom 4x4 K=32 vec=4 blk16 config — VCD waveform")
+    log(f"  accumCycles = $cAcc%d, batchesPerBlock = $cB%d")
+    log(f"  total cycles per block ≈ ${cAcc * cB}%d (= $cAcc%d × $cB%d) + $cB acc_reset pulses")
+
+    test(new PEArrayWrapper(customCfg)).withAnnotations(Seq(WriteVcdAnnotation)) { dut =>
+      initDut(dut, customCfg)
+      dut.io.acc_reset_i.poke(true.B); dut.clock.step()
+      dut.io.acc_reset_i.poke(false.B)
+
+      // Distinguishable per-batch A operands: +1, +2, -1, +0.5
+      val batchOperands = Seq(e_1, e_2, e_n1, e_0p5)
+      require(batchOperands.size == cB,
+        s"batchOperands.size (${batchOperands.size}) must match cB ($cB)")
+
+      val swBlock = Array.ofDim[Float](cR, cBlk)
+
+      for ((aRaw, b) <- batchOperands.zipWithIndex) {
+        val aE = Seq.fill(cR)(aRaw)
+        val bE = Seq.fill(cC)(e_1)
+        val aS = Seq.fill(cR)(s_1)
+        val bS = Seq.fill(cC)(s_1)
+
+        val perCycleMac = swPECycle(macCfg)(aRaw, e_1, s_1, s_1)
+        val perBatchDot = perCycleMac * cAcc
+
+        log(f"  batch $b%1d: A=0x$aRaw%02X (=$perCycleMac%+.4f/cycle) → dot product = $perBatchDot%+10.4f")
+
+        driveBatch(dut, customCfg, aE, bE, aS, bS)
+
+        for (r <- 0 until cR; c <- 0 until cC)
+          swBlock(r)(b * cC + c) = perBatchDot
+
+        // Sanity: valid_out must NOT yet be high (we're mid-block)
+        if (b < cB - 1)
+          dut.io.valid_out.expect(false.B,
+            s"batch $b/${cB - 1}: valid_out must stay low until the last batch lands")
+      }
+
+      // The B-th driveBatch's acc_reset step IS the edge that latches blockDone
+      // into validOutReg — valid_out is already high in the cycle right after
+      // driveBatch returns.
+      dut.io.valid_out.expect(true.B,
+        s"valid_out fires in the cycle right after the ${cB}-th batch")
+
+      // Verify shared_scale_out + result
+      val (expScales, expElems) =
+        swRequant(swBlock.map(_.toSeq).toSeq, MXFormats.E5M2, ScaleFormats.UE8M0)
+      val hwScalePacked = dut.io.shared_scale_out.peek().litValue
+      val hwElemPacked  = dut.io.result.peek().litValue
+
+      log(f"\n  [requant] outType=E5M2  scaleType=UE8M0  block_max_abs=16.0")
+      for (row <- 0 until cR) {
+        val hwSc    = extractScale(hwScalePacked, cR, row)
+        val hwScVal = decodeScale(hwSc, ScaleFormats.UE8M0)
+        log(f"  row $row scale: hw=0x$hwSc%02X (=$hwScVal%.4f) | sw=0x${expScales(row)}%02X")
+        assert(hwSc == expScales(row),
+          f"row $row scale mismatch: hw=0x$hwSc%02X sw=0x${expScales(row)}%02X")
+
+        for (col <- 0 until cBlk) {
+          val hw = extractFP8(hwElemPacked, cR, cBlk, row, col)
+          val sw = expElems(row)(col)
+          assert(hw == sw,
+            f"row $row col $col: hw=0x$hw%02X sw=0x$sw%02X (fp32=${swBlock(row)(col)}%+.4f)")
+        }
+        // Pretty-print the row's bytes (4 batches × 4 cols)
+        val rowBytes = (0 until cBlk).map { c =>
+          f"0x${extractFP8(hwElemPacked, cR, cBlk, row, c)}%02X"
+        }.mkString(" ")
+        log(f"  row $row elements: $rowBytes")
+      }
+
+      // De-asserts on next idle cycle
+      dut.clock.step()
+      dut.io.valid_out.expect(false.B, "valid_out must de-assert one cycle after firing")
+
+      log("[Test 12] custom config VCD waveform PASSED — see test_run_dir/*/<dut>.vcd")
     }
   }
 }

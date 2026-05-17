@@ -182,7 +182,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
     else (if (sign != 0L) -1.0 else 1.0) * mant.toDouble * Math.pow(2.0, expSigned.toDouble)
 
   def peekFloat(dut: FDPUPostScaleReductionTree): Float =
-    intBitsToFloat(dut.io.accOut.peek().litValue.toInt << 16)
+    intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
 
   def initDut(dut: FDPUPostScaleReductionTree): Unit = {
     dut.reset.poke(true.B)
@@ -1045,7 +1045,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          postAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt << 16)
+          postAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label PostScale sim failed: ${e.getMessage}")
@@ -1263,7 +1263,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          postAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt << 16)
+          postAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label PostScale sim failed: ${e.getMessage}")
@@ -1398,7 +1398,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt << 16)
+          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")
@@ -1419,5 +1419,366 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
 
     assert(!anyFail, "One or more FixedFP accuracy checks failed — check log")
     log("\n[PASSED] FixedFP tree accuracy validated across all configs")
+  }
+
+  // =========================================================================
+  // Test 21 — Block-deferred scale apply (UE8M0, cyclesPerBlock > 1)
+  // -------------------------------------------------------------------------
+  // Verifies the two-level FP accumulator path (buildBlockDeferred) by holding
+  // the shared scales constant across cyclesPerBlock cycles per block — which
+  // is the MX block semantics the new path was designed for.
+  // =========================================================================
+  test("Test 21 — Block-deferred scale apply (UE8M0, cyclesPerBlock=8)") {
+    log("\n" + "=" * 70)
+    log("Test 21 — Block-deferred scale apply (UE8M0)")
+    log("=" * 70)
+
+    val rng            = new Random(8888)
+    val vsize          = 4
+    val cyclesPerBlock = 8
+    val numBlocks      = 16
+
+    val testConfigs = Seq(
+      ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE8M0),
+      ScaleAddConfig(MXFormats.E4M3, MXFormats.E4M3, ScaleFormats.UE8M0),
+      ScaleAddConfig(MXFormats.INT8, MXFormats.E5M2, ScaleFormats.UE8M0),
+      ScaleAddConfig(MXFormats.INT8, MXFormats.INT8, ScaleFormats.UE8M0),
+    )
+
+    var anyFail = false
+
+    for (cfg <- testConfigs) {
+      val label = s"${cfg.elementTypeA.name}×${cfg.elementTypeB.name}/${cfg.stype.name} vec=$vsize cpb=$cyclesPerBlock"
+      log(s"\n  [$label]  expRange=${cfg.productExpRange}")
+
+      val seedRng = new Random(rng.nextLong())
+      // Build cycles such that (sA, sB) is constant for every cyclesPerBlock-long run.
+      val allCycles = (0 until numBlocks).flatMap { _ =>
+        val sA = randScaleHelper(cfg.stype, seedRng)
+        val sB = randScaleHelper(cfg.stype, seedRng)
+        (0 until cyclesPerBlock).map { _ =>
+          val as = Seq.fill(vsize)(randElemHelper(cfg.elementTypeA, seedRng))
+          val bs = Seq.fill(vsize)(randElemHelper(cfg.elementTypeB, seedRng))
+          (as, bs, sA, sB)
+        }
+      }
+
+      var swAccDouble = 0.0
+      allCycles.foreach { case (as, bs, sA, sB) =>
+        val sAv = decodeScale(sA, cfg.stype)
+        val sBv = decodeScale(sB, cfg.stype)
+        swAccDouble += as.zip(bs).map { case (a, b) =>
+          decodeElement(a, cfg.elementTypeA) * decodeElement(b, cfg.elementTypeB) * sAv * sBv
+        }.sum
+      }
+      val swRef = swAccDouble.toFloat
+
+      var hwAcc = 0.0f
+      try {
+        test(new FDPUPostScaleReductionTree(
+          cfg, vsize, cyclesPerBlock = cyclesPerBlock, istest = false)) { dut =>
+          dut.reset.poke(true.B)
+          dut.io.validIn.poke(false.B)
+          dut.io.resetAcc.poke(true.B)
+          dut.clock.step()
+          dut.io.resetAcc.poke(false.B)
+          allCycles.foreach { case (as, bs, sA, sB) =>
+            dut.io.op_a_i.poke(packElements(as, cfg.elementTypeA.totalWidth).U)
+            dut.io.op_b_i.poke(packElements(bs, cfg.elementTypeB.totalWidth).U)
+            dut.io.share_exp_A_i.poke(sA.U)
+            dut.io.share_exp_B_i.poke(sB.U)
+            dut.io.validIn.poke(true.B)
+            dut.clock.step()
+            dut.io.validIn.poke(false.B)
+          }
+          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+        }
+      } catch { case e: Exception =>
+        logErr(s"  [ERROR] $label: ${e.getMessage}")
+        anyFail = true
+      }
+
+      val absErr    = math.abs(hwAcc - swRef)
+      val relErrPct = if (math.abs(swRef) > 1e-10f) absErr / math.abs(swRef) * 100.0f else Float.PositiveInfinity
+      log(f"  absErr=$absErr%-12.4e  relErr=$relErrPct%-8.3f%%  HW=$hwAcc%-14.4e  SW=$swRef%.4e")
+
+      val looseTol = 0.15f * math.abs(swRef) + 1e-2f
+      if (absErr > looseTol) {
+        logErr(s"  [FAIL] $label: absErr=$absErr > tol=$looseTol")
+        anyFail = true
+      }
+    }
+
+    assert(!anyFail, "One or more block-deferred accuracy checks failed — check log")
+    log("\n[PASSED] Block-deferred scale apply validated across UE8M0 configs")
+  }
+
+  // =========================================================================
+  // Test 22 — Block-deferred scale apply for non-UE8M0 (UE4M4, UE6M2)
+  // -------------------------------------------------------------------------
+  // Validates the FPxScale block-boundary bridge: scale mantissa product
+  // is applied once per cyclesPerBlock cycles instead of per-cycle.
+  // =========================================================================
+  test("Test 22 — Block-deferred non-UE8M0 (UE4M4, UE6M2, cyclesPerBlock=8)") {
+    log("\n" + "=" * 70)
+    log("Test 22 — Block-deferred scale apply for non-UE8M0")
+    log("=" * 70)
+
+    val rng            = new Random(9999)
+    val vsize          = 4
+    val cyclesPerBlock = 8
+    val numBlocks      = 16
+
+    val testConfigs = Seq(
+      ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE4M4),
+      ScaleAddConfig(MXFormats.E4M3, MXFormats.E4M3, ScaleFormats.UE4M4),
+      ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE6M2),
+      ScaleAddConfig(MXFormats.INT8, MXFormats.E5M2, ScaleFormats.UE6M2),
+    )
+
+    var anyFail = false
+
+    for (cfg <- testConfigs) {
+      val label = s"${cfg.elementTypeA.name}×${cfg.elementTypeB.name}/${cfg.stype.name} vec=$vsize cpb=$cyclesPerBlock"
+      log(s"\n  [$label]  expRange=${cfg.productExpRange}")
+
+      val seedRng = new Random(rng.nextLong())
+      val allCycles = (0 until numBlocks).flatMap { _ =>
+        val sA = randScaleHelper(cfg.stype, seedRng)
+        val sB = randScaleHelper(cfg.stype, seedRng)
+        (0 until cyclesPerBlock).map { _ =>
+          val as = Seq.fill(vsize)(randElemHelper(cfg.elementTypeA, seedRng))
+          val bs = Seq.fill(vsize)(randElemHelper(cfg.elementTypeB, seedRng))
+          (as, bs, sA, sB)
+        }
+      }
+
+      var swAccDouble = 0.0
+      allCycles.foreach { case (as, bs, sA, sB) =>
+        val sAv = decodeScale(sA, cfg.stype)
+        val sBv = decodeScale(sB, cfg.stype)
+        swAccDouble += as.zip(bs).map { case (a, b) =>
+          decodeElement(a, cfg.elementTypeA) * decodeElement(b, cfg.elementTypeB) * sAv * sBv
+        }.sum
+      }
+      val swRef = swAccDouble.toFloat
+
+      var hwAcc = 0.0f
+      try {
+        test(new FDPUPostScaleReductionTree(
+          cfg, vsize, cyclesPerBlock = cyclesPerBlock, istest = false)) { dut =>
+          dut.reset.poke(true.B)
+          dut.io.validIn.poke(false.B)
+          dut.io.resetAcc.poke(true.B)
+          dut.clock.step()
+          dut.io.resetAcc.poke(false.B)
+          allCycles.foreach { case (as, bs, sA, sB) =>
+            dut.io.op_a_i.poke(packElements(as, cfg.elementTypeA.totalWidth).U)
+            dut.io.op_b_i.poke(packElements(bs, cfg.elementTypeB.totalWidth).U)
+            dut.io.share_exp_A_i.poke(sA.U)
+            dut.io.share_exp_B_i.poke(sB.U)
+            dut.io.validIn.poke(true.B)
+            dut.clock.step()
+            dut.io.validIn.poke(false.B)
+          }
+          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+        }
+      } catch { case e: Exception =>
+        logErr(s"  [ERROR] $label: ${e.getMessage}")
+        anyFail = true
+      }
+
+      val absErr    = math.abs(hwAcc - swRef)
+      val relErrPct = if (math.abs(swRef) > 1e-10f) absErr / math.abs(swRef) * 100.0f else Float.PositiveInfinity
+      log(f"  absErr=$absErr%-12.4e  relErr=$relErrPct%-8.3f%%  HW=$hwAcc%-14.4e  SW=$swRef%.4e")
+
+      val looseTol = 0.15f * math.abs(swRef) + 1e-2f
+      if (absErr > looseTol) {
+        logErr(s"  [FAIL] $label: absErr=$absErr > tol=$looseTol")
+        anyFail = true
+      }
+    }
+
+    assert(!anyFail, "One or more non-UE8M0 block-deferred checks failed — check log")
+    log("\n[PASSED] Block-deferred non-UE8M0 validated")
+  }
+
+  // =========================================================================
+  // Test 23 — Reduction-tree arch specialization (Arch-I / II / III)
+  // -------------------------------------------------------------------------
+  // Direct FDPU instantiation with explicit treeArch (bypassing the default
+  // Generic) — exercises buildIntOnly / buildSmallFixedShift / buildTwoStageBarrel.
+  // Numerical equivalence to buildGeneric is confirmed by SW reference match.
+  // =========================================================================
+  test("Test 23 — Reduction-tree arch specialization (Arch-I/II/III)") {
+    log("\n" + "=" * 70)
+    log("Test 23 — Reduction-tree arch specialization")
+    log("=" * 70)
+
+    val rng       = new Random(11111)
+    val vsize     = 4
+    val numCycles = 32
+
+    val testCases = Seq(
+      (ScaleAddConfig(MXFormats.INT8, MXFormats.INT8, ScaleFormats.UE8M0), TreeArch.IntOnlySigned),
+      (ScaleAddConfig(MXFormats.E2M1, MXFormats.E2M1, ScaleFormats.UE8M0), TreeArch.SmallFixedShift),
+      (ScaleAddConfig(MXFormats.E4M3, MXFormats.E4M3, ScaleFormats.UE8M0), TreeArch.TwoStageBarrel),
+      (ScaleAddConfig(MXFormats.INT8, MXFormats.E5M2, ScaleFormats.UE8M0), TreeArch.TwoStageBarrel),
+    )
+
+    var anyFail = false
+
+    for ((cfg, treeArch) <- testCases) {
+      val label = s"${cfg.elementTypeA.name}×${cfg.elementTypeB.name}/${cfg.stype.name} arch=${treeArch.name}"
+      log(s"\n  [$label]  expRange=${cfg.productExpRange}")
+
+      val seedRng = new Random(rng.nextLong())
+      val cycles = (0 until numCycles).map { _ =>
+        val as = Seq.fill(vsize)(randElemHelper(cfg.elementTypeA, seedRng))
+        val bs = Seq.fill(vsize)(randElemHelper(cfg.elementTypeB, seedRng))
+        (as, bs, randScaleHelper(cfg.stype, seedRng), randScaleHelper(cfg.stype, seedRng))
+      }
+
+      var swAccDouble = 0.0
+      cycles.foreach { case (as, bs, sA, sB) =>
+        val sAv = decodeScale(sA, cfg.stype)
+        val sBv = decodeScale(sB, cfg.stype)
+        swAccDouble += as.zip(bs).map { case (a, b) =>
+          decodeElement(a, cfg.elementTypeA) * decodeElement(b, cfg.elementTypeB) * sAv * sBv
+        }.sum
+      }
+      val swRef = swAccDouble.toFloat
+
+      var hwAcc = 0.0f
+      try {
+        test(new FDPUPostScaleReductionTree(
+          cfg, vsize, treeArch = treeArch, istest = false)) { dut =>
+          dut.reset.poke(true.B)
+          dut.io.validIn.poke(false.B)
+          dut.io.resetAcc.poke(true.B)
+          dut.clock.step()
+          dut.io.resetAcc.poke(false.B)
+          cycles.foreach { case (as, bs, sA, sB) =>
+            dut.io.op_a_i.poke(packElements(as, cfg.elementTypeA.totalWidth).U)
+            dut.io.op_b_i.poke(packElements(bs, cfg.elementTypeB.totalWidth).U)
+            dut.io.share_exp_A_i.poke(sA.U)
+            dut.io.share_exp_B_i.poke(sB.U)
+            dut.io.validIn.poke(true.B)
+            dut.clock.step()
+            dut.io.validIn.poke(false.B)
+          }
+          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+        }
+      } catch { case e: Exception =>
+        logErr(s"  [ERROR] $label: ${e.getMessage}")
+        anyFail = true
+      }
+
+      val absErr    = math.abs(hwAcc - swRef)
+      val relErrPct = if (math.abs(swRef) > 1e-10f) absErr / math.abs(swRef) * 100.0f else Float.PositiveInfinity
+      log(f"  absErr=$absErr%-12.4e  relErr=$relErrPct%-8.3f%%  HW=$hwAcc%-14.4e  SW=$swRef%.4e")
+
+      val tol = 0.15f * math.abs(swRef) + 1e-2f
+      if (absErr > tol) {
+        logErr(s"  [FAIL] $label: absErr=$absErr > tol=$tol")
+        anyFail = true
+      }
+    }
+
+    assert(!anyFail, "One or more arch specialization checks failed — check log")
+    log("\n[PASSED] Arch-I/II/III specializations validated")
+  }
+
+  // =========================================================================
+  // Test 24 — Arch-IV.b Kulisch within block (UE8M0)
+  // -------------------------------------------------------------------------
+  // Validates buildKulischDeferred: wide fixed-point inner accumulator within
+  // each block (anchored at minProductExp) + FP outer across blocks.
+  // Inputs hold shared scale constant across each block (MX block semantics).
+  // =========================================================================
+  test("Test 24 — Arch-IV.b Kulisch within block (UE8M0, treeArch=KulischInner)") {
+    log("\n" + "=" * 70)
+    log("Test 24 — Arch-IV.b Kulisch within block")
+    log("=" * 70)
+
+    val rng            = new Random(12345)
+    val vsize          = 4
+    val cyclesPerBlock = 8
+    val numBlocks      = 16
+
+    val testConfigs = Seq(
+      ScaleAddConfig(MXFormats.E5M2, MXFormats.E5M2, ScaleFormats.UE8M0),
+      ScaleAddConfig(MXFormats.E5M2, MXFormats.E4M3, ScaleFormats.UE8M0),
+    )
+
+    var anyFail = false
+
+    for (cfg <- testConfigs) {
+      val label = s"${cfg.elementTypeA.name}×${cfg.elementTypeB.name}/${cfg.stype.name} arch=kulisch cpb=$cyclesPerBlock"
+      log(s"\n  [$label]  expRange=${cfg.productExpRange}  minProductExp=${cfg.minProductExp}")
+
+      val seedRng = new Random(rng.nextLong())
+      // Constant scale within each block (MX semantics).
+      val allCycles = (0 until numBlocks).flatMap { _ =>
+        val sA = randScaleHelper(cfg.stype, seedRng)
+        val sB = randScaleHelper(cfg.stype, seedRng)
+        (0 until cyclesPerBlock).map { _ =>
+          val as = Seq.fill(vsize)(randElemHelper(cfg.elementTypeA, seedRng))
+          val bs = Seq.fill(vsize)(randElemHelper(cfg.elementTypeB, seedRng))
+          (as, bs, sA, sB)
+        }
+      }
+
+      var swAccDouble = 0.0
+      allCycles.foreach { case (as, bs, sA, sB) =>
+        val sAv = decodeScale(sA, cfg.stype)
+        val sBv = decodeScale(sB, cfg.stype)
+        swAccDouble += as.zip(bs).map { case (a, b) =>
+          decodeElement(a, cfg.elementTypeA) * decodeElement(b, cfg.elementTypeB) * sAv * sBv
+        }.sum
+      }
+      val swRef = swAccDouble.toFloat
+
+      var hwAcc = 0.0f
+      try {
+        test(new FDPUPostScaleReductionTree(
+          cfg, vsize,
+          treeArch = TreeArch.KulischInner,
+          cyclesPerBlock = cyclesPerBlock,
+          istest = false)) { dut =>
+          dut.reset.poke(true.B)
+          dut.io.validIn.poke(false.B)
+          dut.io.resetAcc.poke(true.B)
+          dut.clock.step()
+          dut.io.resetAcc.poke(false.B)
+          allCycles.foreach { case (as, bs, sA, sB) =>
+            dut.io.op_a_i.poke(packElements(as, cfg.elementTypeA.totalWidth).U)
+            dut.io.op_b_i.poke(packElements(bs, cfg.elementTypeB.totalWidth).U)
+            dut.io.share_exp_A_i.poke(sA.U)
+            dut.io.share_exp_B_i.poke(sB.U)
+            dut.io.validIn.poke(true.B)
+            dut.clock.step()
+            dut.io.validIn.poke(false.B)
+          }
+          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+        }
+      } catch { case e: Exception =>
+        logErr(s"  [ERROR] $label: ${e.getMessage}")
+        anyFail = true
+      }
+
+      val absErr    = math.abs(hwAcc - swRef)
+      val relErrPct = if (math.abs(swRef) > 1e-10f) absErr / math.abs(swRef) * 100.0f else Float.PositiveInfinity
+      log(f"  absErr=$absErr%-12.4e  relErr=$relErrPct%-8.3f%%  HW=$hwAcc%-14.4e  SW=$swRef%.4e")
+
+      val tol = 0.15f * math.abs(swRef) + 1e-2f
+      if (absErr > tol) {
+        logErr(s"  [FAIL] $label: absErr=$absErr > tol=$tol")
+        anyFail = true
+      }
+    }
+
+    assert(!anyFail, "One or more Kulisch path checks failed — check log")
+    log("\n[PASSED] Arch-IV.b Kulisch within block validated")
   }
 }

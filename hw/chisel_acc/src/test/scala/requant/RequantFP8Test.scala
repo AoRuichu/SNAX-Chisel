@@ -13,9 +13,16 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // Software golden model — UE8M0
   // =========================================================================
 
-  /** Max biased FP32 exponent across a block = UE8M0 shared scale. */
-  def swSharedScale(fp32s: Seq[Float]): Int =
-    fp32s.map(f => (floatToRawIntBits(f) >>> 23) & 0xFF).max
+  /**
+   * UE8M0 shared scale (OCP MX semantics):
+   *   X = clamp(max biased FP32 exp − emax_element, 0, 255)
+   * with emax_element = (1 << outExpBits) − 2 − outBias.
+   */
+  def swSharedScale(fp32s: Seq[Float], t: ElementType): Int = {
+    val maxBiasedExp = fp32s.map(f => (floatToRawIntBits(f) >>> 23) & 0xFF).max
+    val emaxElem     = ((1 << t.elementWidthExp) - 2) - t.bias
+    (maxBiasedExp - emaxElem).max(0).min(255)
+  }
 
   /**
    * FP32 → MXFP8 for a single element given the UE8M0 shared exponent.
@@ -72,7 +79,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     block: Seq[Seq[Float]],
     t: ElementType
   ): (Seq[Int], Seq[Seq[Int]]) = {
-    val scales = block.map(row => swSharedScale(row))
+    val scales = block.map(row => swSharedScale(row, t))
     val fp8s   = block.zip(scales).map { case (row, sc) =>
       row.map(f => swFP32toFP8(f, sc, t))
     }
@@ -80,42 +87,85 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   }
 
   // =========================================================================
-  // Software golden model — ExMy scale
+  // Software golden model — ExMy scale (NVFP4-style)
   // =========================================================================
 
+  /** Real OCP-MX max-normal (biased_exp, mant) per element format. */
+  private def nvfp4Limits(t: ElementType): (Int, Int) = t.name match {
+    case "E5M2" => (30, (1 << t.elementWidthMant) - 1)
+    case "E4M3" => (15, (1 << t.elementWidthMant) - 2)
+    case "E3M2" => (7,  (1 << t.elementWidthMant) - 1)
+    case "E2M3" => (3,  (1 << t.elementWidthMant) - 1)
+    case _      => ((1 << t.elementWidthExp) - 2, (1 << t.elementWidthMant) - 1)
+  }
+
   /**
-   * Compute the ExMy shared scale for a row of FP32 values.
+   * Compute the ExMy shared scale for a row of FP32 values (NVFP4 ceil).
    *
-   * Algorithm (matches MaxScaleFinder hardware):
+   * Mirrors MaxScaleFinder ExMy hardware:
    *   1. Find the FP32 with the largest 31-bit magnitude.
-   *   2. Floor-encode it as ExMy: scale_biased_exp = clamp(fp32_biased_exp − 127 + scale_bias),
-   *      scale_mant = top M bits of the FP32 mantissa.
+   *   2. q_int = (1.maxMant) × 2^EXTRA / (1.elemMaxMant).
+   *   3. Extract top M scale-mant bits, ceil-round on any residual.
+   *   4. Compute scale_biased_exp with normalization shift and mant carry.
+   *   5. Clamp: zero block → {0,0}; saturate → {maxExp, all-ones};
+   *      subnormal range → {0, 1}.
    */
-  def swSharedScaleExMy(fp32s: Seq[Float], st: ScaleType): Int = {
+  def swSharedScaleExMy(fp32s: Seq[Float], t: ElementType, st: ScaleType): Int = {
     val M            = st.mantScaleWidth
     val E            = st.expScaleWidth
     val scaleBias    = st.bias
     val maxScaleExpV = (1 << E) - 1
 
+    val outMantBits  = t.elementWidthMant
+    val outBias      = t.bias
+    val (elemMaxExp, elemMaxMant) = nvfp4Limits(t)
+    val E_elem            = elemMaxExp - outBias
+    val maxNormSignifInt  = (1 << outMantBits) | elemMaxMant
+
     val maxBits      = fp32s.map(f => floatToRawIntBits(f) & 0x7FFFFFFF).max
     val maxBiasedExp = (maxBits >>> 23) & 0xFF
     val maxMant23    = maxBits & 0x7FFFFF
+    val maxIsZero    = maxBiasedExp == 0  // FP32 zero or subnormal
 
-    val expRaw     = maxBiasedExp - 127 + scaleBias
-    val expClamped = expRaw.max(0).min(maxScaleExpV)
-    val mantEnc    = if (M > 0) maxMant23 >>> (23 - M) else 0
+    val EXTRA = M + 3
+    val IMPL  = 23 - outMantBits + EXTRA
+    val fp32FullMant = if (maxBiasedExp != 0) (1 << 23) | maxMant23 else 0
+    val qNum         = fp32FullMant.toLong << EXTRA
+    val qInt         = qNum / maxNormSignifInt
+    val qRem         = qNum % maxNormSignifInt
 
-    (expClamped << M) | mantEnc
+    val qGeq1 = ((qInt >>> IMPL) & 1L) == 1L
+
+    val mantRaw =
+      if (qGeq1) ((qInt >>> (IMPL - M)) & ((1L << M) - 1)).toInt
+      else       ((qInt >>> (IMPL - 1 - M)) & ((1L << M) - 1)).toInt
+    val residMask =
+      if (qGeq1) (1L << (IMPL - M))     - 1L
+      else       (1L << (IMPL - 1 - M)) - 1L
+    val residNonZero = (qInt & residMask) != 0L
+    val ceilInc      = if (qRem != 0L || residNonZero) 1 else 0
+
+    val mantSum      = mantRaw + ceilInc
+    val mantOverflow = mantSum >>> M
+    val mantNormal   = mantSum & ((1 << M) - 1)
+
+    val normAdj = if (qGeq1) 0 else -1
+    val scaleBiasedExp = (maxBiasedExp - 127 - E_elem) + normAdj + mantOverflow + scaleBias
+
+    if (maxIsZero) 0
+    else if (scaleBiasedExp >= maxScaleExpV) (maxScaleExpV << M) | ((1 << M) - 1)
+    else if (scaleBiasedExp <= 0)            (0 << M) | 1               // smallest subnormal
+    else                                     ((scaleBiasedExp & maxScaleExpV) << M) | mantNormal
   }
 
   /**
-   * FP32 → MXFP8 for a single element given an ExMy shared scale.
+   * FP32 → MXFP8 for a single element given an NVFP4-style ExMy shared scale.
    *
-   * Algorithm (matches FP32ToMXFP8 hardware ExMy path):
-   *   q_int = fp32FullMant × 2^EXTRA / scale_full_mant
-   *   Implicit-1 of q lands at bit IMPL = 23 − M + EXTRA.
-   *   fp8_biased_exp = fp32_biased_exp − scale_biased_exp + correction + norm_adj
-   *   fp8_mant       = RNE-rounded mantissa bits of q
+   * Mirrors FP32ToMXFP8 ExMy hardware:
+   *   - Subnormal scale {0, mant} is renormalized to (1.mant_norm × 2^eff_exp).
+   *   - Saturation uses the element format's real OCP-MX max-normal
+   *     (exMyMaxNormalExp / exMyMaxNormalMant), with E4M3's NaN-borderline
+   *     (15, 7) clamped to (15, 6).
    */
   def swFP32toFP8ExMy(f: Float, sharedScale: Int, t: ElementType, st: ScaleType): Int = {
     val bits    = floatToRawIntBits(f)
@@ -126,7 +176,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     val fp8ExpBits      = t.elementWidthExp
     val fp8MantBits     = t.elementWidthMant
     val fp8Bias         = t.bias
-    val fp8MaxNormalExp = (1 << fp8ExpBits) - 2
+    val (exMyMaxNormalExp, exMyMaxNormalMant) = nvfp4Limits(t)
 
     if (fp32Exp == 0) return 0  // zero / subnormal → 0
 
@@ -135,36 +185,56 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     val scaleBias  = st.bias
     val correction = scaleBias - 127 + fp8Bias
 
-    val scaleBiasedExp = (sharedScale >>> M) & ((1 << E) - 1)
-    val scaleMantRaw   = sharedScale & ((1 << M) - 1)
-    val scaleFullMant  = (1 << M) | scaleMantRaw   // (M+1)-bit with implicit-1
+    val scaleBiasedExpRaw = (sharedScale >>> M) & ((1 << E) - 1)
+    val scaleMantRaw      = sharedScale & ((1 << M) - 1)
+    val isZeroScale       = scaleBiasedExpRaw == 0 && scaleMantRaw == 0
+    val isSubnormScale    = scaleBiasedExpRaw == 0 && scaleMantRaw != 0
 
-    val fp8ExpRaw = fp32Exp - scaleBiasedExp + correction
+    if (isZeroScale) return 0
+
+    // Subnormal renormalization: shift leading 1 to the implicit-1 position.
+    val (effBiasedExp, scaleFullMant) =
+      if (isSubnormScale) {
+        // Find MSB position of scaleMantRaw (0..M-1).
+        var msbPos = 0
+        var i = M - 1
+        while (i >= 0 && msbPos == 0) {
+          if (((scaleMantRaw >>> i) & 1) == 1) msbPos = i
+          i -= 1
+        }
+        val leftShift = M - msbPos
+        val mantSubNorm = (scaleMantRaw << leftShift) & ((1 << M) - 1)
+        (1 - leftShift, (1 << M) | mantSubNorm)
+      } else {
+        (scaleBiasedExpRaw, (if (scaleBiasedExpRaw != 0) 1 << M else 0) | scaleMantRaw)
+      }
+
+    val fp8ExpRaw = fp32Exp - effBiasedExp + correction
 
     // Integer mantissa division: q_int = fp32FullMant × 2^EXTRA / scaleFullMant
     val EXTRA = fp8MantBits + 3
-    val IMPL  = 23 - M + EXTRA   // implicit-1 position when q_frac ≥ 1
+    val IMPL  = 23 - M + EXTRA
 
     val fp32FullMant = (1 << 23) | fp32Man         // 24 bits
     val qNum         = fp32FullMant.toLong << EXTRA
-    val qInt         = (qNum / scaleFullMant).toInt
-    val qRem         = (qNum % scaleFullMant).toInt
+    val qInt         = qNum / scaleFullMant
+    val qRem         = qNum % scaleFullMant
 
-    val qGeq1 = ((qInt >>> IMPL) & 1) == 1
+    val qGeq1 = ((qInt >>> IMPL) & 1L) == 1L
 
     val fp8MantRaw =
-      if (qGeq1) (qInt >>> (IMPL - fp8MantBits)) & ((1 << fp8MantBits) - 1)
-      else       (qInt >>> (IMPL - 1 - fp8MantBits)) & ((1 << fp8MantBits) - 1)
+      if (qGeq1) ((qInt >>> (IMPL - fp8MantBits)) & ((1L << fp8MantBits) - 1)).toInt
+      else       ((qInt >>> (IMPL - 1 - fp8MantBits)) & ((1L << fp8MantBits) - 1)).toInt
     val guardBit =
-      if (qGeq1) (qInt >>> (IMPL - fp8MantBits - 1)) & 1
-      else       (qInt >>> (IMPL - fp8MantBits - 2)) & 1
+      if (qGeq1) ((qInt >>> (IMPL - fp8MantBits - 1)) & 1L).toInt
+      else       ((qInt >>> (IMPL - fp8MantBits - 2)) & 1L).toInt
     val roundBit =
-      if (qGeq1) (qInt >>> (IMPL - fp8MantBits - 2)) & 1
-      else       (qInt >>> (IMPL - fp8MantBits - 3)) & 1
-    val stickyLowBits =
-      if (qGeq1) qInt & ((1 << (IMPL - fp8MantBits - 2)) - 1)
-      else       qInt & ((1 << (IMPL - fp8MantBits - 3)) - 1)
-    val stickyBit = qRem != 0 || stickyLowBits != 0
+      if (qGeq1) ((qInt >>> (IMPL - fp8MantBits - 2)) & 1L).toInt
+      else       ((qInt >>> (IMPL - fp8MantBits - 3)) & 1L).toInt
+    val stickyMask =
+      if (qGeq1) (1L << (IMPL - fp8MantBits - 2)) - 1L
+      else       (1L << (IMPL - fp8MantBits - 3)) - 1L
+    val stickyBit = qRem != 0L || (qInt & stickyMask) != 0L
 
     val roundUp       = guardBit == 1 && ((fp8MantRaw & 1) == 1 || roundBit == 1 || stickyBit)
     val fp8MantCarry  = fp8MantRaw + (if (roundUp) 1 else 0)
@@ -174,14 +244,44 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     val normAdj     = if (qGeq1) 0 else -1
     val fp8ExpFull  = fp8ExpRaw + normAdj + mantOverflow
 
-    if (fp8ExpFull <= 0) return 0
-    if (fp8ExpFull > fp8MaxNormalExp) {
-      val maxMant = (1 << fp8MantBits) - 1
-      return (sign << 7) | (fp8MaxNormalExp << fp8MantBits) | maxMant
+    // Saturate at the element format's real OCP-MX max-normal, including
+    // E4M3's NaN-borderline (15, 7) → (15, 6).
+    val borderNaN = fp8ExpFull == exMyMaxNormalExp && fp8Mant > exMyMaxNormalMant
+    if (fp8ExpFull > exMyMaxNormalExp || borderNaN) {
+      return (sign << 7) | (exMyMaxNormalExp << fp8MantBits) | exMyMaxNormalMant
     }
 
-    val fp8Exp = fp8ExpFull & ((1 << fp8ExpBits) - 1)
-    (sign << 7) | (fp8Exp << fp8MantBits) | fp8Mant
+    if (fp8ExpFull > 0) {
+      val fp8Exp = fp8ExpFull & ((1 << fp8ExpBits) - 1)
+      return (sign << 7) | (fp8Exp << fp8MantBits) | fp8Mant
+    }
+
+    // Subnormal element output: shift (1.fp8Mant) right by (1 - fp8ExpFull),
+    // then RNE-round the shifted-out bits.  If rounding overflows to the
+    // smallest normal, encode as biased_exp=1, mant=0.
+    val subnMaxShift = fp8MantBits + 2
+    val subnShift    = math.min(1 - fp8ExpFull, subnMaxShift)
+    val sigInt       = (1 << fp8MantBits) | fp8Mant
+    val padded       = sigInt.toLong << subnMaxShift                    // sigInt at upper bits
+    val shiftedPad   = padded >>> subnShift
+    val subnTrunc    = ((shiftedPad >>> subnMaxShift) & ((1L << fp8MantBits) - 1)).toInt
+    val subnGuard    = ((shiftedPad >>> (subnMaxShift - 1)) & 1L).toInt
+    val subnSticky   = if (subnMaxShift >= 2) (shiftedPad & ((1L << (subnMaxShift - 1)) - 1)) != 0
+                       else false
+    val subnRoundUp  = subnGuard == 1 && ((subnTrunc & 1) == 1 || subnSticky)
+    val subnSum      = subnTrunc + (if (subnRoundUp) 1 else 0)
+    val subnCarry    = (subnSum >>> fp8MantBits) & 1
+    val subnMant     = subnSum & ((1 << fp8MantBits) - 1)
+
+    if (subnCarry == 1) {
+      // Rounded up into smallest normal: biased_exp=1, mant=0.
+      (sign << 7) | (1 << fp8MantBits) | 0
+    } else if (subnMant != 0) {
+      // Subnormal: biased_exp=0, mant=subnMant.
+      (sign << 7) | (0 << fp8MantBits) | subnMant
+    } else {
+      0
+    }
   }
 
   /** Full SW model for a block with an ExMy scale format. */
@@ -190,7 +290,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     t: ElementType,
     st: ScaleType
   ): (Seq[Int], Seq[Seq[Int]]) = {
-    val scales = block.map(row => swSharedScaleExMy(row, st))
+    val scales = block.map(row => swSharedScaleExMy(row, t, st))
     val fp8s   = block.zip(scales).map { case (row, sc) =>
       row.map(f => swFP32toFP8ExMy(f, sc, t, st))
     }
@@ -222,22 +322,21 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
 
   /**
    * Extract the shared scale for one row from the packed shared_scale_out bus.
-   * Row 0 is at MSB (SV [0:tileRows-1][7:0]).
+   * Row 0 is at LSB so that little-endian memory stores [row0, row1, …]
+   * in ascending byte address.
    */
   def extractScale(packed: BigInt, tileRows: Int, row: Int): Int =
-    ((packed >> ((tileRows - row - 1) * 8)) & 0xFF).toInt
+    ((packed >> (row * 8)) & 0xFF).toInt
 
   /**
    * Extract fp8_out[row][col] from the packed fp8_out bus.
-   * SV [0:tileRows-1][0:blockSize-1][7:0]: element [row][col] at MSB-slot
-   * k = row*blockSize + col.
+   * (row=0, col=0) at LSB; slot k = row*blockSize + col.
    */
   def extractFP8(
     packed: BigInt, tileRows: Int, blockSize: Int, row: Int, col: Int
   ): Int = {
     val k     = row * blockSize + col
-    val nOut  = tileRows * blockSize
-    val shift = (nOut - k - 1) * 8
+    val shift = k * 8
     ((packed >> shift) & 0xFF).toInt
   }
 
@@ -341,15 +440,17 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   }
 
   // =========================================================================
-  // Test 3: block of 1.0 → shared_scale=127, every element = 0x3C (E5M2)
+  // Test 3: block of 1.0 (E5M2, emax=15) → shared_scale = 127−15 = 112,
+  //         max element saturates to max-normal exponent: fp8 = 0x78.
   // =========================================================================
-  test("RequantFP8 E5M2: block of 1.0 → shared_scale=127, fp8=0x3C") {
+  test("RequantFP8 E5M2: block of 1.0 → shared_scale=112, fp8=0x78") {
     test(new RequantFP8(cfgE5M2)) { dut =>
       initDut(dut)
       val cfg   = dut.cfg
-      // E5M2 encoding of 1.0:
-      //   fp32 biased exp = 127, fp8 exp = 127 - 127 + 15 = 15, mant = 0
-      //   → (0 << 7) | (15 << 2) | 0 = 0x3C
+      // E5M2 encoding under OCP MX shared scale:
+      //   shared_scale = 127 − emax(=15) = 112
+      //   fp8 exp = 127 − 112 + 15 = 30 (= max-normal exp), mant = 0
+      //   → (0 << 7) | (30 << 2) | 0 = 0x78
       val block = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(1.0f))
 
       driveBlock(dut, block)
@@ -360,10 +461,10 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
 
       for (row <- 0 until cfg.tileRows) {
         val sc = extractScale(scaleOut, cfg.tileRows, row)
-        assert(sc == 127, s"row $row: shared_scale=$sc, expected 127")
+        assert(sc == 112, s"row $row: shared_scale=$sc, expected 112")
         for (col <- 0 until cfg.blockSize) {
           val fp8 = extractFP8(fp8Out, cfg.tileRows, cfg.blockSize, row, col)
-          assert(fp8 == 0x3C, f"fp8[$row][$col]=0x$fp8%02X, expected 0x3C")
+          assert(fp8 == 0x78, f"fp8[$row][$col]=0x$fp8%02X, expected 0x78")
         }
       }
     }
@@ -376,8 +477,8 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     test(new RequantFP8(cfgE5M2)) { dut =>
       initDut(dut)
       val cfg = dut.cfg
-      // Row 0: alternating 1.0 / 2.0 → max biased exp = 128
-      // Row 1: all 1.0              → max biased exp = 127
+      // Row 0: alternating 1.0 / 2.0 → max biased exp = 128, shared_scale = 113
+      // Row 1: all 1.0              → max biased exp = 127, shared_scale = 112
       val block = Seq(
         Seq.tabulate(cfg.blockSize)(i => if (i % 2 == 0) 1.0f else 2.0f),
         Seq.fill(cfg.blockSize)(1.0f),
@@ -491,17 +592,17 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       val block1 = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(1.0f))
       val block2 = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(2.0f))
 
-      // Block 1: 1.0  → shared_scale = 127
+      // Block 1: 1.0  → shared_scale = 127 − emax(15) = 112
       driveBlock(dut, block1)
       dut.io.valid_out.expect(true.B)
       val sc1 = extractScale(dut.io.shared_scale_out.peek().litValue, cfg.tileRows, 0)
-      assert(sc1 == 127, s"block1 scale=$sc1, expected 127")
+      assert(sc1 == 112, s"block1 scale=$sc1, expected 112")
 
-      // Block 2: 2.0  → shared_scale = 128
+      // Block 2: 2.0  → shared_scale = 128 − emax(15) = 113
       driveBlock(dut, block2)
       dut.io.valid_out.expect(true.B)
       val sc2 = extractScale(dut.io.shared_scale_out.peek().litValue, cfg.tileRows, 0)
-      assert(sc2 == 128, s"block2 scale=$sc2, expected 128")
+      assert(sc2 == 113, s"block2 scale=$sc2, expected 113")
     }
   }
 
@@ -642,14 +743,17 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   }
 
   // =========================================================================
-  // Test 12: E4M3 / UE7M1 — block of 1.0 → scale encodes 1.0, elem = 1.0
+  // Test 12: E4M3 / UE7M1 — block of 1.0; NVFP4 ceil scale = 1.5·2^−9 (0x6D),
+  // each fp8 element lands at ≈ 341 → E4M3 (15, 3) = 0x7B.
+  // Verified against the SW NVFP4 golden model.
   // =========================================================================
-  test("RequantFP8 E4M3/UE7M1: block of 1.0 → scale = UE7M1(1.0), fp8 = E4M3(1.0)") {
+  test("RequantFP8 E4M3/UE7M1: block of 1.0 — NVFP4 ceil scale → 0x7B element") {
     val cfg   = RequantConfig(16, 4, 4, MXFormats.E4M3, ScaleFormats.UE7M1)
     val block = Seq.fill(cfg.tileRows)(Seq.fill(cfg.blockSize)(1.0f))
     val (expScales, expFP8) = swRequantBlockExMy(block, cfg.outputType, cfg.scaleType)
 
     test(new RequantFP8(cfg)) { dut =>
+      initDut(dut)
       driveBlock(dut, block)
       dut.io.valid_out.expect(true.B)
 
@@ -680,6 +784,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     val (expScales, expFP8) = swRequantBlockExMy(block, cfg.outputType, cfg.scaleType)
 
     test(new RequantFP8(cfg)) { dut =>
+      initDut(dut)
       driveBlock(dut, block)
       dut.io.valid_out.expect(true.B)
 
@@ -737,5 +842,112 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
       RequantConfig(32, 4, 4, MXFormats.E5M2, ScaleFormats.UE7M1),
       seed = 4444L, nBlocks = 10
     )
+  }
+
+  // =========================================================================
+  // Test 18: Python quantize_mx_v6 ↔ Chisel ExMy bit-true cross-check.
+  //
+  // Loads `src/test/resources/requant_v6_vectors.txt` (generated by
+  // hw/chisel_acc/gen_requant_v6_vectors.py) and feeds each block to the
+  // hardware, asserting that the encoded scale_raw and elem_raw match
+  // Python's `quantize_mx_v6` (NVFP4-style ceil) byte-for-byte.
+  //
+  // Regenerate the vectors with: `python3 gen_requant_v6_vectors.py` from
+  // hw/chisel_acc/.
+  // =========================================================================
+  test("RequantFP8 ExMy: quantize_mx_v6 vectors bit-true vs HW") {
+    val resource = getClass.getResource("/requant_v6_vectors.txt")
+    assert(resource != null, "missing src/test/resources/requant_v6_vectors.txt — " +
+      "run `python3 gen_requant_v6_vectors.py` from hw/chisel_acc/")
+    val src   = scala.io.Source.fromURL(resource)
+    val lines = try src.getLines().toIndexedSeq finally src.close()
+
+    val outputTypeByName = Map(
+      "E5M2" -> MXFormats.E5M2, "E4M3" -> MXFormats.E4M3,
+      "E3M2" -> MXFormats.E3M2, "E2M3" -> MXFormats.E2M3,
+    )
+    val scaleTypeByName = Map(
+      "UE8M0" -> ScaleFormats.UE8M0, "UE7M1" -> ScaleFormats.UE7M1,
+      "UE6M2" -> ScaleFormats.UE6M2, "UE5M3" -> ScaleFormats.UE5M3,
+      "UE4M4" -> ScaleFormats.UE4M4,
+    )
+
+    case class Block(inputs: Seq[Float], scales: Seq[Int], elems: Seq[Int])
+    case class Group(name: String, cfg: RequantConfig, blocks: Seq[Block])
+
+    // Parse: skip blanks/comments. Each CONFIG header begins a group; INPUT/
+    // SCALE/ELEM triples follow until the next CONFIG or EOF.
+    var i = 0
+    val groups = scala.collection.mutable.ArrayBuffer.empty[Group]
+    while (i < lines.length) {
+      val ln = lines(i).trim
+      if (ln.isEmpty || ln.startsWith("#")) {
+        i += 1
+      } else if (ln.startsWith("CONFIG ")) {
+        val tok = ln.split("\\s+")
+        // CONFIG <name> <tileRows> <blockSize> <outType> <scaleType> <nBlocks>
+        val name      = tok(1)
+        val tileRows  = tok(2).toInt
+        val blockSize = tok(3).toInt
+        val outT      = outputTypeByName(tok(4))
+        val scT       = scaleTypeByName(tok(5))
+        // tileCols pinned to tileRows for these vectors (4x4).
+        val tileCols  = tileRows
+        val cfg = RequantConfig(blockSize, tileRows, tileCols, outT, scT)
+        val nBlocks   = tok(6).toInt
+        i += 1
+        val bs = scala.collection.mutable.ArrayBuffer.empty[Block]
+        for (_ <- 0 until nBlocks) {
+          while (i < lines.length && (lines(i).trim.isEmpty || lines(i).trim.startsWith("#"))) i += 1
+          val inputLine = lines(i).trim; i += 1
+          val scaleLine = lines(i).trim; i += 1
+          val elemLine  = lines(i).trim; i += 1
+          assert(inputLine.startsWith("INPUT "), s"expected INPUT line, got: $inputLine")
+          assert(scaleLine.startsWith("SCALE "), s"expected SCALE line, got: $scaleLine")
+          assert(elemLine.startsWith("ELEM "),   s"expected ELEM line, got: $elemLine")
+          val inputs = inputLine.stripPrefix("INPUT ").split("\\s+").map(h =>
+            intBitsToFloat(java.lang.Long.parseLong(h, 16).toInt))
+          val scales = scaleLine.stripPrefix("SCALE ").split("\\s+").map(h => Integer.parseInt(h, 16))
+          val elems  = elemLine.stripPrefix("ELEM").trim.split("\\s+").map(h => Integer.parseInt(h, 16))
+          assert(inputs.length == tileRows * blockSize, s"$name: input count")
+          assert(scales.length == tileRows,             s"$name: scale count")
+          assert(elems.length  == tileRows * blockSize, s"$name: elem count")
+          bs += Block(inputs.toSeq, scales.toSeq, elems.toSeq)
+        }
+        groups += Group(name, cfg, bs.toSeq)
+      } else {
+        i += 1   // skip unrecognized lines
+      }
+    }
+
+    assert(groups.nonEmpty, "no CONFIG groups parsed from requant_v6_vectors.txt")
+
+    for (g <- groups) {
+      val cfg = g.cfg
+      test(new RequantFP8(cfg)) { dut =>
+        initDut(dut)
+        for ((blk, blkIdx) <- g.blocks.zipWithIndex) {
+          val block = (0 until cfg.tileRows).map { r =>
+            (0 until cfg.blockSize).map(c => blk.inputs(r * cfg.blockSize + c))
+          }
+          driveBlock(dut, block)
+          dut.io.valid_out.expect(true.B)
+          val scaleOut = dut.io.shared_scale_out.peek().litValue
+          val fp8Out   = dut.io.elem_out.peek().litValue
+          for (row <- 0 until cfg.tileRows) {
+            val hwSc = extractScale(scaleOut, cfg.tileRows, row)
+            assert(hwSc == blk.scales(row),
+              f"${g.name} blk$blkIdx row$row scale: hw=0x$hwSc%02X py=0x${blk.scales(row)}%02X")
+            for (col <- 0 until cfg.blockSize) {
+              val hw = extractFP8(fp8Out, cfg.tileRows, cfg.blockSize, row, col)
+              val py = blk.elems(row * cfg.blockSize + col)
+              assert(hw == py,
+                f"${g.name} blk$blkIdx fp8[$row][$col]: hw=0x$hw%02X py=0x$py%02X " +
+                f"(input=${blk.inputs(row * cfg.blockSize + col)}%.4f scale=0x${blk.scales(row)}%02X)")
+            }
+          }
+        }
+      }
+    }
   }
 }

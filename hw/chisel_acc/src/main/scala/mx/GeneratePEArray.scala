@@ -111,7 +111,7 @@ object GeneratePEArray extends App {
         vectorSize = vectorSize,
         tileRows   = tileRows,
         tileCols   = tileCols,
-        requantCfg = RequantINT8Config(blockSize, tileRows, tileCols)
+        requantCfg = RequantINT8Config(blockSize, tileRows, tileCols, scale)
       )
       emitVerilog(new PEArrayWrapperINT8(cfg), Array("--target-dir", outDir))
 

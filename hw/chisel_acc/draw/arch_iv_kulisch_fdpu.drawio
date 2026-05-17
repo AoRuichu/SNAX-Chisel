@@ -1,0 +1,237 @@
+<mxfile host="65bd71144e">
+    <diagram id="page4_kulisch_dp" name="Arch-IV.b Kulisch FDPU Datapath">
+        <mxGraphModel dx="1224" dy="633" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+
+                <mxCell id="p4_title" value="&lt;b&gt;&lt;font style=&quot;font-size: 22px;&quot;&gt;Arch-IV.b Kulisch FDPU Datapath&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;&lt;i&gt;wide fixed-point inner accumulator within each MX block · scale apply &amp; LZC deferred to block boundary · FixedFPReductionTree bypassed&lt;/i&gt;&lt;/font&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="300" y="20" width="1000" height="60" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_left_box" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;" vertex="1" parent="1">
+                    <mxGeometry x="20" y="100" width="760" height="1010" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_left_title" value="&lt;b&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;Per-cycle (intra-block) · runs cyclesPerBlock times&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="20" y="110" width="760" height="35" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_in_a" value="&lt;b&gt;op_a_i&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;V × wA bits&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="160" width="140" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_in_b" value="&lt;b&gt;op_b_i&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;V × wB bits&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="260" y="160" width="140" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_in_sa" value="&lt;b&gt;share_exp_A_i&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;8 bits · constant in block&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+                    <mxGeometry x="450" y="160" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_in_sb" value="&lt;b&gt;share_exp_B_i&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;8 bits · constant in block&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+                    <mxGeometry x="630" y="160" width="160" height="50" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_macs" value="&lt;b&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;CustomOperator × V (lane MACs)&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;output per lane: (sign, exp_signed, mant)&lt;br&gt;mant is mProd-bit unsigned product, exp = adjExpA + adjExpB&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="245" width="320" height="80" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_treebypass" value="&lt;b&gt;&lt;font style=&quot;font-size: 12px;&quot;&gt;✗ FixedFPReductionTree bypassed&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;no maxExp comparator&lt;br&gt;no per-cycle LZC, normalize, RNE&lt;br&gt;no DirectToFPn / ScaleAddition&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+                    <mxGeometry x="450" y="245" width="280" height="80" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_align" value="&lt;b&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;Per-lane align to GLOBAL anchor&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;b_shift = minProductExp (compile-time constant)&lt;/font&gt;&lt;/div&gt;&lt;br&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;for each lane i:&lt;br&gt;&amp;nbsp;&amp;nbsp;shiftAmt_i = exp_i − b_shift   (range [0, R])&lt;br&gt;&amp;nbsp;&amp;nbsp;extended_i = {0_pad, mant_i}  (magW bits)&lt;br&gt;&amp;nbsp;&amp;nbsp;shifted_i = extended_i &amp;lt;&amp;lt; shiftAmt_i  (LEFT-shift)&lt;br&gt;&amp;nbsp;&amp;nbsp;aligned_i = sign_i ? −shifted_i : shifted_i&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="360" width="640" height="160" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_align_note" value="&lt;font style=&quot;font-size: 10px;&quot;&gt;&lt;i&gt;vs. Generic: right-shift to per-cycle maxExp · Kulisch: left-shift to compile-time minProductExp&lt;/i&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="525" width="640" height="30" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_addtree" value="" style="shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;fixedSize=1;rotation=-180;" vertex="1" parent="1">
+                    <mxGeometry x="220" y="585" width="360" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_addtree_lbl" value="&lt;b&gt;Signed Integer Adder Tree (V → 1)&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;width-preserving · log₂V levels&lt;br&gt;laneSum = Σ aligned_i&lt;/font&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="220" y="590" width="360" height="50" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_laneSum_lbl" value="&lt;b&gt;laneSum&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;SInt(accInnerW.W)&lt;/font&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="330" y="660" width="140" height="35" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_innersum" value="&lt;font style=&quot;font-size: 24px;&quot;&gt;&lt;b&gt;+&lt;/b&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="270" y="720" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_innersum_lbl" value="&lt;font style=&quot;font-size: 10px;&quot;&gt;width-preserving SInt add&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="330" y="725" width="200" height="35" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_innerReg" value="&lt;b&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;innerAccReg&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;b&gt;wide fixed-point Kulisch accumulator&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;SInt(accInnerW.W) = SInt(1 + magW.W)&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;magW = R + mProd + log₂(C·V)&lt;/font&gt;&lt;/div&gt;&lt;br&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;E5M2×E5M2 / vec=4 / blk=32 / K=16384:&lt;br&gt;magW = 58 + 6 + 5 = 69 ⇒ accInnerW = &lt;b&gt;70 bits&lt;/b&gt;&lt;br&gt;(vs. MXDOTP 95-bit fixed acc)&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="800" width="640" height="180" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_block_done_box" value="&lt;font style=&quot;font-size: 10px;&quot;&gt;blockCnt mod cyclesPerBlock&lt;br&gt;→ blockDone @ cycle (C−1)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="1010" width="320" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_reset_inner" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;i&gt;on blockDone: innerAccReg ← 0&lt;/i&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="430" y="1010" width="290" height="50" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_e1" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="150" y="210" as="sourcePoint"/>
+                        <mxPoint x="150" y="245" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e2" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="330" y="210" as="sourcePoint"/>
+                        <mxPoint x="330" y="245" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e3" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="240" y="325" as="sourcePoint"/>
+                        <mxPoint x="240" y="360" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e4" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="400" y="555" as="sourcePoint"/>
+                        <mxPoint x="400" y="585" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e5" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="400" y="645" as="sourcePoint"/>
+                        <mxPoint x="295" y="720" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e6" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="295" y="770" as="sourcePoint"/>
+                        <mxPoint x="295" y="800" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e_fb" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;dashed=1;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="700" y="900" as="sourcePoint"/>
+                        <mxPoint x="700" y="745" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_e_fb_lbl" value="&lt;font style=&quot;font-size: 9px;&quot;&gt;&lt;i&gt;feedback&lt;/i&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="710" y="820" width="60" height="20" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_right_box" value="" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;" vertex="1" parent="1">
+                    <mxGeometry x="810" y="100" width="820" height="1010" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_right_title" value="&lt;b&gt;&lt;font style=&quot;font-size: 17px;&quot;&gt;Block boundary (one cycle every cyclesPerBlock)&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="810" y="110" width="820" height="35" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_innerNext" value="&lt;b&gt;innerNext = innerAccReg + laneSum&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;final block sum at anchor b_value = minProductExp − fracBitsElem&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="170" width="520" height="50" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_signsplit" value="&lt;b&gt;Sign + Magnitude split&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;kSign = innerNext(accInnerW − 1)&lt;br&gt;kMag = sign ? −innerNext : innerNext&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="250" width="320" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_lzc" value="&lt;b&gt;LZC + Normalize&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;lzc = PriorityEncoder(Reverse(kMag))&lt;br&gt;normalized = kMag &amp;lt;&amp;lt; lzc&lt;br&gt;(leading 1 at bit magW − 1)&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="1220" y="250" width="380" height="65" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_rne" value="&lt;b&gt;RNE Round &amp; mantissa extract&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;mantRaw = normalized[magW−2 : magW−1−M]&lt;br&gt;guard / round / sticky from below&lt;br&gt;roundUp = G &amp;amp; (mantRaw[0] | R | sticky)&lt;br&gt;mCarry detects rounding overflow&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="355" width="380" height="100" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_expform" value="&lt;b&gt;Biased-exp formula&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;biased_exp = (magW − 1 + b_value + 127) − lzc + scaleAdj + mCarry&lt;br&gt;&lt;br&gt;b_value = minProductExp − fracBitsElem&lt;br&gt;scaleAdj = (scaleA − bias) + (scaleB − bias)&lt;br&gt;(UE8M0 only — non-UE8M0 falls back to Arch-IV.a)&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="1280" y="355" width="340" height="100" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_satcheck" value="&lt;b&gt;Overflow / Underflow clamp&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;newExpRaw ≥ 255 ⇒ +Inf&lt;br&gt;newExpRaw ≤ 0 / isMagZero ⇒ 0&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="490" width="380" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_blockPartial" value="&lt;b&gt;blockPartialFP&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;{kSign[1], finalBiasedExp[8], finalMantExp[M]}&lt;br&gt;= 1 + 8 + M FP bits&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="1280" y="490" width="340" height="65" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_fpnadder" value="&lt;b&gt;FPNAdder (M-bit mant)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="1100" y="610" width="240" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_outerReg" value="&lt;b&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;outerAccReg&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;b&gt;FP accumulator (across blocks)&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;1 + 8 + M = fpNW bits&lt;br&gt;M = AccPrecision.recommended(K)&lt;br&gt;&lt;b&gt;same width as buildBlockDeferred&lt;/b&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=3;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="700" width="700" height="120" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_out_lbl" value="&lt;b&gt;io.accOut&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 10px;&quot;&gt;Zero-pad mantissa to 23 bits → FP32&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="1080" y="900" width="280" height="55" as="geometry"/>
+                </mxCell>
+
+                <mxCell id="p4_r1" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1130" y="220" as="sourcePoint"/>
+                        <mxPoint x="1030" y="250" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r2" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1190" y="280" as="sourcePoint"/>
+                        <mxPoint x="1220" y="280" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r3" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1410" y="315" as="sourcePoint"/>
+                        <mxPoint x="1060" y="355" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r4" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1250" y="395" as="sourcePoint"/>
+                        <mxPoint x="1280" y="395" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r5" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1060" y="455" as="sourcePoint"/>
+                        <mxPoint x="1060" y="490" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r6" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1250" y="520" as="sourcePoint"/>
+                        <mxPoint x="1280" y="520" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r7" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1450" y="555" as="sourcePoint"/>
+                        <mxPoint x="1220" y="610" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r8" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;dashed=1;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="870" y="730" as="sourcePoint"/>
+                        <mxPoint x="1100" y="630" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r8_lbl" value="&lt;font style=&quot;font-size: 9px;&quot;&gt;&lt;i&gt;outerAcc fb&lt;/i&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="940" y="660" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4_r9" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1220" y="660" as="sourcePoint"/>
+                        <mxPoint x="1220" y="700" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="p4_r10" style="endArrow=classic;html=1;strokeWidth=1;endSize=4;" edge="1" parent="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="1220" y="820" as="sourcePoint"/>
+                        <mxPoint x="1220" y="900" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+
+                <mxCell id="p4_cmp" value="&lt;b&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;Comparison vs MXDOTP (arXiv 2505.13159)&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;b&gt;Anchor scope:&lt;/b&gt; ours = one block (32 elements); MXDOTP = one 8-element chunk&lt;br&gt;&lt;b&gt;Inner fixed-point width:&lt;/b&gt; ours = R+m+log₂(C·V) → 70b (E5M2²); MXDOTP = 95b&lt;br&gt;&lt;b&gt;Outer:&lt;/b&gt; ours = reduced-prec FP (sized by AccPrecision); MXDOTP = FP32&lt;br&gt;&lt;b&gt;Format coverage:&lt;/b&gt; ours = all MX × all scale (UE8M0 path); MXDOTP = MXFP8 + UE8M0 only&lt;/font&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;" vertex="1" parent="1">
+                    <mxGeometry x="870" y="980" width="700" height="120" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

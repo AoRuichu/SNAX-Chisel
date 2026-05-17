@@ -44,100 +44,328 @@ class FixedFPReductionTree(
   val inMantW: Int,
   val outMantW: Int,
   val vectorSize: Int,
-  val productExpRange: Int
+  val productExpRange: Int,
+  val arch: TreeArch = TreeArch.Generic
 ) extends Module {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(outMantW <= inMantW, "outMantW must be <= inMantW")
-  override def desiredName =
-    s"FixedFPTree_exp${expW}_mant${inMantW}_out${outMantW}_vec${vectorSize}_range${productExpRange}"
+
+  // Generic keeps the legacy desiredName byte-for-byte so existing emits and
+  // testbench module-name references stay valid; specialised archs append a
+  // tag so sweep RTL is distinguishable.
+  override def desiredName = {
+    val base = s"FixedFPTree_exp${expW}_mant${inMantW}_out${outMantW}_vec${vectorSize}_range${productExpRange}"
+    arch match {
+      case TreeArch.Generic => base
+      case _                => s"${base}_${arch.name}"
+    }
+  }
 
   val io = IO(new Bundle {
     val inputs = Input(Vec(vectorSize, new CustomFP(expW, inMantW)))
     val out    = Output(new CustomFP(expW, outMantW))
   })
 
-  private val G       = 3   // guard bits for RNE at the final rounding step
-  private val log2N   = log2Ceil(vectorSize.max(2))
-  // fracBits: bits below the mantissa MSB in the integer representation.
-  // Includes productExpRange (alignment headroom) + G (guard bits for rounding).
-  private val fracBits = productExpRange + G
-  // Width of the magnitude accumulator (sign bit separate).
-  // = inMantW integer bits + fracBits fractional bits + log2N carry-overflow bits.
-  private val absMagW  = inMantW + fracBits + log2N
-
-  // ── 1. Maximum exponent across all inputs ───────────────────────────────
-  val maxExp = io.inputs.map(_.exp).reduce { (a, b) => Mux(a > b, a, b) }
-
-  // ── 2. Align each input as a signed 2's-complement integer ───────────────
-  // Layout in the absMagW-bit integer (before sign conversion):
-  //   [absMagW-1 : fracBits+log2N]  ← inMantW bits of mantissa (most-significant input)
-  //   [fracBits+log2N-1 : fracBits] ← log2N carry-overflow bits (normally 0 per input)
-  //   [fracBits-1 : 0]              ← productExpRange fractional bits + G guard bits
-  // After right-shifting by shiftAmt = (maxExp − expᵢ), the mantissa slides down
-  // into the fractional region; all inMantW bits are preserved since shiftAmt ≤ fracBits.
-  val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
-  for (i <- 0 until vectorSize) {
-    val diffRaw  = (maxExp - io.inputs(i).exp).asUInt        // ≥ 0, SInt subtraction
-    val shiftAmt = Mux(diffRaw > fracBits.U, fracBits.U(log2Ceil(fracBits + 1).W),
-                       diffRaw(log2Ceil(fracBits + 1) - 1, 0))
-    val extended = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W))  // absMagW bits
-    val shifted  = (extended >> shiftAmt)(absMagW - 1, 0)                   // absMagW bits, UInt
-    // Sign-magnitude → 2's complement
-    val posVal = shifted.zext.asSInt  // absMagW+1 SInt (MSB=0)
-    aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)
+  // ── Arch dispatch ────────────────────────────────────────────────────────
+  // Specialised archs are introduced incrementally.  Every variant currently
+  // routes to buildGeneric() so this refactor is a pure no-op at the RTL
+  // level for the default (Generic) case.  Future steps replace individual
+  // branches with their own builders (buildIntOnly, buildGroupAnchor, …).
+  arch match {
+    case TreeArch.Generic         => buildGeneric()
+    case TreeArch.IntOnlySigned   => buildIntOnly()
+    case TreeArch.SmallFixedShift => buildSmallFixedShift()
+    case TreeArch.TwoStageBarrel  => buildTwoStageBarrel()
+    case TreeArch.KulischInner    => buildGeneric()  // tree bypassed by FDPU.buildKulischDeferred
   }
 
-  // ── 3. Integer adder tree (plain signed adds, width grows by 1 per level) ──
-  def addTree(vals: Seq[SInt]): SInt =
-    if (vals.length == 1) vals.head
-    else addTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)
+  // ── Generic implementation (current baseline, unchanged) ─────────────────
+  // Single full barrel align + balanced binary signed adder tree + single
+  // LZC normalize + RNE round.  Always correct across all (productExpRange,
+  // mantW) combinations; specialised archs trade generality for area/delay.
+  private def buildGeneric(): Unit = {
+    val G       = 3   // guard bits for RNE at the final rounding step
+    val log2N   = log2Ceil(vectorSize.max(2))
+    // fracBits: bits below the mantissa MSB in the integer representation.
+    // Includes productExpRange (alignment headroom) + G (guard bits for rounding).
+    val fracBits = productExpRange + G
+    // Width of the magnitude accumulator (sign bit separate).
+    // = inMantW integer bits + fracBits fractional bits + log2N carry-overflow bits.
+    val absMagW  = inMantW + fracBits + log2N
 
-  val rawSum = addTree(aligned.toSeq)
-  // Truncate to absMagW+1 signed bits; sum magnitude ≤ N×2^(inMantW+fracBits) ≤ 2^absMagW.
-  val sum = rawSum(absMagW, 0).asSInt
+    // ── 1. Maximum exponent across all inputs ───────────────────────────────
+    val maxExp = io.inputs.map(_.exp).reduce { (a, b) => Mux(a > b, a, b) }
 
-  // ── 4. Normalise + RNE round → CustomFP(expW, outMantW) ─────────────────
-  val isNeg  = sum < 0.S
-  val sumU   = sum.asUInt
-  // Magnitude in absMagW bits (2's complement negation for negative sum)
-  val absMag = Mux(isNeg, (~sumU + 1.U)(absMagW - 1, 0), sumU(absMagW - 1, 0))
-  val isZero = absMag === 0.U
+    // ── 2. Align each input as a signed 2's-complement integer ───────────────
+    // Layout in the absMagW-bit integer (before sign conversion):
+    //   [absMagW-1 : fracBits+log2N]  ← inMantW bits of mantissa (most-significant input)
+    //   [fracBits+log2N-1 : fracBits] ← log2N carry-overflow bits (normally 0 per input)
+    //   [fracBits-1 : 0]              ← productExpRange fractional bits + G guard bits
+    // After right-shifting by shiftAmt = (maxExp − expᵢ), the mantissa slides down
+    // into the fractional region; all inMantW bits are preserved since shiftAmt ≤ fracBits.
+    val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
+    for (i <- 0 until vectorSize) {
+      val diffRaw  = (maxExp - io.inputs(i).exp).asUInt        // ≥ 0, SInt subtraction
+      val shiftAmt = Mux(diffRaw > fracBits.U, fracBits.U(log2Ceil(fracBits + 1).W),
+                         diffRaw(log2Ceil(fracBits + 1) - 1, 0))
+      val extended = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W))  // absMagW bits
+      val shifted  = (extended >> shiftAmt)(absMagW - 1, 0)                   // absMagW bits, UInt
+      // Sign-magnitude → 2's complement
+      val posVal = shifted.zext.asSInt  // absMagW+1 SInt (MSB=0)
+      aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)
+    }
 
-  // LZC: PriorityEncoder(Reverse(x)) = number of leading zeros in x.
-  val lzc        = PriorityEncoder(Reverse(absMag))          // up to log2Ceil(absMagW+1) bits
-  val normalized = (absMag << lzc)(absMagW - 1, 0)           // MSB aligned to top
+    // ── 3. Integer adder tree (plain signed adds, width grows by 1 per level) ──
+    def addTree(vals: Seq[SInt]): SInt =
+      if (vals.length == 1) vals.head
+      else addTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)
 
-  // RNE round from absMagW bits → outMantW:
-  //   mantissa bits:  normalized[absMagW-1 : absMagW-outMantW]
-  //   guard bit:      normalized[absMagW-outMantW-1]
-  //   round bit:      normalized[absMagW-outMantW-2]
-  //   sticky bits:    OR(normalized[absMagW-outMantW-3 : 0])
-  // absMagW-outMantW = fracBits+log2N ≥ G=3, so guard/round/sticky always exist.
-  private val gPos = absMagW - outMantW - 1  // guard bit position
-  private val rPos = absMagW - outMantW - 2  // round bit position
-  private val sTop = absMagW - outMantW - 3  // top of sticky region
+    val rawSum = addTree(aligned.toSeq)
+    // Truncate to absMagW+1 signed bits; sum magnitude ≤ N×2^(inMantW+fracBits) ≤ 2^absMagW.
+    val sum = rawSum(absMagW, 0).asSInt
 
-  val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
-  val guardBit = normalized(gPos).asBool
-  val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
-  val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
-  val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
-  val roundedM = (mantRaw +& roundUp.asUInt)               // outMantW+1 bits
-  val mCarry   = roundedM(outMantW).asBool
-  val finalMant = Mux(mCarry,
-    (1 << (outMantW - 1)).U(outMantW.W),
-    roundedM(outMantW - 1, 0))
+    // ── 4. Normalise + RNE round → CustomFP(expW, outMantW) ─────────────────
+    val isNeg  = sum < 0.S
+    val sumU   = sum.asUInt
+    // Magnitude in absMagW bits (2's complement negation for negative sum)
+    val absMag = Mux(isNeg, (~sumU + 1.U)(absMagW - 1, 0), sumU(absMagW - 1, 0))
+    val isZero = absMag === 0.U
 
-  // outExp = maxExp + (inMantW + log2N − outMantW) − lzc  [+ 1 if mCarry]
-  // The (inMantW + log2N − outMantW) term accounts for the integer bit-position offset;
-  // lzc corrects for leading zeros in the sum (normalization left-shift).
-  val lzcS    = Cat(false.B, lzc).asSInt                      // non-negative SInt
-  val expBase = maxExp + (inMantW + log2N - outMantW).S - lzcS
-  val outExp  = Mux(mCarry, expBase + 1.S, expBase)
+    // LZC: PriorityEncoder(Reverse(x)) = number of leading zeros in x.
+    val lzc        = PriorityEncoder(Reverse(absMag))          // up to log2Ceil(absMagW+1) bits
+    val normalized = (absMag << lzc)(absMagW - 1, 0)           // MSB aligned to top
 
-  io.out.sign := Mux(isZero, 0.U, isNeg.asUInt)
-  io.out.mant := Mux(isZero, 0.U, finalMant)
-  io.out.exp  := outExp(expW - 1, 0).asSInt
+    // RNE round from absMagW bits → outMantW:
+    //   mantissa bits:  normalized[absMagW-1 : absMagW-outMantW]
+    //   guard bit:      normalized[absMagW-outMantW-1]
+    //   round bit:      normalized[absMagW-outMantW-2]
+    //   sticky bits:    OR(normalized[absMagW-outMantW-3 : 0])
+    // absMagW-outMantW = fracBits+log2N ≥ G=3, so guard/round/sticky always exist.
+    val gPos = absMagW - outMantW - 1  // guard bit position
+    val rPos = absMagW - outMantW - 2  // round bit position
+    val sTop = absMagW - outMantW - 3  // top of sticky region
+
+    val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
+    val guardBit = normalized(gPos).asBool
+    val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
+    val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
+    val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
+    val roundedM = (mantRaw +& roundUp.asUInt)               // outMantW+1 bits
+    val mCarry   = roundedM(outMantW).asBool
+    val finalMant = Mux(mCarry,
+      (1 << (outMantW - 1)).U(outMantW.W),
+      roundedM(outMantW - 1, 0))
+
+    // outExp = maxExp + (inMantW + log2N − outMantW) − lzc  [+ 1 if mCarry]
+    // The (inMantW + log2N − outMantW) term accounts for the integer bit-position offset;
+    // lzc corrects for leading zeros in the sum (normalization left-shift).
+    val lzcS    = Cat(false.B, lzc).asSInt                      // non-negative SInt
+    val expBase = maxExp + (inMantW + log2N - outMantW).S - lzcS
+    val outExp  = Mux(mCarry, expBase + 1.S, expBase)
+
+    io.out.sign := Mux(isZero, 0.U, isNeg.asUInt)
+    io.out.mant := Mux(isZero, 0.U, finalMant)
+    io.out.exp  := outExp(expW - 1, 0).asSInt
+  }
+
+  // ── Arch-I IntOnlySigned (productExpRange == 0, currently INT8×INT8) ─────
+  // Precondition: every lane's exp is the same runtime constant.  Under that
+  // assumption the maxExp comparator tree and the per-lane barrel shifters
+  // collapse to no-ops, so we drop them entirely and feed the signed adder
+  // tree directly with (sign, mant) → 2's-complement.  We still keep the
+  // G=3 guard-bit zero-pad below the mantissa so the final RNE round, LZC
+  // and exponent-correction math stays bit-identical to buildGeneric() on
+  // any input the precondition holds for.
+  private def buildIntOnly(): Unit = {
+    require(productExpRange == 0,
+      s"IntOnlySigned arch requires productExpRange == 0, got $productExpRange")
+
+    val G        = 3
+    val log2N    = log2Ceil(vectorSize.max(2))
+    val fracBits = G                       // alignment headroom == 0
+    val absMagW  = inMantW + fracBits + log2N
+
+    // Lane exp is identical across lanes by precondition; sample lane 0.
+    val laneExp = io.inputs(0).exp
+
+    // ── Sign-magnitude → 2's-complement (no alignment shift) ───────────────
+    val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
+    for (i <- 0 until vectorSize) {
+      val extended = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W)) // absMagW bits
+      val posVal   = extended.zext.asSInt                                  // absMagW+1 SInt
+      aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)
+    }
+
+    // ── Signed adder tree (same balanced binary as Generic) ────────────────
+    def addTree(vals: Seq[SInt]): SInt =
+      if (vals.length == 1) vals.head
+      else addTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)
+    val rawSum = addTree(aligned.toSeq)
+    val sum    = rawSum(absMagW, 0).asSInt
+
+    // ── Normalize + RNE round (identical math to buildGeneric) ─────────────
+    val isNeg  = sum < 0.S
+    val sumU   = sum.asUInt
+    val absMag = Mux(isNeg, (~sumU + 1.U)(absMagW - 1, 0), sumU(absMagW - 1, 0))
+    val isZero = absMag === 0.U
+
+    val lzc        = PriorityEncoder(Reverse(absMag))
+    val normalized = (absMag << lzc)(absMagW - 1, 0)
+
+    val gPos = absMagW - outMantW - 1
+    val rPos = absMagW - outMantW - 2
+    val sTop = absMagW - outMantW - 3
+
+    val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
+    val guardBit = normalized(gPos).asBool
+    val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
+    val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
+    val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
+    val roundedM = (mantRaw +& roundUp.asUInt)
+    val mCarry   = roundedM(outMantW).asBool
+    val finalMant = Mux(mCarry,
+      (1 << (outMantW - 1)).U(outMantW.W),
+      roundedM(outMantW - 1, 0))
+
+    val lzcS    = Cat(false.B, lzc).asSInt
+    val expBase = laneExp + (inMantW + log2N - outMantW).S - lzcS
+    val outExp  = Mux(mCarry, expBase + 1.S, expBase)
+
+    io.out.sign := Mux(isZero, 0.U, isNeg.asUInt)
+    io.out.mant := Mux(isZero, 0.U, finalMant)
+    io.out.exp  := outExp(expW - 1, 0).asSInt
+  }
+
+  // ── Shared post-alignment: addTree + LZC + normalize + RNE → io.out ──────
+  // Identical to the bottom half of buildGeneric.  Used by the alignment-only
+  // specialised archs (SmallFixedShift, TwoStageBarrel) so they don't have to
+  // duplicate the reduction logic.
+  private def alignedToOutput(aligned: Vec[SInt], absMagW: Int, log2N: Int, maxExp: SInt): Unit = {
+    def addTree(vals: Seq[SInt]): SInt =
+      if (vals.length == 1) vals.head
+      else addTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)
+
+    val rawSum = addTree(aligned.toSeq)
+    val sum    = rawSum(absMagW, 0).asSInt
+
+    val isNeg  = sum < 0.S
+    val sumU   = sum.asUInt
+    val absMag = Mux(isNeg, (~sumU + 1.U)(absMagW - 1, 0), sumU(absMagW - 1, 0))
+    val isZero = absMag === 0.U
+
+    val lzc        = PriorityEncoder(Reverse(absMag))
+    val normalized = (absMag << lzc)(absMagW - 1, 0)
+
+    val gPos = absMagW - outMantW - 1
+    val rPos = absMagW - outMantW - 2
+    val sTop = absMagW - outMantW - 3
+
+    val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
+    val guardBit = normalized(gPos).asBool
+    val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
+    val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
+    val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
+    val roundedM = (mantRaw +& roundUp.asUInt)
+    val mCarry   = roundedM(outMantW).asBool
+    val finalMant = Mux(mCarry,
+      (1 << (outMantW - 1)).U(outMantW.W),
+      roundedM(outMantW - 1, 0))
+
+    val lzcS    = Cat(false.B, lzc).asSInt
+    val expBase = maxExp + (inMantW + log2N - outMantW).S - lzcS
+    val outExp  = Mux(mCarry, expBase + 1.S, expBase)
+
+    io.out.sign := Mux(isZero, 0.U, isNeg.asUInt)
+    io.out.mant := Mux(isZero, 0.U, finalMant)
+    io.out.exp  := outExp(expW - 1, 0).asSInt
+  }
+
+  // ── Arch-II SmallFixedShift (productExpRange ∈ [1, 4]) ───────────────────
+  // For small productExpRange, the alignment shift saturation guard
+  // (`diffRaw > fracBits`) is dead (diffRaw ≤ productExpRange ≤ fracBits − G
+  // always), and the barrel shifter degenerates to a tight (productExpRange+1)-way
+  // mux.  Bit-equivalent to buildGeneric for all valid inputs.
+  private def buildSmallFixedShift(): Unit = {
+    require(productExpRange >= 1 && productExpRange <= 4,
+      s"SmallFixedShift requires productExpRange in [1, 4], got $productExpRange")
+
+    val log2N    = log2Ceil(vectorSize.max(2))
+    // No explicit G at alignment.  The bottom G bits in buildGeneric are zero
+    // by construction and don't carry data — they only ensure (absMagW −
+    // outMantW) ≥ 3 so the final RNE has guard / round / sticky room.  The
+    // (R + log2N) region below the mantissa already provides that space when
+    // R + log2N ≥ 3; otherwise top up with `rneSlack`.
+    val rneSlack = math.max(0, 3 - productExpRange - log2N)
+    val fracBits = productExpRange + rneSlack
+    val absMagW  = inMantW + fracBits + log2N
+    val shiftAmtW = log2Ceil(productExpRange + 1)
+
+    val maxExp = io.inputs.map(_.exp).reduce { (a, b) => Mux(a > b, a, b) }
+
+    val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
+    for (i <- 0 until vectorSize) {
+      val diffRaw  = (maxExp - io.inputs(i).exp).asUInt
+      // No saturation Mux — diffRaw ≤ productExpRange by invariant.
+      val shiftAmt = diffRaw(shiftAmtW - 1, 0)
+      val extended = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W))
+      // (productExpRange+1)-way explicit mux over the small shift range.
+      val shiftedOptions = VecInit(
+        (0 to productExpRange).map { k => (extended >> k.U)(absMagW - 1, 0) }
+      )
+      val shifted = shiftedOptions(shiftAmt)
+      val posVal  = shifted.zext.asSInt
+      aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)
+    }
+
+    alignedToOutput(aligned, absMagW, log2N, maxExp)
+  }
+
+  // ── Arch-III TwoStageBarrel (productExpRange ∈ [5, 32]) ──────────────────
+  // Replaces the single ⌈log₂(fracBits+1)⌉-level barrel with a 2-stage shifter:
+  //   stage 1: coarse, multiples of 4   (top (shiftAmtBits−2) bits of shiftAmt)
+  //   stage 2: fine,   0..3              (low 2 bits of shiftAmt)
+  // Total shift = coarse·4 + fine ≡ shiftAmt, so output is bit-equivalent to
+  // buildGeneric.  Synthesis may map this to fewer or shallower mux levels.
+  private def buildTwoStageBarrel(): Unit = {
+    require(productExpRange >= 5 && productExpRange <= 32,
+      s"TwoStageBarrel requires productExpRange in [5, 32], got $productExpRange")
+
+    val log2N    = log2Ceil(vectorSize.max(2))
+    // No explicit G at alignment — see buildSmallFixedShift rationale.
+    // For Arch-III (R ≥ 5) the rneSlack is always 0 in practice, but the
+    // formula stays uniform with buildSmallFixedShift.
+    val rneSlack = math.max(0, 3 - productExpRange - log2N)
+    val fracBits = productExpRange + rneSlack
+    val absMagW  = inMantW + fracBits + log2N
+    val shiftAmtBits = log2Ceil(fracBits + 1)
+    val fineBits     = 2
+    require(shiftAmtBits > fineBits,
+      s"TwoStageBarrel: shiftAmtBits ($shiftAmtBits) must exceed fineBits ($fineBits)")
+
+    val maxExp = io.inputs.map(_.exp).reduce { (a, b) => Mux(a > b, a, b) }
+
+    val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
+    for (i <- 0 until vectorSize) {
+      val diffRaw  = (maxExp - io.inputs(i).exp).asUInt
+      val shiftAmt = Mux(diffRaw > fracBits.U,
+                         fracBits.U(shiftAmtBits.W),
+                         diffRaw(shiftAmtBits - 1, 0))
+
+      val fineShift   = shiftAmt(fineBits - 1, 0)
+      val coarseShift = shiftAmt(shiftAmtBits - 1, fineBits)
+
+      val extended    = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W))
+      // Stage 1: shift by coarseShift × 4.
+      val afterCoarse = (extended >> Cat(coarseShift, 0.U(fineBits.W)))(absMagW - 1, 0)
+      // Stage 2: shift by 0..3.
+      val shifted     = (afterCoarse >> fineShift)(absMagW - 1, 0)
+
+      val posVal = shifted.zext.asSInt
+      aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)
+    }
+
+    alignedToOutput(aligned, absMagW, log2N, maxExp)
+  }
 }
 
 /** Combinational adder for the CustomFP format.

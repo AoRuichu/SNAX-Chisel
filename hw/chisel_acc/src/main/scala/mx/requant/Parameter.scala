@@ -22,10 +22,10 @@ case class RequantConfig(
 ) {
   require(Seq(16, 32, 64).contains(blockSize),
     s"blockSize must be 16, 32, or 64; got $blockSize")
-  require(Seq(4, 8).contains(tileRows),
-    s"tileRows must be 4 or 8; got $tileRows")
-  require(Seq(4, 8).contains(tileCols),
-    s"tileCols must be 4 or 8; got $tileCols")
+  require(Seq(4, 8, 16).contains(tileRows),
+    s"tileRows must be 4, 8, or 16; got $tileRows")
+  require(Seq(4, 8, 16).contains(tileCols),
+    s"tileCols must be 4, 8, or 16; got $tileCols")
   require(Seq("E5M2", "E4M3", "E3M2", "E2M3").contains(outputType.name),
     s"outputType must be E5M2, E4M3, E3M2, or E2M3; got ${outputType.name}")
   require(blockSize % tileCols == 0,

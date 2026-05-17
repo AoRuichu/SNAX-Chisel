@@ -9,6 +9,7 @@ generated/*
 !generated/pe_array
 !generated/post_scale
 !generated/requant
+!generated/dse_compare
 test_run_dir
 
 # Files
