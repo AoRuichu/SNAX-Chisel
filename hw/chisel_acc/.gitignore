@@ -34,6 +34,7 @@ sv2v-Linux.zip
 *.log
 *.csv
 !Backend/*.csv
+!Backend/DC_framework_CL/data_to_excel/*.csv
 
 # Intermediate converted files
 *_converted.v
