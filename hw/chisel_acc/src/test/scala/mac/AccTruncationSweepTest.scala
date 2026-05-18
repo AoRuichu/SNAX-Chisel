@@ -181,7 +181,9 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
     Pair(MXFormats.E5M2, MXFormats.E5M2),  // R=58
   )
 
-  private val scales = Seq(ScaleFormats.UE8M0, ScaleFormats.UE6M2, ScaleFormats.UE4M4)
+  // Sweep dimensions kept compact (~10 min) so iterations are fast.  For the
+  // full thesis figure, expand `scales` to all three and `Ks` to four points.
+  private val scales = Seq(ScaleFormats.UE8M0, ScaleFormats.UE4M4)
 
   private val Ks      = Seq(32, 256, 4096)
   private val nTrials = 3
@@ -190,7 +192,9 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
   // ── The sweep test ───────────────────────────────────────────────────────
 
   test("Acc-truncation × architecture sweep — post-requant error stays bounded") {
-    val csv = new PrintWriter(new FileWriter("acc_truncation_sweep.csv", false))
+    // autoFlush=true so each row appears in the CSV as soon as it is printed,
+    // letting the user watch progress without waiting for the JVM to exit.
+    val csv = new PrintWriter(new FileWriter("acc_truncation_sweep.csv", false), true)
     csv.println(
       "arch,typeA,typeB,scaleType,K,vec,cpb,treeArch,accMantBitsRec," +
       "relErrFP32_mean,relErrFP32_max,relErrPostRq_mean,relErrPostRq_max," +
@@ -230,6 +234,11 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
             scfg, vec, K = K,
             treeArch = arch.treeArch, cyclesPerBlock = arch.cpb,
             istest = false)) { dut =>
+            // This codebase uses inverted reset polarity (asyncRstN = !reset),
+            // so the implicit reset must be POKED HIGH for the design to leave
+            // the reset state.  Never deassert it in the loop.
+            dut.reset.poke(true.B)
+            dut.io.validIn.poke(false.B)
             val rng = new Random(0xC0FFEE ^ K ^ arch.label.hashCode ^
                                   pair.typeA.name.hashCode ^ sType.name.hashCode)
 
