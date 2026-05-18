@@ -11,6 +11,7 @@ generated/*
 !generated/requant
 !generated/dse_compare
 !generated/dse_pipeline_sweep
+!generated/dse_full_sweep
 test_run_dir
 
 # Files

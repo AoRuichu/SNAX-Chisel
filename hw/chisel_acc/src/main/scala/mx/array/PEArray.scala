@@ -84,12 +84,18 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   // exposed via io.results_o for testbench peeks.
   val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
+  // archOverride lets the DSE sweep force a specific (treeArch, cpb) pair
+  // (baseline / blockDeferred / Kulisch) under an otherwise-identical wrapper.
+  val peTreeArch = cfg.archOverride.map(_.treeArch)
+                      .getOrElse(TreeArch.recommended(cfg.macCfg, cfg.vectorSize))
+  val peCpb      = cfg.archOverride.map(_.cyclesPerBlock).getOrElse(cfg.cyclesPerBlock)
+
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
-        treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
-        cyclesPerBlock = cfg.cyclesPerBlock,
+        treeArch = peTreeArch,
+        cyclesPerBlock = peCpb,
         istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
@@ -218,12 +224,17 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   // exposed via io.results_o for testbench peeks.
   val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
+  // archOverride lets the DSE sweep force a specific (treeArch, cpb) pair.
+  val peTreeArch = cfg.archOverride.map(_.treeArch)
+                      .getOrElse(TreeArch.recommended(cfg.macCfg, cfg.vectorSize))
+  val peCpb      = cfg.archOverride.map(_.cyclesPerBlock).getOrElse(cfg.cyclesPerBlock)
+
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
-        treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
-        cyclesPerBlock = cfg.cyclesPerBlock,
+        treeArch = peTreeArch,
+        cyclesPerBlock = peCpb,
         istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)

@@ -123,10 +123,10 @@ class FDPUPostScaleReductionTree(
   //                        deferred to block boundary.  Used otherwise when
   //                        cyclesPerBlock ≥ 2.  Tree is still active.
   //   buildSingleAcc     : baseline single FP accumulator, scale per cycle.
+  // Kulisch path now supports both UE8M0 (pure exp scale apply) and non-UE8M0
+  // (FPxScale at block boundary) — see buildKulischDeferred() below.
   val useKulischDeferred =
-    cyclesPerBlock >= 2 &&
-    (treeArch == TreeArch.KulischInner) &&
-    scfg.stype.mantScaleWidth == 0
+    cyclesPerBlock >= 2 && (treeArch == TreeArch.KulischInner)
   val useBlockDeferred = cyclesPerBlock >= 2 && !useKulischDeferred
 
   if      (useKulischDeferred) buildKulischDeferred()
@@ -488,12 +488,11 @@ class FDPUPostScaleReductionTree(
   //
   // Precondition: share_exp_A_i / share_exp_B_i constant across the block
   // (MX block semantics — wrapper enforces this).
-  // Currently UE8M0 only; non-UE8M0 with cyclesPerBlock ≥ 2 falls back to
-  // buildBlockDeferred (Arch-IV.a).
+  // Supports UE8M0 (pure biased-exp scale apply) and non-UE8M0 (mant-multiply
+  // via FPxScale at block boundary).  Inner accumulator is identical in both
+  // paths — scale type only affects the block-end bridge.
   private def buildKulischDeferred(): Unit = {
     require(cyclesPerBlock >= 2)
-    require(scfg.stype.mantScaleWidth == 0,
-      "buildKulischDeferred currently supports UE8M0 only")
 
     // Compile-time anchor + widths.
     //
@@ -593,25 +592,50 @@ class FDPUPostScaleReductionTree(
     val mCarry     = roundedM(M).asBool
     val finalMantExp = Mux(mCarry, 0.U(M.W), roundedM(M - 1, 0))
 
-    // biased_exp = (magW − 1 − lzc) + b + 127 + scaleExpSum + (mCarry ? 1 : 0)
-    val adjScaleA = io.share_exp_A_i.zext - scfg.stype.bias.S
-    val adjScaleB = io.share_exp_B_i.zext - scfg.stype.bias.S
-    val scaleAdj  = adjScaleA +& adjScaleB
-    val constOff  = magW - 1 + bValue + 127
-    val lzcS      = Cat(false.B, lzc).asSInt
-    val newExpBase = constOff.S - lzcS +& scaleAdj
-    val newExpRaw  = Mux(mCarry, newExpBase + 1.S, newExpBase)
+    val blockPartialFP = Wire(UInt(fpNW.W))
 
-    val isOverflow  = newExpRaw >= 255.S
-    val isUnderflow = newExpRaw <= 0.S
+    if (scfg.stype.mantScaleWidth == 0) {
+      // ── UE8M0 fast path: pure biased-exp arithmetic ───────────────────────
+      // biased_exp = (magW − 1 − lzc) + b + 127 + scaleExpSum + (mCarry ? 1 : 0)
+      val adjScaleA = io.share_exp_A_i.zext - scfg.stype.bias.S
+      val adjScaleB = io.share_exp_B_i.zext - scfg.stype.bias.S
+      val scaleAdj  = adjScaleA +& adjScaleB
+      val constOff  = magW - 1 + bValue + 127
+      val lzcS      = Cat(false.B, lzc).asSInt
+      val newExpBase = constOff.S - lzcS +& scaleAdj
+      val newExpRaw  = Mux(mCarry, newExpBase + 1.S, newExpBase)
 
-    val finalBiasedExp = Mux(isOverflow,                       255.U(8.W),
-                         Mux(isUnderflow || isMagZero,         0.U(8.W),
-                                                                newExpRaw.asUInt(7, 0)))
-    val blockPartialFP =
-      Mux(isMagZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
-      Mux(isOverflow, Cat(kSign, 255.U(8.W), 0.U(M.W)),
-                      Cat(kSign, finalBiasedExp, finalMantExp)))
+      val isOverflow  = newExpRaw >= 255.S
+      val isUnderflow = newExpRaw <= 0.S
+
+      val finalBiasedExp = Mux(isOverflow,                       255.U(8.W),
+                           Mux(isUnderflow || isMagZero,         0.U(8.W),
+                                                                  newExpRaw.asUInt(7, 0)))
+      blockPartialFP :=
+        Mux(isMagZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
+        Mux(isOverflow, Cat(kSign, 255.U(8.W), 0.U(M.W)),
+                        Cat(kSign, finalBiasedExp, finalMantExp)))
+    } else {
+      // ── non-UE8M0 path: assemble pre-scale FP word, apply scale via FPxScale
+      // Pre-scale exp = (magW − 1 − lzc) + bValue + 127 (+1 if mCarry); no scale
+      // exp/mant applied yet — FPxScale does the full scaleA×scaleB application.
+      val constOff   = magW - 1 + bValue + 127
+      val lzcS       = Cat(false.B, lzc).asSInt
+      val preExpBase = constOff.S - lzcS
+      val preExpRaw  = Mux(mCarry, preExpBase + 1.S, preExpBase)
+
+      // For Kulisch widths (constOff ≤ ~170, lzc ∈ [0, magW-1]), preExpRaw
+      // is always within 8-bit unsigned range. Mag-zero still must give 0.
+      val preBiasedExp = Mux(isMagZero, 0.U(8.W), preExpRaw.asUInt(7, 0))
+      val preFP        = Mux(isMagZero, 0.U(fpNW.W),
+                                        Cat(kSign, preBiasedExp, finalMantExp))
+
+      val fpScale = Module(new FPxScale(scfg, actualAccMantBits))
+      fpScale.io.fpIn   := preFP
+      fpScale.io.scaleA := io.share_exp_A_i
+      fpScale.io.scaleB := io.share_exp_B_i
+      blockPartialFP := fpScale.io.fpOut
+    }
 
     // ── Outer FP accumulator (block partials) ─────────────────────────────
     val outerAccReg = withReset(asyncRstN)(RegInit(0.U(fpNW.W)))

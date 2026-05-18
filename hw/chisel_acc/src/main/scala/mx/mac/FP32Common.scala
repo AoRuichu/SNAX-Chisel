@@ -440,10 +440,20 @@ class ScaleToFPn(val scfg: ScaleAddConfig, val outMantBits: Int) extends Module 
  *  with the constant `+2` coming from productW − 1 − M − 2·M_s = 2 after
  *  simplifying productW = (M+1) + 2·(M_s+1).
  */
-class FPxScale(val scfg: ScaleAddConfig, val mantBits: Int) extends Module {
+class FPxScale(
+    val scfg: ScaleAddConfig,
+    val mantBits: Int,
+    val pipeInternal: Boolean = false
+) extends Module {
   require(mantBits >= 1 && mantBits <= 23)
-  override def desiredName =
-    s"FPxScale${mantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}"
+  // pipeInternal inserts a register stage AFTER the mantissa-multiplier, splitting
+  // the non-UE8M0 path into (multiplier | LZC + normalise + round).  Latency from
+  // fpIn to fpOut becomes 1 cycle when set.  For UE8M0 it has no effect — that
+  // path is just biased-exp arithmetic and is already minimal.
+  override def desiredName = {
+    val suffix = if (pipeInternal) "_piped" else ""
+    s"FPxScale${mantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}${suffix}"
+  }
 
   private val fpNW       = 1 + 8 + mantBits
   private val scaleW     = scfg.stype.totalScaleWidth
@@ -491,13 +501,46 @@ class FPxScale(val scfg: ScaleAddConfig, val mantBits: Int) extends Module {
                                 Cat(inSign, newExpRaw.asUInt(7, 0), inExplicit)))
   } else {
     // ── Non-UE8M0: scaleMantProd × innerMantFull + normalize + RNE ────────
-    val scaleMantProd = scaleMantA * scaleMantB                     // 2·(M_s+1) bits
-    val rawProduct    = innerMantFull * scaleMantProd               // productW bits
-    val productW      = rawProduct.getWidth                         // = (M+1) + 2·(M_s+1)
+    // Closed-form widths for the multiplier output and exp-sum register, so
+    // the explicit pipeline register doesn't have to chase Chisel's lazy
+    // width inference through a wide multiplier.
+    val productW      = (mantBits + 1) + 2 * (mantScaleW + 1)
+    val scaleSumW     = scaleExpSum.getWidth
+    val scaleMantProd = scaleMantA * scaleMantB
+    val rawProduct    = (innerMantFull * scaleMantProd)(productW - 1, 0)
 
-    val isProductZero = rawProduct === 0.U || isInZero
-    val lzc           = PriorityEncoder(Reverse(rawProduct))
-    val normalized    = (rawProduct << lzc)(productW - 1, 0)
+    // pipeInternal register stage: split after the wide mantissa multiplier
+    // by capturing rawProduct + exp/sign carry signals into one Bundle reg.
+    // Stage-2 (LZC + normalize + round + final exp arithmetic) consumes the
+    // registered values next cycle.
+    class Stage1 extends Bundle {
+      val rawProduct   = UInt(productW.W)
+      val inBiasedExp  = UInt(8.W)
+      val inSign       = UInt(1.W)
+      val isInZero     = Bool()
+      val scaleExpSum  = SInt(scaleSumW.W)
+    }
+    val s1Now = Wire(new Stage1)
+    s1Now.rawProduct  := rawProduct
+    s1Now.inBiasedExp := inBiasedExp
+    s1Now.inSign      := inSign
+    s1Now.isInZero    := isInZero
+    s1Now.scaleExpSum := scaleExpSum
+    val s1 = if (pipeInternal) {
+      val r = Reg(new Stage1)
+      r := s1Now
+      r
+    } else s1Now
+
+    val rawProductR  = s1.rawProduct
+    val inBiasedExpR = s1.inBiasedExp
+    val inSignR      = s1.inSign
+    val isInZeroR    = s1.isInZero
+    val scaleExpSumR = s1.scaleExpSum
+
+    val isProductZero = rawProductR === 0.U || isInZeroR
+    val lzc           = PriorityEncoder(Reverse(rawProductR))
+    val normalized    = (rawProductR << lzc)(productW - 1, 0)
 
     // After normalize, bit (productW-1) is the implicit-1 of the result.
     // Top mantBits below that = explicit mantissa.
@@ -516,7 +559,7 @@ class FPxScale(val scfg: ScaleAddConfig, val mantBits: Int) extends Module {
     // new_biased_exp = inBiasedExp + 2 + scaleExpSum - lzc (+ 1 if mCarry)
     val constOffset = 2
     val lzcS        = Cat(false.B, lzc).asSInt
-    val newExpBase  = inBiasedExp.zext +& constOffset.S +& scaleExpSum -& lzcS
+    val newExpBase  = inBiasedExpR.zext +& constOffset.S +& scaleExpSumR -& lzcS
     val newExpRaw   = Mux(mCarry, newExpBase + 1.S, newExpBase)
 
     val isOverflow  = newExpRaw >= 255.S
@@ -526,7 +569,7 @@ class FPxScale(val scfg: ScaleAddConfig, val mantBits: Int) extends Module {
                          Mux(isUnderflow || isProductZero,     0.U(8.W),
                                                                newExpRaw.asUInt(7, 0)))
     io.fpOut := Mux(isProductZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
-                Mux(isOverflow, Cat(inSign, 255.U(8.W), 0.U(mantBits.W)),
-                                Cat(inSign, finalBiasedExp, finalMantExp)))
+                Mux(isOverflow, Cat(inSignR, 255.U(8.W), 0.U(mantBits.W)),
+                                Cat(inSignR, finalBiasedExp, finalMantExp)))
   }
 }

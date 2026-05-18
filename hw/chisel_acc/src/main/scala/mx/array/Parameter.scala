@@ -1,7 +1,14 @@
 package mx.array
 
-import mx.mac.{ScaleAddConfig, MXFormats, ScaleFormats}
+import mx.mac.{ScaleAddConfig, MXFormats, ScaleFormats, TreeArch}
 import mx.requant.{RequantConfig, RequantINT8Config}
+
+/** DSE override for the per-PE accumulator strategy.  When supplied to a
+ *  PEArrayConfig / PEArrayINT8Config, the FDPU instantiation uses these
+ *  values instead of the wrapper-derived defaults.  Used by the
+ *  architecture sweep to compare baseline (single-cycle scale apply),
+ *  block-deferred, and Kulisch back-to-back under identical wrappers. */
+case class ArchOverride(treeArch: TreeArch, cyclesPerBlock: Int)
 
 /**
  * Combined elaboration-time configuration for a PEArrayWrapper (FP8/FP6 output).
@@ -19,8 +26,9 @@ case class PEArrayConfig(
   tileRows:      Int,
   tileCols:      Int,
   requantCfg:    RequantConfig,
-  K:             Int     = 16384,
-  exposeResults: Boolean = false  // expose FP32 results_o IO for testing
+  K:             Int               = 16384,
+  exposeResults: Boolean           = false,  // expose FP32 results_o IO for testing
+  archOverride:  Option[ArchOverride] = None
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -62,8 +70,9 @@ case class PEArrayINT8Config(
   tileRows:      Int,
   tileCols:      Int,
   requantCfg:    RequantINT8Config,
-  K:             Int     = 16384,
-  exposeResults: Boolean = false  // expose FP32 results_o IO for testing
+  K:             Int               = 16384,
+  exposeResults: Boolean           = false,  // expose FP32 results_o IO for testing
+  archOverride:  Option[ArchOverride] = None
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")

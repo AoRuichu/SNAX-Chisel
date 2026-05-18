@@ -76,31 +76,38 @@ class FDPUPostScaleReductionTreePiped(
   val accMantBits: Int = -1,
   val treeArch: TreeArch = TreeArch.Generic,
   val cyclesPerBlock: Int = 1,
-  val pipelineStages: Int = 0,   // NEW: 0..3 feed-forward pipeline depth
+  val pipeAfterTree: Boolean = false,   // Stage A: register at the reduction-tree output
+  val pipeInScale:   Boolean = false,   // Stage B: register inside FPxScale (after mant-mult)
   val istest: Boolean = false
 ) extends Module {
   require(cyclesPerBlock >= 1, s"cyclesPerBlock must be >= 1, got $cyclesPerBlock")
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
-  require(pipelineStages >= 0 && pipelineStages <= 3,
-    s"pipelineStages must be in [0, 3], got $pipelineStages")
 
-  // Cumulative pipeline boundary enables (see file header for what each stage means)
-  private val pipe1Enable = pipelineStages >= 1
-  private val pipe2Enable = pipelineStages >= 2
-  private val pipe3Enable = pipelineStages >= 3
+  // Feed-forward pipeline depth in the per-cycle datapath.  pipeAfterTree adds
+  // one cycle between the (anchored) reduction tree and the downstream
+  // converter/adder, which is the only outer register position that actually
+  // breaks the per-cycle critical path; the post-multiply and post-conversion
+  // positions tried earlier proved to be dominated (no f_max gain, extra area).
+  private val feedForwardDepth: Int = if (pipeAfterTree) 1 else 0
+
+  // pipeInScale only takes effect when the scale type carries a mantissa
+  // (non-UE8M0); UE8M0's block-end scale apply is pure exp arithmetic and
+  // does not benefit from internal pipelining.
+  private val effectiveScalePipe: Boolean =
+    pipeInScale && scfg.stype.mantScaleWidth > 0
 
   /** Insert a RegNext on a Chisel Data signal iff `enable` is true. */
   private def maybePipe[T <: chisel3.Data](enable: Boolean, sig: T): T =
     if (enable) RegNext(sig) else sig
 
-  /** Delay a control signal (validIn / resetAcc) by `pipelineStages` cycles
-   *  so it aligns with the in-flight data at the accumulator stage.  Without
-   *  this, accReg would update on the WRONG cycle's data when pipelineStages>0.
+  /** Delay a control signal (validIn / resetAcc) so it aligns with the in-flight
+   *  data at the accumulator stage.  Without this, accReg would update on the
+   *  wrong cycle's data when pipeAfterTree=true.
    */
   private def alignedCtrl(sig: Bool): Bool =
-    if (pipelineStages == 0) sig
-    else ShiftRegister(sig, pipelineStages)
+    if (feedForwardDepth == 0) sig
+    else ShiftRegister(sig, feedForwardDepth)
 
   val actualAccMantBits: Int =
     if (accMantBits == -1) AccPrecision.recommended(scfg, K)
@@ -113,12 +120,17 @@ class FDPUPostScaleReductionTreePiped(
   private val wB = scfg.elementTypeB.totalWidth
 
   override def desiredName = {
-    val pipeSuffix = if (pipelineStages > 0) s"_pipe$pipelineStages" else ""
+    val pipeTag = (pipeAfterTree, pipeInScale) match {
+      case (false, false) => ""
+      case (true,  false) => "_pAT"
+      case (false, true)  => "_pIS"
+      case (true,  true)  => "_pAT_pIS"
+    }
     if (!istest)
-      s"BFP_PE${pipeSuffix}"
+      s"BFP_PE${pipeTag}"
     else
       s"FDPUPostScale_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}" +
-      s"_scale_${scfg.stype.name}_vec${vectorSize}_K${K}_acc${actualAccMantBits}b${pipeSuffix}"
+      s"_scale_${scfg.stype.name}_vec${vectorSize}_K${K}_acc${actualAccMantBits}b${pipeTag}"
   }
 
   val io = IO(new Bundle {
@@ -173,9 +185,7 @@ class FDPUPostScaleReductionTreePiped(
   //                        cyclesPerBlock ≥ 2.  Tree is still active.
   //   buildSingleAcc     : baseline single FP accumulator, scale per cycle.
   val useKulischDeferred =
-    cyclesPerBlock >= 2 &&
-    (treeArch == TreeArch.KulischInner) &&
-    scfg.stype.mantScaleWidth == 0
+    cyclesPerBlock >= 2 && (treeArch == TreeArch.KulischInner)
   val useBlockDeferred = cyclesPerBlock >= 2 && !useKulischDeferred
 
   if      (useKulischDeferred) buildKulischDeferred()
@@ -184,12 +194,10 @@ class FDPUPostScaleReductionTreePiped(
 
   // ── buildSingleAcc: legacy per-cycle scale-apply + single FP accumulator ─
   private def buildSingleAcc(): Unit = {
-    // ── share_exp aligned to scale-apply consumption point.
-    // For buildSingleAcc, scale apply happens AFTER pipe1 + pipe2 (if enabled);
-    // pipe3 is AFTER scale apply so doesn't affect share_exp timing.
-    val scaleApplyDelay = (if (pipe1Enable) 1 else 0) + (if (pipe2Enable) 1 else 0)
-    val shareExpA = if (scaleApplyDelay == 0) io.share_exp_A_i else ShiftRegister(io.share_exp_A_i, scaleApplyDelay)
-    val shareExpB = if (scaleApplyDelay == 0) io.share_exp_B_i else ShiftRegister(io.share_exp_B_i, scaleApplyDelay)
+    // share_exp aligned to scale-apply consumption point.  Scale apply occurs
+    // AFTER the tree, so it sits behind the optional pipeAfterTree register.
+    val shareExpA = if (feedForwardDepth == 0) io.share_exp_A_i else ShiftRegister(io.share_exp_A_i, feedForwardDepth)
+    val shareExpB = if (feedForwardDepth == 0) io.share_exp_B_i else ShiftRegister(io.share_exp_B_i, feedForwardDepth)
 
     // ── Per-lane MAC ─────────────────────────────────────────────────────────
     val laneOp = Wire(Vec(vectorSize, new CustomFP(scfg.resOperatorExpWidth, scfg.resOperatorMantWidth)))
@@ -210,9 +218,6 @@ class FDPUPostScaleReductionTreePiped(
       }
     }
 
-    // ── pipe1: register lane MAC outputs before tree ─────────────────────────
-    val laneOpP = maybePipe(pipe1Enable, laneOp)
-
     // ── FixedFP reduction tree ────────────────────────────────────────────────
     val tree = Module(new FixedFPReductionTree(
       expW            = scfg.resOperatorExpWidth,
@@ -222,9 +227,9 @@ class FDPUPostScaleReductionTreePiped(
       productExpRange = scfg.productExpRange,
       arch            = treeArch
     ))
-    tree.io.inputs := laneOpP
-    // ── pipe2: register tree output before scale apply ───────────────────────
-    val treeOut = maybePipe(pipe2Enable, tree.io.out)
+    tree.io.inputs := laneOp
+    // ── pipeAfterTree: register tree output before scale apply ───────────────
+    val treeOut = maybePipe(pipeAfterTree, tree.io.out)
 
     io.debug.foreach { d =>
       d.tree_out_sign := treeOut.sign
@@ -295,12 +300,9 @@ class FDPUPostScaleReductionTreePiped(
     val accReg    = withReset(asyncRstN)(RegInit(0.U(accRegW.W)))
     val validReg  = withReset(asyncRstN)(RegInit(false.B))
 
-    // ── pipe3: register scale-applied FP word before FPNAdder ────────────────
-    val reducedSumP = maybePipe(pipe3Enable, reducedSum)
-
     val accAdder = Module(new FPNAdder(actualAccMantBits))
     accAdder.io.a := accReg
-    accAdder.io.b := reducedSumP
+    accAdder.io.b := reducedSum
 
     // ── Control signals delayed to align with piped data path ────────────────
     val validInAligned  = alignedCtrl(io.validIn)
@@ -371,9 +373,6 @@ class FDPUPostScaleReductionTreePiped(
       }
     }
 
-    // ── pipe1: register lane MAC outputs before tree ─────────────────────────
-    val laneOpP = maybePipe(pipe1Enable, laneOp)
-
     // ── FixedFP reduction tree ─────────────────────────────────────────────
     val tree = Module(new FixedFPReductionTree(
       expW            = scfg.resOperatorExpWidth,
@@ -383,9 +382,9 @@ class FDPUPostScaleReductionTreePiped(
       productExpRange = scfg.productExpRange,
       arch            = treeArch
     ))
-    tree.io.inputs := laneOpP
-    // ── pipe2: register tree output before no-scale converter ────────────────
-    val treeOut = maybePipe(pipe2Enable, tree.io.out)
+    tree.io.inputs := laneOp
+    // ── pipeAfterTree: register tree output before no-scale converter ───────
+    val treeOut = maybePipe(pipeAfterTree, tree.io.out)
 
     io.debug.foreach { d =>
       d.tree_out_sign := treeOut.sign
@@ -441,23 +440,20 @@ class FDPUPostScaleReductionTreePiped(
       cycleFPnoscale := s2fpn.io.out
     }
 
-    // ── pipe3: register no-scale FP word before inner FPNAdder ──────────────
-    val cycleFPnoscaleP = maybePipe(pipe3Enable, cycleFPnoscale)
-
     // ── Inner FP accumulator (no scale applied yet) ────────────────────────
     val asyncRstN   = (!reset.asBool).asAsyncReset
     val innerAccReg = withReset(asyncRstN)(RegInit(0.U(fpNW.W)))
 
     val innerAdder = Module(new FPNAdder(actualAccMantBits))
     innerAdder.io.a := innerAccReg
-    innerAdder.io.b := cycleFPnoscaleP
+    innerAdder.io.b := cycleFPnoscale
     val innerNext = innerAdder.io.out
 
     // ── Control signals delayed to align with piped data path ────────────────
-    // Precondition for pipelineStages > 0: share_exp_{A,B}_i must be held
-    // stable for at least `pipelineStages + 1` cycles around block boundary
-    // so the bridge samples the correct block's scale.  MX block semantics
-    // already enforce share_exp constancy across cyclesPerBlock ≥ pipelineStages.
+    // Precondition for pipeAfterTree=true: share_exp_{A,B}_i must be held
+    // stable for at least one extra cycle around the block boundary so the
+    // bridge samples the correct block's scale.  MX block semantics already
+    // enforce share_exp constancy across cyclesPerBlock cycles.
     val validInAligned  = alignedCtrl(io.validIn)
     val resetAccAligned = alignedCtrl(io.resetAcc)
 
@@ -466,9 +462,9 @@ class FDPUPostScaleReductionTreePiped(
     val isLastCycleOfBlock = blockCnt === (cyclesPerBlock - 1).U
     val blockDone = validInAligned && isLastCycleOfBlock
 
-    // ── share_exp aligned to block-end bridge (= pipelineStages delay) ──────
-    val shareExpA = if (pipelineStages == 0) io.share_exp_A_i else ShiftRegister(io.share_exp_A_i, pipelineStages)
-    val shareExpB = if (pipelineStages == 0) io.share_exp_B_i else ShiftRegister(io.share_exp_B_i, pipelineStages)
+    // ── share_exp aligned to block-end bridge consumption ──────────────────
+    val shareExpA = if (feedForwardDepth == 0) io.share_exp_A_i else ShiftRegister(io.share_exp_A_i, feedForwardDepth)
+    val shareExpB = if (feedForwardDepth == 0) io.share_exp_B_i else ShiftRegister(io.share_exp_B_i, feedForwardDepth)
 
     // ── Block-boundary bridge: apply scale to innerNext → blockPartialFP ───
     val blockPartialFP = Wire(UInt(fpNW.W))
@@ -493,7 +489,17 @@ class FDPUPostScaleReductionTreePiped(
             Cat(innerSign, blockExpRaw.asUInt(7, 0), innerMant)))
     } else {
       // non-UE8M0: real scale_mant × scale_mant × inner_mant via FPxScale.
-      val fpScale = Module(new FPxScale(scfg, actualAccMantBits))
+      // pipeInScale opts in to an internal register after the mant multiplier,
+      // turning the module into a 2-cycle pipeline.  blockPartialFP then trails
+      // the corresponding blockDone by one cycle, and the outer accumulator
+      // update is gated by `blockDoneOuter` below.
+      // FPxScale's internal pipeline registers (when pipeInScale=true) must
+      // use the same inverted reset (asyncRstN) as the rest of FDPU so they
+      // operate while the codebase's "reset high = normal operation"
+      // convention is in effect.
+      val fpScale = withReset(asyncRstN) {
+        Module(new FPxScale(scfg, actualAccMantBits, pipeInternal = effectiveScalePipe))
+      }
       fpScale.io.fpIn   := innerNext
       fpScale.io.scaleA := shareExpA
       fpScale.io.scaleB := shareExpB
@@ -509,24 +515,35 @@ class FDPUPostScaleReductionTreePiped(
 
     val validReg = withReset(asyncRstN)(RegInit(false.B))
 
+    // When the scale pipe is engaged, the FPxScale output appears one cycle
+    // after blockDone, so the outer-accumulator update has to wait that cycle.
+    // innerAcc reset, blockCnt reset and per-cycle accumulation are unaffected.
+    val blockDoneOuter =
+      if (effectiveScalePipe) withReset(asyncRstN)(RegNext(blockDone, init = false.B))
+      else blockDone
+
     // ── State updates ─────────────────────────────────────────────────────
     when(resetAccAligned) {
       innerAccReg := 0.U
       outerAccReg := 0.U
       blockCnt    := 0.U
       validReg    := false.B
-    }.elsewhen(validInAligned) {
-      when(blockDone) {
-        innerAccReg := 0.U                  // reset inner for next block
-        outerAccReg := outerAdder.io.out    // commit scaled block partial
-        blockCnt    := 0.U
-      }.otherwise {
-        innerAccReg := innerAdder.io.out    // intra-block FP accumulate
-        blockCnt    := blockCnt + 1.U
-      }
-      validReg := true.B                    // mirror buildSingleAcc semantics
     }.otherwise {
-      validReg := false.B
+      when(blockDoneOuter) {
+        outerAccReg := outerAdder.io.out     // commit scaled block partial
+      }
+      when(validInAligned) {
+        when(blockDone) {
+          innerAccReg := 0.U                 // reset inner for next block
+          blockCnt    := 0.U
+        }.otherwise {
+          innerAccReg := innerAdder.io.out   // intra-block FP accumulate
+          blockCnt    := blockCnt + 1.U
+        }
+        validReg := true.B                   // mirror buildSingleAcc semantics
+      }.otherwise {
+        validReg := false.B
+      }
     }
 
     io.validOut := validReg
@@ -574,12 +591,11 @@ class FDPUPostScaleReductionTreePiped(
   //
   // Precondition: share_exp_A_i / share_exp_B_i constant across the block
   // (MX block semantics — wrapper enforces this).
-  // Currently UE8M0 only; non-UE8M0 with cyclesPerBlock ≥ 2 falls back to
-  // buildBlockDeferred (Arch-IV.a).
+  // Supports UE8M0 (pure biased-exp scale apply) and non-UE8M0 (mant-multiply
+  // via FPxScale at block boundary).  Inner accumulator is identical in both
+  // paths — scale type only affects the block-end bridge.
   private def buildKulischDeferred(): Unit = {
     require(cyclesPerBlock >= 2)
-    require(scfg.stype.mantScaleWidth == 0,
-      "buildKulischDeferred currently supports UE8M0 only")
 
     // Compile-time anchor + widths.
     //
@@ -626,26 +642,27 @@ class FDPUPostScaleReductionTreePiped(
       }
     }
 
-    // ── pipe1: register lane MAC outputs before alignment ────────────────────
-    val laneOpP = maybePipe(pipe1Enable, laneOp)
-
     // ── Per-lane align to global anchor + sign-mag → 2's complement ────────
     val laneAligned = Wire(Vec(vectorSize, SInt(accInnerW.W)))
     for (i <- 0 until vectorSize) {
-      val expDiff = laneOpP(i).exp - bShift.S
+      val expDiff = laneOp(i).exp - bShift.S
       // expDiff is always ≥ 0 in valid inputs. Defensive clamp to [0, R].
       val shiftAmt = Mux(expDiff < 0.S,                       0.U(shiftAmtW.W),
                        Mux(expDiff.asUInt > R.U,              R.U(shiftAmtW.W),
                                                                expDiff.asUInt(shiftAmtW - 1, 0)))
       // mant occupies low mProd bits; top (R + log2CV) bits zero-padded.
-      val extended = Cat(0.U((R + log2CV).W), laneOpP(i).mant)
+      val extended = Cat(0.U((R + log2CV).W), laneOp(i).mant)
       val shifted  = (extended << shiftAmt)(magW - 1, 0)
       val posSigned = Cat(0.U(1.W), shifted).asSInt
-      laneAligned(i) := Mux(laneOpP(i).sign.asBool, -posSigned, posSigned)
+      laneAligned(i) := Mux(laneOp(i).sign.asBool, -posSigned, posSigned)
     }
 
-    // ── pipe2: register aligned lane outputs before adder tree ──────────────
-    val laneAlignedP = maybePipe(pipe2Enable, laneAligned)
+    // ── pipeAfterTree: register aligned lane outputs before adder tree ─────
+    // For Kulisch this position breaks the chain between the (per-lane parallel)
+    // alignment shifts and the (sequential) signed adder tree — analogous to
+    // BD-FP's post-FP-tree register in that it splits the cross-lane reduction
+    // from the per-lane preprocessing.
+    val laneAlignedP = maybePipe(pipeAfterTree, laneAligned)
 
     // ── V-lane signed integer adder tree (width-preserving) ────────────────
     def signedAddTree(vals: Seq[SInt]): SInt =
@@ -653,13 +670,10 @@ class FDPUPostScaleReductionTreePiped(
       else signedAddTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)
     val laneSum = signedAddTree(laneAlignedP.toSeq)
 
-    // ── pipe3: register lane sum before integer add into innerAccReg ────────
-    val laneSumP = maybePipe(pipe3Enable, laneSum)
-
     // ── Wide fixed-point Kulisch accumulator ──────────────────────────────
     val asyncRstN   = (!reset.asBool).asAsyncReset
     val innerAccReg = withReset(asyncRstN)(RegInit(0.S(accInnerW.W)))
-    val innerNext   = innerAccReg + laneSumP  // width-preserving SInt add
+    val innerNext   = innerAccReg + laneSum   // width-preserving SInt add
 
     // ── Block-cycle counter ───────────────────────────────────────────────
     val blockCnt = withReset(asyncRstN)(RegInit(0.U(log2Ceil(cyclesPerBlock).W)))
@@ -693,28 +707,58 @@ class FDPUPostScaleReductionTreePiped(
     val mCarry     = roundedM(M).asBool
     val finalMantExp = Mux(mCarry, 0.U(M.W), roundedM(M - 1, 0))
 
-    // biased_exp = (magW − 1 − lzc) + b + 127 + scaleExpSum + (mCarry ? 1 : 0)
-    // share_exp aligned to block-end bridge consumption (= pipelineStages cycles delayed)
-    val shareExpA = if (pipelineStages == 0) io.share_exp_A_i else ShiftRegister(io.share_exp_A_i, pipelineStages)
-    val shareExpB = if (pipelineStages == 0) io.share_exp_B_i else ShiftRegister(io.share_exp_B_i, pipelineStages)
-    val adjScaleA = shareExpA.zext - scfg.stype.bias.S
-    val adjScaleB = shareExpB.zext - scfg.stype.bias.S
-    val scaleAdj  = adjScaleA +& adjScaleB
-    val constOff  = magW - 1 + bValue + 127
-    val lzcS      = Cat(false.B, lzc).asSInt
-    val newExpBase = constOff.S - lzcS +& scaleAdj
-    val newExpRaw  = Mux(mCarry, newExpBase + 1.S, newExpBase)
+    // share_exp aligned to block-end bridge consumption.
+    val shareExpA = if (feedForwardDepth == 0) io.share_exp_A_i else ShiftRegister(io.share_exp_A_i, feedForwardDepth)
+    val shareExpB = if (feedForwardDepth == 0) io.share_exp_B_i else ShiftRegister(io.share_exp_B_i, feedForwardDepth)
 
-    val isOverflow  = newExpRaw >= 255.S
-    val isUnderflow = newExpRaw <= 0.S
+    val blockPartialFP = Wire(UInt(fpNW.W))
 
-    val finalBiasedExp = Mux(isOverflow,                       255.U(8.W),
-                         Mux(isUnderflow || isMagZero,         0.U(8.W),
-                                                                newExpRaw.asUInt(7, 0)))
-    val blockPartialFP =
-      Mux(isMagZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
-      Mux(isOverflow, Cat(kSign, 255.U(8.W), 0.U(M.W)),
-                      Cat(kSign, finalBiasedExp, finalMantExp)))
+    if (scfg.stype.mantScaleWidth == 0) {
+      // ── UE8M0 fast path: scale apply = pure biased-exp arithmetic ─────────
+      // biased_exp = (magW − 1 − lzc) + b + 127 + scaleExpSum + (mCarry ? 1 : 0)
+      val adjScaleA = shareExpA.zext - scfg.stype.bias.S
+      val adjScaleB = shareExpB.zext - scfg.stype.bias.S
+      val scaleAdj  = adjScaleA +& adjScaleB
+      val constOff  = magW - 1 + bValue + 127
+      val lzcS      = Cat(false.B, lzc).asSInt
+      val newExpBase = constOff.S - lzcS +& scaleAdj
+      val newExpRaw  = Mux(mCarry, newExpBase + 1.S, newExpBase)
+
+      val isOverflow  = newExpRaw >= 255.S
+      val isUnderflow = newExpRaw <= 0.S
+
+      val finalBiasedExp = Mux(isOverflow,                       255.U(8.W),
+                           Mux(isUnderflow || isMagZero,         0.U(8.W),
+                                                                  newExpRaw.asUInt(7, 0)))
+      blockPartialFP :=
+        Mux(isMagZero || (isUnderflow && !isOverflow), 0.U(fpNW.W),
+        Mux(isOverflow, Cat(kSign, 255.U(8.W), 0.U(M.W)),
+                        Cat(kSign, finalBiasedExp, finalMantExp)))
+    } else {
+      // ── non-UE8M0 path: assemble pre-scale FP word, apply scale via FPxScale
+      // Pre-scale exp = (magW − 1 − lzc) + bValue + 127 (+1 if mCarry); no scale
+      // exp/mant applied yet — FPxScale does the full scaleA×scaleB application.
+      val constOff   = magW - 1 + bValue + 127
+      val lzcS       = Cat(false.B, lzc).asSInt
+      val preExpBase = constOff.S - lzcS
+      val preExpRaw  = Mux(mCarry, preExpBase + 1.S, preExpBase)
+
+      // For Kulisch widths (constOff ≤ ~170, lzc ∈ [0, magW-1]), preExpRaw
+      // is always within 8-bit unsigned range. Mag-zero still must give 0.
+      val preBiasedExp = Mux(isMagZero, 0.U(8.W), preExpRaw.asUInt(7, 0))
+      val preFP        = Mux(isMagZero, 0.U(fpNW.W),
+                                        Cat(kSign, preBiasedExp, finalMantExp))
+
+      // Wrap FPxScale with the inverted reset so its internal stage register
+      // operates while dut.reset is held HIGH (this codebase's normal state).
+      val fpScale = withReset(asyncRstN) {
+        Module(new FPxScale(scfg, actualAccMantBits, pipeInternal = effectiveScalePipe))
+      }
+      fpScale.io.fpIn   := preFP
+      fpScale.io.scaleA := shareExpA
+      fpScale.io.scaleB := shareExpB
+      blockPartialFP := fpScale.io.fpOut
+    }
 
     // ── Outer FP accumulator (block partials) ─────────────────────────────
     val outerAccReg = withReset(asyncRstN)(RegInit(0.U(fpNW.W)))
@@ -724,23 +768,34 @@ class FDPUPostScaleReductionTreePiped(
 
     val validReg = withReset(asyncRstN)(RegInit(false.B))
 
+    // Engaging pipeInScale (non-UE8M0 only) delays blockPartialFP by 1 cycle,
+    // so outerAcc updates one cycle after blockDone.  Inner state advances on
+    // its own (validInAligned).  Must use asyncRstN to match the rest of FDPU.
+    val blockDoneOuter =
+      if (effectiveScalePipe) withReset(asyncRstN)(RegNext(blockDone, init = false.B))
+      else blockDone
+
     when(resetAccAlignedK) {
       innerAccReg := 0.S
       outerAccReg := 0.U
       blockCnt    := 0.U
       validReg    := false.B
-    }.elsewhen(validInAlignedK) {
-      when(blockDone) {
-        innerAccReg := 0.S
-        outerAccReg := outerAdder.io.out
-        blockCnt    := 0.U
-      }.otherwise {
-        innerAccReg := innerNext
-        blockCnt    := blockCnt + 1.U
-      }
-      validReg := true.B
     }.otherwise {
-      validReg := false.B
+      when(blockDoneOuter) {
+        outerAccReg := outerAdder.io.out
+      }
+      when(validInAlignedK) {
+        when(blockDone) {
+          innerAccReg := 0.S
+          blockCnt    := 0.U
+        }.otherwise {
+          innerAccReg := innerNext
+          blockCnt    := blockCnt + 1.U
+        }
+        validReg := true.B
+      }.otherwise {
+        validReg := false.B
+      }
     }
 
     io.validOut := validReg
@@ -763,34 +818,39 @@ class FDPUPostScaleReductionTreePiped(
 
 // ============================================================
 // Pipeline DSE sweep emitter — V=4 only.
-// Two scale-type tracks with different arch comparisons:
+//
+// Pipeline knobs (replacing the old 0..3 stages):
+//   pAT (pipeAfterTree) — Stage A, register at reduction-tree output
+//   pIS (pipeInScale)   — Stage B, register inside FPxScale (after mant-mult)
+// pIS has no effect for UE8M0 (scale apply is pure exp arithmetic).
+//
+// Two scale-type tracks:
 //
 //   UE8M0 (Kulisch-relevant):
-//     - blockdef : Generic tree + cpb=8 → buildBlockDeferred
-//     - kulisch  : KulischInner + cpb=8 → buildKulischDeferred
-//     5 pairs × 2 modes × 4 pipes = 40
+//     modes  = {blockdef, kulisch}
+//     combos = {(pAT=F,pIS=F), (pAT=T,pIS=F)}  (pIS dominated)
+//     5 pairs × 2 modes × 2 combos = 20
 //
-//   UE4M4 (single vs blockdef shows mant-mult savings):
-//     - single   : Generic tree + cpb=1 → buildSingleAcc
-//     - blockdef : Generic tree + cpb=8 → buildBlockDeferred
-//     Kulisch N/A (UE4M4 has mantissa, Kulisch is UE8M0-only)
-//     3 pairs × 2 modes × 4 pipes = 24
+//   UE4M4 (Kulisch now supports non-UE8M0):
+//     modes  = {single, blockdef, kulisch}
+//     combos = full 2×2 = 4
+//     3 pairs × 3 modes × 4 combos = 36
 //
-// Total = 64 PE.sv under generated/dse_pipeline_sweep/.
+// Total = 56 PE.sv under generated/dse_pipeline_sweep/.
 // ============================================================
 object DSEPipelineSweepMain extends App {
   import java.io.{File, PrintWriter}
   import scala.io.Source
 
-  private val Root = "generated/dse_pipeline_sweep"
-  private val Kdefault = 16384
+  private val Root  = "generated/dse_pipeline_sweep"
   private val vsize = 4
-  private val pipeStages = Seq(0, 1, 2, 3)
+  private val K     = 16384
 
   private case class Pair(label: String, typeA: ElementType, typeB: ElementType)
   private case class Mode(label: String, treeArch: TreeArch, cpb: Int)
+  private case class PipeCombo(label: String, pAT: Boolean, pIS: Boolean)
 
-  // ── UE8M0 track ─────────────────────────────────────────────────────────
+  // ── Format pairs ────────────────────────────────────────────────────────
   private val ue8m0Pairs = Seq(
     Pair("INT8xINT8",   MXFormats.INT8, MXFormats.INT8),  // R=0
     Pair("E3M2xE3M2",   MXFormats.E3M2, MXFormats.E3M2),  // R=12
@@ -798,23 +858,36 @@ object DSEPipelineSweepMain extends App {
     Pair("E5M2xE4M3",   MXFormats.E5M2, MXFormats.E4M3),  // R=43
     Pair("E5M2xE5M2",   MXFormats.E5M2, MXFormats.E5M2),  // R=58
   )
+  private val ue4m4Pairs = Seq(
+    Pair("E3M2xE3M2", MXFormats.E3M2, MXFormats.E3M2),
+    Pair("E4M3xE4M3", MXFormats.E4M3, MXFormats.E4M3),
+    Pair("E5M2xE5M2", MXFormats.E5M2, MXFormats.E5M2),
+  )
+
   private val ue8m0Modes = Seq(
     Mode("blockdef", TreeArch.Generic,      8),
     Mode("kulisch",  TreeArch.KulischInner, 8),
   )
-
-  // ── UE4M4 track ─────────────────────────────────────────────────────────
-  private val ue4m4Pairs = Seq(
-    Pair("E3M2xE3M2", MXFormats.E3M2, MXFormats.E3M2),  // R=12
-    Pair("E4M3xE4M3", MXFormats.E4M3, MXFormats.E4M3),  // R=28
-    Pair("E5M2xE5M2", MXFormats.E5M2, MXFormats.E5M2),  // R=58
-  )
   private val ue4m4Modes = Seq(
-    Mode("single",   TreeArch.Generic, 1),
-    Mode("blockdef", TreeArch.Generic, 8),
+    Mode("single",   TreeArch.Generic,      1),
+    Mode("blockdef", TreeArch.Generic,      8),
+    Mode("kulisch",  TreeArch.KulischInner, 8),
   )
 
-  // ── Helper: consolidate emitted .sv files into a single PE.sv ───────────
+  // Pipeline-combo enumerations.  pIS is dominated when the scale type has no
+  // mantissa (UE8M0), so we drop the (pIS=T) half there.
+  private val ue8m0Combos = Seq(
+    PipeCombo("p00",     pAT = false, pIS = false),
+    PipeCombo("pAT",     pAT = true,  pIS = false),
+  )
+  private val ue4m4Combos = Seq(
+    PipeCombo("p00",     pAT = false, pIS = false),
+    PipeCombo("pAT",     pAT = true,  pIS = false),
+    PipeCombo("pIS",     pAT = false, pIS = true),
+    PipeCombo("pAT_pIS", pAT = true,  pIS = true),
+  )
+
+  // Consolidate emitted .sv files into a single PE.sv.
   private def consolidatePE(dir: String): Unit = {
     val dirFile = new File(dir)
     val svFiles = Option(dirFile.listFiles())
@@ -831,48 +904,47 @@ object DSEPipelineSweepMain extends App {
     }
   }
 
-  private def emitOne(label: String, scfg: ScaleAddConfig, mode: Mode, pipe: Int): Unit = {
-    val dir = s"$Root/$label"
+  private def emitOne(scaleTag: String, p: Pair, mode: Mode, combo: PipeCombo,
+                       scfg: ScaleAddConfig): Unit = {
+    val label = s"${mode.label}_${p.label}_${scaleTag}_V${vsize}_cpb${mode.cpb}_${combo.label}"
+    val dir   = s"$Root/$label"
     new File(dir).mkdirs()
     Option(new File(dir).listFiles()).foreach(_.foreach(_.delete()))
     emitVerilog(
       new FDPUPostScaleReductionTreePiped(
         scfg            = scfg,
         vectorSize      = vsize,
-        K               = Kdefault,
+        K               = K,
         treeArch        = mode.treeArch,
         cyclesPerBlock  = mode.cpb,
-        pipelineStages  = pipe,
+        pipeAfterTree   = combo.pAT,
+        pipeInScale     = combo.pIS,
         istest          = false),
       Array("--target-dir", dir)
     )
     consolidatePE(dir)
-    println(s"[PIPE-SWEEP] $label → $dir/PE.sv  (R=${scfg.productExpRange})")
+    println(f"[PIPE-SWEEP] $label%-58s  R=${scfg.productExpRange}%-3d")
   }
 
   // ── UE8M0 sweep ─────────────────────────────────────────────────────────
-  println(s"\n=== UE8M0 track: ${ue8m0Pairs.size * ue8m0Modes.size * pipeStages.size} variants ===")
+  val ue8m0Count = ue8m0Pairs.size * ue8m0Modes.size * ue8m0Combos.size
+  println(s"\n=== UE8M0 track: $ue8m0Count variants ===")
   for {
     p     <- ue8m0Pairs
     mode  <- ue8m0Modes
-    pipe  <- pipeStages
-  } {
-    val scfg  = ScaleAddConfig(p.typeA, p.typeB, ScaleFormats.UE8M0)
-    val label = s"${mode.label}_${p.label}_UE8M0_V${vsize}_cpb${mode.cpb}_pipe${pipe}"
-    emitOne(label, scfg, mode, pipe)
-  }
+    combo <- ue8m0Combos
+  } emitOne("UE8M0", p, mode, combo,
+            ScaleAddConfig(p.typeA, p.typeB, ScaleFormats.UE8M0))
 
   // ── UE4M4 sweep ─────────────────────────────────────────────────────────
-  println(s"\n=== UE4M4 track: ${ue4m4Pairs.size * ue4m4Modes.size * pipeStages.size} variants ===")
+  val ue4m4Count = ue4m4Pairs.size * ue4m4Modes.size * ue4m4Combos.size
+  println(s"\n=== UE4M4 track: $ue4m4Count variants ===")
   for {
     p     <- ue4m4Pairs
     mode  <- ue4m4Modes
-    pipe  <- pipeStages
-  } {
-    val scfg  = ScaleAddConfig(p.typeA, p.typeB, ScaleFormats.UE4M4)
-    val label = s"${mode.label}_${p.label}_UE4M4_V${vsize}_cpb${mode.cpb}_pipe${pipe}"
-    emitOne(label, scfg, mode, pipe)
-  }
+    combo <- ue4m4Combos
+  } emitOne("UE4M4", p, mode, combo,
+            ScaleAddConfig(p.typeA, p.typeB, ScaleFormats.UE4M4))
 
-  println(s"\n[PIPE-SWEEP] Done. 64 variants under $Root/")
+  println(s"\n[PIPE-SWEEP] Done. ${ue8m0Count + ue4m4Count} variants under $Root/")
 }
