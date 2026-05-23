@@ -488,8 +488,19 @@ class FPxScale(
   }
   val (scaleExpA, scaleMantA) = decomposeScale(io.scaleA)
   val (scaleExpB, scaleMantB) = decomposeScale(io.scaleB)
-  val scaleExpSum =
-    (scaleExpA.zext - scaleBias.S) +& (scaleExpB.zext - scaleBias.S)
+  // Subnormal-scale exp correction: for IEEE 754 subnormal scale (sExp=0,
+  // mantissa-bearing scale formats only), the true exp is (1 − bias), not the
+  // (sExp − bias) = (0 − bias) the affine formula would yield.  Apply this
+  // correction uniformly for any scale format with mantissa bits — same rule
+  // used by ScaleAddition.scala on the per-cycle path, so the per-cycle and
+  // block-boundary scale handling stay consistent.  UE8M0 has mantScaleW == 0
+  // and never carries subnormals, so the Mux degenerates away.
+  private def adjScaleExp(sExp: UInt): SInt =
+    if (mantScaleW > 0)
+      Mux(sExp === 0.U, (1 - scaleBias).S, sExp.zext - scaleBias.S)
+    else
+      sExp.zext - scaleBias.S
+  val scaleExpSum = adjScaleExp(scaleExpA) +& adjScaleExp(scaleExpB)
 
   if (mantScaleW == 0) {
     // ── UE8M0 fast path: pure biased-exp arithmetic ───────────────────────

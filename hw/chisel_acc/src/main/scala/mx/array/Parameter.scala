@@ -1,6 +1,6 @@
 package mx.array
 
-import mx.mac.{ScaleAddConfig, MXFormats, ScaleFormats, TreeArch}
+import mx.mac.{ScaleAddConfig, MXFormats, ScaleFormats, TreeArch, AccPrecision}
 import mx.requant.{RequantConfig, RequantINT8Config}
 
 /** DSE override for the per-PE accumulator strategy.  When supplied to a
@@ -43,8 +43,10 @@ case class PEArrayConfig(
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   /** Shared scale factor bit width. */
   val scaleWidth = macCfg.stype.totalScaleWidth
-  /** PE accumulator output width (FP32). */
-  val dstWidth   = 32
+  /** PE accumulator output width: 1 sign + 8 exp + accMantBits (narrow,
+   *  matches FDPUPostScaleReductionTree.io.accOut). The 3 requant wrappers
+   *  zero-extend this to 32 bits before feeding RequantFP8/INT8/BF16. */
+  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
   /** Single output element bit width. */
   val fp8Width   = requantCfg.outputType.totalWidth
   /** Number of PE-cycles spanning one MX block — used by FDPU's block-deferred
@@ -84,7 +86,7 @@ case class PEArrayINT8Config(
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
-  val dstWidth   = 32
+  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
   /** PE-cycles per MX block (block-deferred scale apply). See PEArrayConfig. */
   val cyclesPerBlock = requantCfg.blockSize / vectorSize
   require(requantCfg.blockSize % vectorSize == 0,
@@ -121,7 +123,9 @@ case class PEArrayFP32Config(
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
-  val dstWidth   = 32
+  /** Narrow FP word width: 1 sign + 8 exp + accMantBits. Downstream
+   *  consumers must zero-extend to 32 bits if FP32 is required. */
+  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
   /** FP32 pass-through carries no block structure here — keep scale-apply
    *  per-cycle for simplicity (cyclesPerBlock=1 ⇒ FDPU uses buildSingleAcc). */
   val cyclesPerBlock = 1
@@ -143,7 +147,7 @@ case class PEArrayBF16Config(
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
-  val dstWidth   = 32
+  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
   /** BF16 wrapper has no requantCfg.blockSize exposed — keep scale-apply
    *  per-cycle for simplicity (cyclesPerBlock=1 ⇒ FDPU uses buildSingleAcc). */
   val cyclesPerBlock = 1

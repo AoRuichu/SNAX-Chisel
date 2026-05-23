@@ -1,7 +1,7 @@
 package mx.mac
 
 import chisel3._
-import chisel3.util.{Cat, log2Ceil, PriorityEncoder, Reverse, ShiftRegister}
+import chisel3.util.{Cat, log2Ceil, PriorityEncoder, RegEnable, Reverse, ShiftRegister}
 
 // ============================================================
 // Fused Dot-Product Unit — Pipelined variant
@@ -59,7 +59,9 @@ import chisel3.util.{Cat, log2Ceil, PriorityEncoder, Reverse, ShiftRegister}
  *    mantissa bits (default: computed by AccPrecision.recommended from K and scfg).
  *    This is sufficient because accumulation noise stays below the requant noise floor
  *    when accMantBits ≥ rqFloor + ½·log₂(K) (see AccPrecision for derivation).
- *    accOut zero-extends to 32 bits for downstream compatibility.
+ *    accOut is (1+8+accMantBits) bits wide — the native register width with
+ *    no zero-padding. Downstream consumers that require IEEE-754 FP32 must
+ *    right-pad the mantissa to 23 bits.
  *
  *  @param scfg        ScaleAddConfig describing element and scale types.
  *  @param vectorSize  Number of parallel MACs per cycle (>= 1).
@@ -141,11 +143,10 @@ class FDPUPostScaleReductionTreePiped(
     val validIn  = Input(Bool())
     val resetAcc = Input(Bool())
     val validOut = Output(Bool())
-    // FP32 output: {sign[1], exp[8], mant[23]}. The accumulator register stores
-    // (1+8+actualAccMantBits) bits; the mantissa is zero-extended (right-padded)
-    // to 23 bits so downstream requant blocks receive a valid IEEE-754 single
-    // value with no rounding loss beyond what FPNAdder already produced.
-    val accOut   = Output(UInt(32.W))
+    // Narrow FP output: {sign[1], exp[8], mant[actualAccMantBits]}.
+    // Matches FDPUPostScaleReductionTree.io.accOut — downstream consumers
+    // that need IEEE-754 FP32 must right-pad the mantissa to 23 bits.
+    val accOut   = Output(UInt((1 + 8 + actualAccMantBits).W))
 
     // ── Debug ports (test mode only) ────────────────────────────────────────
     val debug = if (istest) Some(new Bundle {
@@ -319,14 +320,9 @@ class FDPUPostScaleReductionTreePiped(
     }
 
     io.validOut := validReg
-    // FP32 output: accReg holds {sign[1], exp[8], mant[actualAccMantBits]}.
-    // Zero-extend (right-pad) the mantissa to 23 bits to form a valid IEEE-754
-    // single-precision word. This is exact — no rounding — because FPNAdder
-    // already produced the value at actualAccMantBits precision.
-    io.accOut := (
-      if (actualAccMantBits >= 23) accReg
-      else Cat(accReg, 0.U((23 - actualAccMantBits).W))
-    )
+    // Narrow output: accReg holds {sign[1], exp[8], mant[actualAccMantBits]}
+    // exactly — no zero-pad. Downstream must zero-extend if FP32 is required.
+    io.accOut := accReg
   }
 
   // ── buildBlockDeferred: cyclesPerBlock >= 2 (all scale types) ────────────
@@ -497,21 +493,40 @@ class FDPUPostScaleReductionTreePiped(
       // use the same inverted reset (asyncRstN) as the rest of FDPU so they
       // operate while the codebase's "reset high = normal operation"
       // convention is in effect.
+      //
+      // Operand isolation: hold FPxScale inputs stable on idle cycles —
+      // its output is consumed only at the block boundary, so toggling
+      // its mantissa multiplier / LZC / normalize stages on the 7 idle
+      // cycles wastes ~7/8 of the datapath's switching power.
+      val innerHeld  = withReset(asyncRstN)(RegEnable(innerNext,
+                                                      isLastCycleOfBlock))
+      val scaleAHeld = withReset(asyncRstN)(RegEnable(shareExpA,
+                                                      isLastCycleOfBlock))
+      val scaleBHeld = withReset(asyncRstN)(RegEnable(shareExpB,
+                                                      isLastCycleOfBlock))
       val fpScale = withReset(asyncRstN) {
         Module(new FPxScale(scfg, actualAccMantBits, pipeInternal = effectiveScalePipe))
       }
-      fpScale.io.fpIn   := innerNext
-      fpScale.io.scaleA := shareExpA
-      fpScale.io.scaleB := shareExpB
+      fpScale.io.fpIn   := Mux(isLastCycleOfBlock, innerNext, innerHeld)
+      fpScale.io.scaleA := Mux(isLastCycleOfBlock, shareExpA, scaleAHeld)
+      fpScale.io.scaleB := Mux(isLastCycleOfBlock, shareExpB, scaleBHeld)
       blockPartialFP := fpScale.io.fpOut
     }
 
     // ── Outer FP accumulator (block partials) ─────────────────────────────
     val outerAccReg = withReset(asyncRstN)(RegInit(0.U(fpNW.W)))
 
+    // Operand isolation on outerAdder.b: blockPartialFP is consumed only
+    // on the last cycle of each block; for UE8M0 it is recomputed
+    // combinationally from innerNext every cycle and would otherwise toggle
+    // outerAdder needlessly on the 7 idle cycles per block.  Use the
+    // captured value on idle cycles so outerAdder's mantissa adder /
+    // normalize stages do not switch.
+    val blockPartialHeld = withReset(asyncRstN)(RegEnable(blockPartialFP,
+                                                          isLastCycleOfBlock))
     val outerAdder = Module(new FPNAdder(actualAccMantBits))
     outerAdder.io.a := outerAccReg
-    outerAdder.io.b := blockPartialFP
+    outerAdder.io.b := Mux(isLastCycleOfBlock, blockPartialFP, blockPartialHeld)
 
     val validReg = withReset(asyncRstN)(RegInit(false.B))
 
@@ -547,10 +562,7 @@ class FDPUPostScaleReductionTreePiped(
     }
 
     io.validOut := validReg
-    io.accOut := (
-      if (actualAccMantBits >= 23) outerAccReg
-      else Cat(outerAccReg, 0.U((23 - actualAccMantBits).W))
-    )
+    io.accOut := outerAccReg
 
     io.debug.foreach { d =>
       d.reducedSum := (
@@ -751,20 +763,36 @@ class FDPUPostScaleReductionTreePiped(
 
       // Wrap FPxScale with the inverted reset so its internal stage register
       // operates while dut.reset is held HIGH (this codebase's normal state).
+      //
+      // Operand isolation (same rationale as the buildBlockDeferred and
+      // buildKulischDeferred bridges in FDPUPostScaleReductionTree.scala):
+      // FPxScale output is consumed only at block boundaries; holding inputs
+      // stable on idle cycles cuts switching power on its mantissa multiplier
+      // / LZC / normalize stages by ~7/8.
+      val preFPHeld  = withReset(asyncRstN)(RegEnable(preFP,
+                                                      isLastCycleOfBlock))
+      val scaleAHeld = withReset(asyncRstN)(RegEnable(shareExpA,
+                                                      isLastCycleOfBlock))
+      val scaleBHeld = withReset(asyncRstN)(RegEnable(shareExpB,
+                                                      isLastCycleOfBlock))
       val fpScale = withReset(asyncRstN) {
         Module(new FPxScale(scfg, actualAccMantBits, pipeInternal = effectiveScalePipe))
       }
-      fpScale.io.fpIn   := preFP
-      fpScale.io.scaleA := shareExpA
-      fpScale.io.scaleB := shareExpB
+      fpScale.io.fpIn   := Mux(isLastCycleOfBlock, preFP,     preFPHeld)
+      fpScale.io.scaleA := Mux(isLastCycleOfBlock, shareExpA, scaleAHeld)
+      fpScale.io.scaleB := Mux(isLastCycleOfBlock, shareExpB, scaleBHeld)
       blockPartialFP := fpScale.io.fpOut
     }
 
     // ── Outer FP accumulator (block partials) ─────────────────────────────
     val outerAccReg = withReset(asyncRstN)(RegInit(0.U(fpNW.W)))
+
+    // Operand isolation on outerAdder.b: same rationale as buildBlockDeferred.
+    val blockPartialHeld = withReset(asyncRstN)(RegEnable(blockPartialFP,
+                                                          isLastCycleOfBlock))
     val outerAdder  = Module(new FPNAdder(actualAccMantBits))
     outerAdder.io.a := outerAccReg
-    outerAdder.io.b := blockPartialFP
+    outerAdder.io.b := Mux(isLastCycleOfBlock, blockPartialFP, blockPartialHeld)
 
     val validReg = withReset(asyncRstN)(RegInit(false.B))
 
@@ -799,10 +827,7 @@ class FDPUPostScaleReductionTreePiped(
     }
 
     io.validOut := validReg
-    io.accOut := (
-      if (M >= 23) outerAccReg
-      else Cat(outerAccReg, 0.U((23 - M).W))
-    )
+    io.accOut := outerAccReg
 
     io.debug.foreach { d =>
       d.tree_out_sign := kSign

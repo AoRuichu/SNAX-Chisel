@@ -145,11 +145,15 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   // ── RequantFP8: FP32 → MXFP8/FP6 ────────────────────────────────────────
   val rq = Module(new RequantFP8(cfg.requantCfg))
 
-  // Pack FP32 outputs into a flat UInt, row-major, big-endian:
-  //   (row=0, col=0) occupies the most-significant 32 bits.
+  // PE.accOut is narrow ({sign[1], exp[8], mant[M]}). Zero-extend each
+  // element's mantissa to 23 bits to form a valid IEEE-754 FP32 word before
+  // packing for RequantFP8. The pad bits are constant '0 — synthesis
+  // (compile_ultra) propagates them through and sweeps the unused FFs in
+  // RequantFP8.buffer.
+  private val fp32Pad = 32 - cfg.dstWidth
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield results(r)(c)
+      yield (if (fp32Pad > 0) Cat(results(r)(c), 0.U(fp32Pad.W)) else results(r)(c))
   )
   rq.io.valid_in := resultDone
 
@@ -275,9 +279,11 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   // ── RequantINT8: FP32 → INT8 ──────────────────────────────────────────────
   val rq = Module(new RequantINT8(cfg.requantCfg))
 
+  // Narrow→FP32 zero-extend; see PEArrayWrapper for rationale.
+  private val fp32Pad = 32 - cfg.dstWidth
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield results(r)(c)
+      yield (if (fp32Pad > 0) Cat(results(r)(c), 0.U(fp32Pad.W)) else results(r)(c))
   )
   rq.io.valid_in := resultDone
 
@@ -401,9 +407,12 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
   // ── RequantBF16: FP32 → BF16 ─────────────────────────────────────────────
   val rq = Module(new RequantBF16(cfg.tileRows, cfg.tileCols))
 
+  // Narrow→FP32 zero-extend; see PEArrayWrapper for rationale. Note BF16
+  // reads only the top 16 bits so this pad is doubly inert.
+  private val fp32Pad = 32 - cfg.dstWidth
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
-      yield results(r)(c)
+      yield (if (fp32Pad > 0) Cat(results(r)(c), 0.U(fp32Pad.W)) else results(r)(c))
   )
   rq.io.valid_in := resultDone
 
@@ -416,16 +425,19 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
 // ============================================================
 /**
  * PE array with FDPUPostScaleReductionTree PEs and NO requantization — the
- * FP32 accumulator outputs are packed straight into `result`.
+ * narrow accumulator outputs are packed straight into `result`.
  *
  * Data flow:
  *   op_a_i / op_b_i / shared_exp_*_i
  *       → FDPUPostScaleReductionTree (tileRows × tileCols)
- *       → result (tileRows × tileCols × 32-bit, big-endian flat UInt)
+ *       → result (tileRows × tileCols × dstWidth, big-endian flat UInt)
+ *         where dstWidth = 1 + 8 + accMantBits (see PEArrayFP32Config.dstWidth).
+ *         Consumers must zero-extend each element's mantissa to 23 bits if
+ *         IEEE-754 FP32 is required downstream.
  *       → valid_out
  *
- * No `shared_scale_out` — FP32 carries its own per-element exponent.
- * No `results_o` debug port — `result` already exposes the FP32 path.
+ * No `shared_scale_out` — the narrow FP word carries its own per-element exponent.
+ * No `results_o` debug port — `result` already exposes the accumulator path.
  */
 class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
   override def desiredName = "PE_Array"
@@ -455,8 +467,10 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
     val shared_exp_A_i   = Input(Vec(cfg.tileRows, UInt(cfg.scaleWidth.W)))
     val shared_exp_B_i   = Input(Vec(cfg.tileCols, UInt(cfg.scaleWidth.W)))
 
-    // ── FP32 Output ───────────────────────────────────────────────────────
-    // Flat packed FP32: tileRows × tileCols elements, big-endian.
+    // ── Narrow FP Output ──────────────────────────────────────────────────
+    // Flat packed: tileRows × tileCols elements of dstWidth bits, big-endian.
+    // dstWidth = 1 + 8 + accMantBits (NOT 32). Consumers must zero-extend the
+    // mantissa to 23 bits to obtain IEEE-754 FP32.
     val result           = Output(UInt((cfg.tileRows * cfg.tileCols * cfg.dstWidth).W))
     val valid_out        = Output(Bool())
   })
@@ -490,7 +504,7 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
     }
   }
 
-  // Pack FP32 outputs row-major, big-endian: (row=0, col=0) at the MSB.
+  // Pack narrow outputs row-major, big-endian: (row=0, col=0) at the MSB.
   io.result := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield results(r)(c)
