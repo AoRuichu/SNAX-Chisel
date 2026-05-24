@@ -45,19 +45,26 @@ class FixedFPReductionTree(
   val outMantW: Int,
   val vectorSize: Int,
   val productExpRange: Int,
-  val arch: TreeArch = TreeArch.Generic
+  val arch: TreeArch = TreeArch.Generic,
+  val skipFinalRound: Boolean = false
 ) extends Module {
   require(vectorSize >= 1, "vectorSize must be >= 1")
-  require(outMantW <= inMantW, "outMantW must be <= inMantW")
+  // When skipFinalRound is false, we require outMantW <= inMantW (legacy invariant
+  // — the tree narrows down to product-mantissa precision).  When skipFinalRound
+  // is true, outMantW must equal absMagW so the tree emits the full unrounded
+  // post-LZC-normalised mantissa to the downstream consumer.
+  if (!skipFinalRound) require(outMantW <= inMantW, "outMantW must be <= inMantW")
 
   // Generic keeps the legacy desiredName byte-for-byte so existing emits and
   // testbench module-name references stay valid; specialised archs append a
-  // tag so sweep RTL is distinguishable.
+  // tag so sweep RTL is distinguishable.  The wide-output (skipFinalRound)
+  // variant gets a `_wide` suffix.
   override def desiredName = {
     val base = s"FixedFPTree_exp${expW}_mant${inMantW}_out${outMantW}_vec${vectorSize}_range${productExpRange}"
+    val widetag = if (skipFinalRound) "_wide" else ""
     arch match {
-      case TreeArch.Generic => base
-      case _                => s"${base}_${arch.name}"
+      case TreeArch.Generic => s"${base}${widetag}"
+      case _                => s"${base}_${arch.name}${widetag}"
     }
   }
 
@@ -135,26 +142,38 @@ class FixedFPReductionTree(
     val lzc        = PriorityEncoder(Reverse(absMag))          // up to log2Ceil(absMagW+1) bits
     val normalized = (absMag << lzc)(absMagW - 1, 0)           // MSB aligned to top
 
-    // RNE round from absMagW bits → outMantW:
-    //   mantissa bits:  normalized[absMagW-1 : absMagW-outMantW]
-    //   guard bit:      normalized[absMagW-outMantW-1]
-    //   round bit:      normalized[absMagW-outMantW-2]
-    //   sticky bits:    OR(normalized[absMagW-outMantW-3 : 0])
-    // absMagW-outMantW = fracBits+log2N ≥ G=3, so guard/round/sticky always exist.
-    val gPos = absMagW - outMantW - 1  // guard bit position
-    val rPos = absMagW - outMantW - 2  // round bit position
-    val sTop = absMagW - outMantW - 3  // top of sticky region
+    val (finalMant, mCarry) =
+      if (skipFinalRound) {
+        // ── Wide-output path: no RNE, no narrowing.  Output the full
+        // post-LZC-normalised mantissa at absMagW bits.  Caller must declare
+        // outMantW == absMagW so the IO width matches; downstream consumers
+        // (ScaleAddition / ScaleToFPn / DirectToFPn) absorb the rounding.
+        require(outMantW == absMagW,
+          s"skipFinalRound requires outMantW($outMantW) == absMagW($absMagW)")
+        (normalized(absMagW - 1, 0), false.B)
+      } else {
+        // ── Standard RNE round from absMagW bits → outMantW ─────────────────
+        //   mantissa bits:  normalized[absMagW-1 : absMagW-outMantW]
+        //   guard bit:      normalized[absMagW-outMantW-1]
+        //   round bit:      normalized[absMagW-outMantW-2]
+        //   sticky bits:    OR(normalized[absMagW-outMantW-3 : 0])
+        // absMagW-outMantW = fracBits+log2N ≥ G=3, so guard/round/sticky always exist.
+        val gPos = absMagW - outMantW - 1  // guard bit position
+        val rPos = absMagW - outMantW - 2  // round bit position
+        val sTop = absMagW - outMantW - 3  // top of sticky region
 
-    val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
-    val guardBit = normalized(gPos).asBool
-    val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
-    val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
-    val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
-    val roundedM = (mantRaw +& roundUp.asUInt)               // outMantW+1 bits
-    val mCarry   = roundedM(outMantW).asBool
-    val finalMant = Mux(mCarry,
-      (1 << (outMantW - 1)).U(outMantW.W),
-      roundedM(outMantW - 1, 0))
+        val mantRaw  = normalized(absMagW - 1, absMagW - outMantW)
+        val guardBit = normalized(gPos).asBool
+        val roundBit = if (rPos >= 0) normalized(rPos).asBool else false.B
+        val stkyBits = if (sTop >= 0) normalized(sTop, 0).orR  else false.B
+        val roundUp  = guardBit && (mantRaw(0).asBool || roundBit || stkyBits)
+        val roundedM = (mantRaw +& roundUp.asUInt)               // outMantW+1 bits
+        val carry    = roundedM(outMantW).asBool
+        val mant = Mux(carry,
+          (1 << (outMantW - 1)).U(outMantW.W),
+          roundedM(outMantW - 1, 0))
+        (mant, carry)
+      }
 
     // outExp = maxExp + (inMantW + log2N − outMantW) − lzc  [+ 1 if mCarry]
     // The (inMantW + log2N − outMantW) term accounts for the integer bit-position offset;

@@ -7,21 +7,38 @@ import chisel3.util._
 
 */
 
-class ScaleAddition(val scfg: ScaleAddConfig) extends Module {
-  override def desiredName = s"ScaleAddition_${scfg.elementTypeA.name}_to_${scfg.elementTypeB.name}_scale_${scfg.stype.name}"
+class ScaleAddition(
+  val scfg: ScaleAddConfig,
+  /** Override the input operator-mantissa width.  Default (-1) uses the
+   *  legacy `scfg.resOperatorMantWidth`.  Set this to the FixedFPReductionTree's
+   *  absMagW when the tree is operated in skipFinalRound mode so the wider
+   *  mantissa flows through without an intermediate RNE. */
+  val inOpMantWOverride: Int = -1
+) extends Module {
+  val effectiveInOpMantW: Int =
+    if (inOpMantWOverride > 0) inOpMantWOverride else scfg.resOperatorMantWidth
+  /** scaleMantProduct width is fixed by the scale type (independent of the
+   *  operator mantissa width). */
+  val effectiveOutMantW: Int  =
+    effectiveInOpMantW + scfg.resScaleMantWidth
 
+  override def desiredName = {
+    val tag = if (inOpMantWOverride > 0) s"_wide${effectiveInOpMantW}" else ""
+    s"ScaleAddition_${scfg.elementTypeA.name}_to_${scfg.elementTypeB.name}" +
+    s"_scale_${scfg.stype.name}${tag}"
+  }
 
   val io = IO(new Bundle {
     //input
     val inOpSign = Input(UInt(1.W))
     val inOpExp  = Input(SInt(scfg.resOperatorExpWidth.W))
-    val inOpMant = Input(UInt(scfg.resOperatorMantWidth.W))
+    val inOpMant = Input(UInt(effectiveInOpMantW.W))
     val inShareScaleA = Input(UInt(scfg.stype.totalScaleWidth.W))
     val inShareScaleB = Input(UInt(scfg.stype.totalScaleWidth.W))
     //output
     val outSign = Output(UInt(1.W))
     val outExp  = Output(SInt(scfg.resScaleAddExpWidth.W))
-    val outMant = Output(UInt(scfg.resScaleAddMantWidth.W))
+    val outMant = Output(UInt(effectiveOutMantW.W))
   })
 
   def getScaledParts(in:UInt, stype:ScaleType):(UInt,UInt) = {

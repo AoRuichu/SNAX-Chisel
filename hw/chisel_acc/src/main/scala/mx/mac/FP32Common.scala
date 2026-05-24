@@ -306,14 +306,25 @@ class FPNAdder(val mantBits: Int) extends Module {
  *  Output width = 1 + 8 + outMantBits.
  *  Requires: scfg.stype.mantScaleWidth == 0 (UE8M0).
  */
-class DirectToFPn(val scfg: ScaleAddConfig, val outMantBits: Int) extends Module {
+class DirectToFPn(
+  val scfg: ScaleAddConfig,
+  val outMantBits: Int,
+  /** Override the inOpMant width.  Default (-1) uses
+   *  `scfg.resOperatorMantWidth` (legacy).  Set this to the tree's absMagW
+   *  when running with skipFinalRound so the wider mantissa propagates
+   *  without an intermediate RNE in the tree. */
+  val opMantWOverride: Int = -1
+) extends Module {
   require(scfg.stype.mantScaleWidth == 0, "DirectToFPn requires UE8M0 (mantScaleWidth == 0)")
   require(outMantBits >= 1 && outMantBits <= 23)
-  override def desiredName =
-    s"DirectToFP${outMantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}"
+  override def desiredName = {
+    val tag = if (opMantWOverride > 0) s"_wide${opMantWOverride}" else ""
+    s"DirectToFP${outMantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}${tag}"
+  }
 
   private val outW   = 1 + 8 + outMantBits
-  private val opMantW = scfg.resOperatorMantWidth
+  private val opMantW =
+    if (opMantWOverride > 0) opMantWOverride else scfg.resOperatorMantWidth
 
   val io = IO(new Bundle {
     val inOpSign      = Input(UInt(1.W))
@@ -362,13 +373,24 @@ class DirectToFPn(val scfg: ScaleAddConfig, val outMantBits: Int) extends Module
  *  Same LZC normalization and RNE rounding, but only outMantBits mantissa
  *  bits are kept.  Output width = 1 + 8 + outMantBits.
  */
-class ScaleToFPn(val scfg: ScaleAddConfig, val outMantBits: Int) extends Module {
+class ScaleToFPn(
+  val scfg: ScaleAddConfig,
+  val outMantBits: Int,
+  /** Override the inMant width.  Default (-1) uses
+   *  `scfg.resScaleAddMantWidth` (legacy).  Set this when the upstream
+   *  ScaleAddition has been widened via its `inOpMantWOverride` so that
+   *  the LZC + RNE here absorbs the bits the tree did not pre-round. */
+  val inMantWOverride: Int = -1
+) extends Module {
   require(outMantBits >= 1 && outMantBits <= 23)
-  override def desiredName =
-    s"ScaleToFP${outMantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}"
+  override def desiredName = {
+    val tag = if (inMantWOverride > 0) s"_wide${inMantWOverride}" else ""
+    s"ScaleToFP${outMantBits}b_${scfg.elementTypeA.name}_x_${scfg.elementTypeB.name}_${scfg.stype.name}${tag}"
+  }
 
   private val outW      = 1 + 8 + outMantBits
-  private val mantWidth = scfg.resScaleAddMantWidth
+  private val mantWidth =
+    if (inMantWOverride > 0) inMantWOverride else scfg.resScaleAddMantWidth
 
   val io = IO(new Bundle {
     val inSign = Input(UInt(1.W))
