@@ -34,7 +34,14 @@ class CustomFP(val expW: Int, val mantW: Int) extends Bundle {
  *
  *  @param expW           SInt exponent field width (bits); matches CustomFP.exp.
  *  @param inMantW        Input mantissa width (bits); matches CustomFP.mant from CustomOperator.
- *  @param outMantW       Output mantissa width (bits); should be ≤ inMantW.
+ *  @param outMantW       Output mantissa width (bits).  Historically ≤ inMantW
+ *                        (the tree only narrowed down to product precision),
+ *                        but may now exceed inMantW so the tree exposes
+ *                        additional precision computed in its internal
+ *                        alignment/sum.  The hard bound is
+ *                        outMantW + G ≤ absMagW  (where G=3 is the RNE
+ *                        guard); absMagW depends on arch / productExpRange
+ *                        and is checked inside each builder.
  *  @param vectorSize     Number of parallel inputs N (≥ 1).
  *  @param productExpRange Maximum possible exponent spread across the N inputs
  *                        (= maxProductExp − minProductExp from ScaleAddConfig).
@@ -49,11 +56,13 @@ class FixedFPReductionTree(
   val skipFinalRound: Boolean = false
 ) extends Module {
   require(vectorSize >= 1, "vectorSize must be >= 1")
-  // When skipFinalRound is false, we require outMantW <= inMantW (legacy invariant
-  // — the tree narrows down to product-mantissa precision).  When skipFinalRound
-  // is true, outMantW must equal absMagW so the tree emits the full unrounded
-  // post-LZC-normalised mantissa to the downstream consumer.
-  if (!skipFinalRound) require(outMantW <= inMantW, "outMantW must be <= inMantW")
+  require(outMantW >= 1, "outMantW must be >= 1")
+  // The legacy invariant outMantW ≤ inMantW (tree narrows to product precision)
+  // has been relaxed to allow targeted widening: outMantW > inMantW exposes
+  // additional bits computed in the tree's internal absMagW.  The bound
+  // outMantW + G ≤ absMagW is checked per-builder where the arch-specific
+  // absMagW is in scope.  The skipFinalRound path still requires outMantW
+  // == absMagW exactly (no rounding).
 
   // Generic keeps the legacy desiredName byte-for-byte so existing emits and
   // testbench module-name references stay valid; specialised archs append a
@@ -94,11 +103,19 @@ class FixedFPReductionTree(
     val G       = 3   // guard bits for RNE at the final rounding step
     val log2N   = log2Ceil(vectorSize.max(2))
     // fracBits: bits below the mantissa MSB in the integer representation.
-    // Includes productExpRange (alignment headroom) + G (guard bits for rounding).
-    val fracBits = productExpRange + G
+    // Includes (a) productExpRange alignment headroom and (b) widening
+    // headroom when outMantW > inMantW (so the widened RNE has G guard
+    // bits below the extraction window).  G is included once.
+    val fracBitsBase    = productExpRange + G
+    val wideningExtra   = math.max(0, outMantW + G - (inMantW + log2N) - fracBitsBase)
+    val fracBits        = fracBitsBase + wideningExtra
     // Width of the magnitude accumulator (sign bit separate).
     // = inMantW integer bits + fracBits fractional bits + log2N carry-overflow bits.
     val absMagW  = inMantW + fracBits + log2N
+    // RNE needs G=3 bits below the outMantW window for guard/round/sticky.
+    if (!skipFinalRound) require(outMantW + G <= absMagW,
+      s"buildGeneric: outMantW($outMantW) + G($G) must be <= absMagW($absMagW)" +
+      s" = inMantW($inMantW) + fracBits($fracBits) + log2N($log2N)")
 
     // ── 1. Maximum exponent across all inputs ───────────────────────────────
     val maxExp = io.inputs.map(_.exp).reduce { (a, b) => Mux(a > b, a, b) }
@@ -201,8 +218,15 @@ class FixedFPReductionTree(
 
     val G        = 3
     val log2N    = log2Ceil(vectorSize.max(2))
-    val fracBits = G                       // alignment headroom == 0
-    val absMagW  = inMantW + fracBits + log2N
+    // fracBits = G + widening headroom (productExpRange==0 for IntOnly, so no
+    // alignment headroom is needed; only RNE guard plus widening overflow).
+    val fracBitsBase  = G
+    val wideningExtra = math.max(0, outMantW + G - (inMantW + log2N) - fracBitsBase)
+    val fracBits      = fracBitsBase + wideningExtra
+    val absMagW       = inMantW + fracBits + log2N
+    require(outMantW + G <= absMagW,
+      s"buildIntOnly: outMantW($outMantW) + G($G) must be <= absMagW($absMagW)" +
+      s" = inMantW($inMantW) + fracBits($fracBits) + log2N($log2N)")
 
     // Lane exp is identical across lanes by precondition; sample lane 0.
     val laneExp = io.inputs(0).exp
@@ -260,6 +284,9 @@ class FixedFPReductionTree(
   // specialised archs (SmallFixedShift, TwoStageBarrel) so they don't have to
   // duplicate the reduction logic.
   private def alignedToOutput(aligned: Vec[SInt], absMagW: Int, log2N: Int, maxExp: SInt): Unit = {
+    val G = 3
+    require(outMantW + G <= absMagW,
+      s"alignedToOutput: outMantW($outMantW) + G($G) must be <= absMagW($absMagW)")
     def addTree(vals: Seq[SInt]): SInt =
       if (vals.length == 1) vals.head
       else addTree(vals.grouped(2).map(g => if (g.length == 2) g(0) + g(1) else g(0)).toSeq)

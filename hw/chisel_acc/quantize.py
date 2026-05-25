@@ -512,6 +512,7 @@ VALID_SCALE_FORMATS = {
     'UE6M2': ScaleFormat(6, 2),
     'UE5M3': ScaleFormat(5, 3),
     'UE4M4': ScaleFormat(4, 4),
+    'UE4M3': ScaleFormat(4, 3),   # NVFP4-style 7-bit mantissa-bearing scale
     'UE3M5': ScaleFormat(3, 5),
     'UE2M6': ScaleFormat(2, 6),
     'UE1M7': ScaleFormat(1, 7),
@@ -556,6 +557,18 @@ _DTYPE_BITS = {
 }
 
 VALID_DTYPES = list(_DATA_CLASSES.keys()) + ['int8']
+
+# Maximum representable VALUE for each element format (used by quantize_mx_v6).
+# ideal_scale = max_abs / _DTYPE_MAX_VAL[dtype]  (NVFP4-style block scale formula)
+_DTYPE_MAX_VAL = {
+    'fp8_e5m2': E5M2.MAX_VAL,      # 57344.0
+    'fp8_e4m3': E4M3.MAX_VAL,      # 448.0
+    'fp6_e3m2': E3M2.MAX_VAL,      # 28.0
+    'fp6_e2m3': E2M3.MAX_VAL,      # 7.5
+    'fp4_e2m1': E2M1.MAX_VAL,      # 6.0
+    'mxint8':   127.0 / 64.0,      # implicit scale 2^-6 → max ≈ 1.984
+    'int8':     127.0,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +777,63 @@ def _quantize_block_by_scale(block: np.ndarray, dtype: str, scale: float) -> tup
     return q_float, raw
 
 
+def quantize_round_up(ideal_scale: float, scale_fmt: 'ScaleFormat') -> tuple:
+    """Round-up (ceil) variant of scale quantization.
+
+    Guarantees quantized_scale >= ideal_scale so normalised elements never
+    exceed the element format's max representable value (NVFP4 block-scale rule).
+
+    Args:
+        ideal_scale: Unquantised scale value (positive float).
+        scale_fmt:   Target ScaleFormat instance.
+
+    Returns:
+        (quantized_float, raw_uint8)
+    """
+    if ideal_scale <= scale_fmt.min_val:
+        return scale_fmt._raw_to_float(scale_fmt.min_raw), scale_fmt.min_raw
+    if ideal_scale >= scale_fmt.max_val:
+        return scale_fmt._raw_to_float(scale_fmt.saturate_raw), scale_fmt.saturate_raw
+
+    if scale_fmt.mbits == 0:  # UE8M0: pure powers of 2
+        # np.frexp: x = mant * 2^exp_raw, 0.5 <= mant < 1.0
+        mant_s, exp_raw = np.frexp(np.float32(ideal_scale))
+        is_exact = (abs(float(mant_s) - 0.5) < 1e-7)  # ideal_scale is exactly 2^k
+        raw = int(exp_raw - 1 + scale_fmt.bias) if is_exact else int(exp_raw + scale_fmt.bias)
+        raw = int(np.clip(raw, 0, scale_fmt.saturate_raw))
+        return scale_fmt._raw_to_float(raw), raw
+
+    if scale_fmt.ebits == 0:  # UE0M8: fixed-point, step = 1/128
+        raw = int(np.ceil(ideal_scale * 128.0))
+        raw = int(np.clip(raw, 1, 255))
+        return raw / 128.0, raw
+
+    # General UExMy (ebits > 0, mbits > 0)
+    max_exp_b = (1 << scale_fmt.ebits) - 1
+    exp = int(np.floor(np.log2(ideal_scale + 1e-45)))
+    exp_biased = exp + scale_fmt.bias
+
+    if exp_biased <= 0:  # subnormal
+        subnorm_unit = (2.0 ** (1 - scale_fmt.bias)) / (2 ** scale_fmt.mbits)
+        mant = int(np.ceil(ideal_scale / subnorm_unit))
+        if mant >= (1 << scale_fmt.mbits):  # carry into normal range
+            raw = 1 << scale_fmt.mbits       # smallest normal: exp_biased=1, mant=0
+        else:
+            raw = int(np.clip(mant, 0, (1 << scale_fmt.mbits) - 1))
+        return scale_fmt._raw_to_float(raw), raw
+
+    # Normal path
+    frac = ideal_scale / (2.0 ** exp)
+    mant = int(np.ceil((frac - 1.0) * (2 ** scale_fmt.mbits)))
+    if mant >= (1 << scale_fmt.mbits):  # carry
+        mant = 0
+        exp_biased += 1
+    if exp_biased > max_exp_b:
+        return scale_fmt._raw_to_float(scale_fmt.saturate_raw), scale_fmt.saturate_raw
+    raw = (exp_biased << scale_fmt.mbits) | mant
+    return scale_fmt._raw_to_float(raw), raw
+
+
 def quantize_mx(
     arr: np.ndarray,
     dtype: str,
@@ -936,6 +1006,101 @@ def quantize_mx_v2(
     return q_arr, scale_shared, scale_raw, q_raw
 
 
+def quantize_mx_v6(
+    arr: np.ndarray,
+    dtype: str,
+    block_size: int = 32,
+    axis: int = 1,
+    packed: bool = False,
+    scale_format: str = 'UE8M0',
+) -> tuple:
+    """MX block quantization with NVFP4-style round-up block scale.
+
+    Block scale formula:  ideal_scale = max(|block|) / private_elem_max
+    Scale quantization:   round-up (ceil) — guarantees quantized_scale >=
+                          ideal_scale so no element saturates after normalisation.
+
+    与 quantize_mx_v2 的区别：
+      - v2: ideal = 2^(log2(amax) − EMAX)，round-nearest
+      - v6: ideal = amax / elem_max，round-up (与 quantize_torch.py v6 一致)
+
+    Args:
+        arr:          2D float32 input array of shape (Row, Col).
+        dtype:        Element format. One of VALID_DTYPES.
+        block_size:   Number of elements per block along the chosen axis.
+        axis:         0 -> row-wise blocks; 1 -> column-wise blocks (default).
+        packed:       If True, tightly bit-pack the raw element output (FP4/FP6).
+        scale_format: Shared scale encoding. One of VALID_SCALE_FORMATS keys.
+
+    Returns:
+        q_arr        (np.ndarray float32, same shape as arr): dequantized values.
+        scale_shared (np.ndarray float32): quantized scale per block.
+        scale_raw    (np.ndarray uint8):   hardware-ready 8-bit scale encoding.
+        q_raw        (np.ndarray):         per-element raw quantized encoding.
+    """
+    arr = np.asarray(arr, dtype=np.float32)
+    if arr.ndim != 2:
+        raise ValueError(f"quantize_mx_v6 expects a 2D array, got shape {arr.shape}")
+    if dtype not in VALID_DTYPES:
+        raise ValueError(f"Unknown dtype {dtype!r}. Choose from {VALID_DTYPES}")
+    if scale_format not in VALID_SCALE_FORMATS:
+        raise ValueError(f"Unknown scale_format {scale_format!r}. Choose from {list(VALID_SCALE_FORMATS)}")
+
+    scale_fmt        = VALID_SCALE_FORMATS[scale_format]
+    private_elem_max = _DTYPE_MAX_VAL[dtype]
+    Row, Col = arr.shape
+    raw_dtype = np.int8 if dtype == 'int8' else np.uint8
+    q_arr   = np.zeros_like(arr)
+    raw_arr = np.zeros((Row, Col), dtype=raw_dtype)
+
+    if axis == 1:
+        n_blocks     = int(np.ceil(Col / block_size))
+        scale_shared = np.zeros((Row, n_blocks), dtype=np.float32)
+        scale_raw    = np.zeros((Row, n_blocks), dtype=np.uint8)
+        for i in range(Row):
+            for b in range(n_blocks):
+                j0 = b * block_size
+                j1 = min(j0 + block_size, Col)
+                block   = arr[i, j0:j1]
+                max_abs = float(np.max(np.abs(block)))
+                if max_abs == 0.0:
+                    sc_f, sc_r = 0.0, 0
+                else:
+                    sc_f, sc_r = quantize_round_up(max_abs / private_elem_max, scale_fmt)
+                scale_shared[i, b] = sc_f
+                scale_raw[i, b]    = sc_r
+                q_arr[i, j0:j1], raw_arr[i, j0:j1] = _quantize_block_by_scale(block, dtype, sc_f)
+
+    elif axis == 0:
+        n_blocks     = int(np.ceil(Row / block_size))
+        scale_shared = np.zeros((n_blocks, Col), dtype=np.float32)
+        scale_raw    = np.zeros((n_blocks, Col), dtype=np.uint8)
+        for b in range(n_blocks):
+            i0 = b * block_size
+            i1 = min(i0 + block_size, Row)
+            for j in range(Col):
+                block   = arr[i0:i1, j]
+                max_abs = float(np.max(np.abs(block)))
+                if max_abs == 0.0:
+                    sc_f, sc_r = 0.0, 0
+                else:
+                    sc_f, sc_r = quantize_round_up(max_abs / private_elem_max, scale_fmt)
+                scale_shared[b, j] = sc_f
+                scale_raw[b, j]    = sc_r
+                q_arr[i0:i1, j], raw_arr[i0:i1, j] = _quantize_block_by_scale(block, dtype, sc_f)
+
+    else:
+        raise ValueError(f"axis must be 0 or 1, got {axis}")
+
+    if packed and dtype not in ('fp8_e4m3', 'fp8_e5m2', 'int8'):
+        packed_rows = [_pack_raw_1d(raw_arr[i], dtype) for i in range(Row)]
+        q_raw = np.stack(packed_rows, axis=0)
+    else:
+        q_raw = raw_arr
+
+    return q_arr, scale_shared, scale_raw, q_raw
+
+
 # ---------------------------------------------------------------------------
 # Verification / demo
 # ---------------------------------------------------------------------------
@@ -953,6 +1118,214 @@ def _print_sample_table(orig, quant, n=8, label=""):
     for i in range(min(n, len(orig))):
         err = float(orig[i]) - float(quant[i])
         print(f"  {i:>4}  {float(orig[i]):>12.6f}  {float(quant[i]):>12.6f}  {err:>12.6f}")
+
+
+# ---------------------------------------------------------------------------
+# Hardware simulation: SNAX BFP_PE dot-product / GEMM
+# ---------------------------------------------------------------------------
+# Replicates the pipeline:
+#   CustomOperator → ScaleAddition → ScaleToFP32 → FP32 tree-reduce → FP32 accumulator
+#
+# Reference: snax_cluster/hw/chisel_acc/src/main/scala/mx/mac/
+#   Parameter.scala, CustomOperator.scala, ScaleAddition.scala,
+#   FusedDotProductUnit.scala
+# ---------------------------------------------------------------------------
+
+_HW_ELEM = {
+    # name: ebits, mbits, bias, impl_exp
+    # INT8: 2's complement; implicitScaleExp = -6 (ElementType(0,7,"INT8",-6))
+    'INT8': dict(ebits=0, mbits=7, bias=0,  impl_exp=-6),
+    'E5M2': dict(ebits=5, mbits=2, bias=15, impl_exp=0),
+    'E4M3': dict(ebits=4, mbits=3, bias=7,  impl_exp=0),
+    'E3M2': dict(ebits=3, mbits=2, bias=3,  impl_exp=0),
+    'E2M3': dict(ebits=2, mbits=3, bias=1,  impl_exp=0),
+    'E2M1': dict(ebits=2, mbits=1, bias=1,  impl_exp=0),
+}
+
+_HW_SCALE = {
+    # name: ebits, mbits, bias=(1<<(ebits-1))-1
+    'UE8M0': dict(ebits=8, mbits=0, bias=127),
+    'UE7M1': dict(ebits=7, mbits=1, bias=63),
+    'UE6M2': dict(ebits=6, mbits=2, bias=31),
+    'UE5M3': dict(ebits=5, mbits=3, bias=15),
+    'UE4M4': dict(ebits=4, mbits=4, bias=7),
+    'UE3M5': dict(ebits=3, mbits=5, bias=3),
+    'UE2M6': dict(ebits=2, mbits=6, bias=1),
+}
+
+
+def _hw_decode_elem(raw_vec, etype):
+    """Decode a block of raw uint8 element bits → (sign, adj_exp, full_mant).
+
+    Vectorized over block_size elements (NumPy arrays).
+
+    Matches CustomOperator.scala: getExtendedMantissa().
+    INT8 uses 2's complement; FP formats use sign-magnitude with implicit bit.
+
+    Args:
+        raw_vec : np.ndarray, shape [BS], dtype uint8
+        etype   : str, key of _HW_ELEM
+
+    Returns:
+        sign      : np.ndarray [BS] bool
+        adj_exp   : np.ndarray [BS] int64  (adjusted exponent, unbias + impl_exp)
+        full_mant : np.ndarray [BS] int64  (unsigned magnitude / extended mantissa)
+    """
+    p = _HW_ELEM[etype]
+    ebits, mbits, bias, impl_exp = p['ebits'], p['mbits'], p['bias'], p['impl_exp']
+    raw = raw_vec.astype(np.int64)
+
+    sign = ((raw >> (ebits + mbits)) & 1).astype(bool)
+
+    if etype == 'INT8':
+        raw7     = raw & 0x7F
+        neg_mag  = (~raw7 + 1) & 0x7F          # 2's complement negate, 7-bit
+        full_mant = np.where(sign, neg_mag, raw7)
+        adj_exp   = np.full(len(raw_vec), impl_exp, dtype=np.int64)
+    else:
+        exp  = (raw >> mbits) & ((1 << ebits) - 1)
+        mant = raw & ((1 << mbits) - 1)
+        implicit = (exp > 0).astype(np.int64)
+        full_mant = (implicit << mbits) | mant
+        unbiased  = np.where(exp == 0, np.int64(1 - bias), exp - np.int64(bias))
+        # Subtract mbits: full_mant is an integer representing 1.mant_bits in binary,
+        # so its actual value is full_mant / 2^mbits. Matches ScaleToFP32.scala fracBits correction.
+        adj_exp   = (unbiased + impl_exp - mbits).astype(np.int64)
+
+    return sign, adj_exp, full_mant.astype(np.int64)
+
+
+def _hw_decode_scale(scale_raw, stype):
+    """Decode one uint8 scale value → (adj_exp_s, full_mant_s).
+
+    Matches ScaleAddition.scala: getScaledParts() + adjExpScale computation.
+    UE8M0 (mbits=0) returns full_mant_s=1 (implicit bit only).
+
+    Subnormal correction (ScaleAddition.scala lines 46-51):
+      when exp_s == 0 and mbits > 0, the unbiased exponent is 1-bias (not 0-bias).
+
+    Args:
+        scale_raw : int or np.uint8
+        stype     : str, key of _HW_SCALE
+
+    Returns:
+        adj_exp_s   : int  (adjusted unbiased exponent, bias already subtracted)
+        full_mant_s : int  (unsigned mantissa with implicit bit)
+    """
+    p = _HW_SCALE[stype]
+    mbits  = p['mbits']
+    bias   = p['bias']
+    s      = int(scale_raw)
+    exp_s  = s >> mbits
+    if mbits == 0:
+        full_mant_s = 1
+        adj_exp_s   = exp_s - bias
+    else:
+        mant_s      = s & ((1 << mbits) - 1)
+        impl        = 1 if exp_s > 0 else 0
+        full_mant_s = (impl << mbits) | mant_s
+        # Subnormal correction: matches ScaleAddition.scala adjExpScale Mux logic.
+        # Subtract mbits: full_mant_s represents 1.mant_bits, actual value = full_mant_s / 2^mbits.
+        adj_exp_s   = ((1 - bias) if exp_s == 0 else (exp_s - bias)) - mbits
+    return adj_exp_s, full_mant_s
+
+
+def _fp32_tree_reduce(lane_fp32):
+    """FP32 balanced binary tree reduction, matching FusedDotProductUnit.scala fp32ReduceTree().
+
+    Pairs are added left-to-right; an odd element passes through unmodified.
+
+    Args:
+        lane_fp32 : np.ndarray, shape [BS], dtype float32
+
+    Returns:
+        np.float32 scalar
+    """
+    arr = list(lane_fp32.astype(np.float32))
+    while len(arr) > 1:
+        arr = [
+            np.float32(arr[i]) + np.float32(arr[i + 1]) if i + 1 < len(arr) else arr[i]
+            for i in range(0, len(arr), 2)
+        ]
+    return np.float32(arr[0])
+
+
+def hw_snax_dot(a_raws, b_raws, scale_a_raw, scale_b_raw,
+                etype_a='INT8', etype_b='E2M1', stype='UE8M0'):
+    """Simulate one BFP_PE vector dot-product (one block of elements sharing one scale each).
+
+    Pipeline: CustomOperator → ScaleAddition → ScaleToFP32 → FP32 tree-reduce.
+
+    The float64 → float32 cast in ScaleToFP32 is equivalent to hardware LZC + RNE:
+    the integer mantissa product fits exactly in float64 (≤ 21 bits for all formats),
+    so the cast is bit-accurate with the hardware RNE result.
+
+    Args:
+        a_raws      : np.ndarray [BS] uint8 — raw element bits for A
+        b_raws      : np.ndarray [BS] uint8 — raw element bits for B
+        scale_a_raw : uint8 scalar — shared scale for A block
+        scale_b_raw : uint8 scalar — shared scale for B block
+        etype_a     : str, element type of A (key of _HW_ELEM)
+        etype_b     : str, element type of B (key of _HW_ELEM)
+        stype       : str, scale type (key of _HW_SCALE)
+
+    Returns:
+        np.float32 scalar — dot product result
+    """
+    sign_a, exp_a, mant_a = _hw_decode_elem(a_raws, etype_a)    # [BS]
+    sign_b, exp_b, mant_b = _hw_decode_elem(b_raws, etype_b)    # [BS]
+
+    adj_exp_sA, fmant_sA = _hw_decode_scale(scale_a_raw, stype)
+    adj_exp_sB, fmant_sB = _hw_decode_scale(scale_b_raw, stype)
+    scale_exp_sum = adj_exp_sA + adj_exp_sB    # bias already subtracted in _hw_decode_scale
+
+    # ScaleAddition output (exact integer arithmetic, no rounding)
+    exp_total  = (np.int64(scale_exp_sum) + exp_a + exp_b)           # [BS] int64
+    mant_total = (np.int64(fmant_sA) * np.int64(fmant_sB)
+                  * mant_a * mant_b)                                  # [BS] int64
+    sign_out   = sign_a ^ sign_b                                      # [BS] bool
+
+    # ScaleToFP32: float64 intermediate → float32 (RNE, bit-accurate with hardware)
+    sign_f    = np.where(sign_out, np.float64(-1.0), np.float64(1.0))
+    lane_fp32 = (sign_f * np.ldexp(mant_total.astype(np.float64),
+                                   exp_total.astype(np.int32))).astype(np.float32)
+
+    return _fp32_tree_reduce(lane_fp32)
+
+
+def hw_snax_gemm(A_raw, B_raw, scale_A, scale_B,
+                 etype_a='INT8', etype_b='E2M1', stype='UE8M0'):
+    """Simulate SNAX BFP_PE matrix multiply: result[m, n] = Σ_k A[m,k] * B[n,k].
+
+    Inner loop uses hw_snax_dot per block; Python loop is only at (m, n, kb) level —
+    block_size elements are processed in parallel via NumPy inside hw_snax_dot.
+
+    Args:
+        A_raw   : np.ndarray [M, K_blocks, block_size] uint8
+        B_raw   : np.ndarray [N, K_blocks, block_size] uint8
+        scale_A : np.ndarray [M, K_blocks] uint8
+        scale_B : np.ndarray [N, K_blocks] uint8
+        etype_a, etype_b, stype: format strings (same as hw_snax_dot)
+
+    Returns:
+        np.ndarray [M, N] float32
+    """
+    M, K_blocks, _ = A_raw.shape
+    N               = B_raw.shape[0]
+    result          = np.zeros((M, N), dtype=np.float32)
+    for m in range(M):
+        for n in range(N):
+            acc = np.float32(0.0)
+            for kb in range(K_blocks):
+                block_val = hw_snax_dot(
+                    A_raw[m, kb], B_raw[n, kb],
+                    scale_A[m, kb], scale_B[n, kb],
+                    etype_a, etype_b, stype,
+                )
+                acc = np.float32(acc) + np.float32(block_val)
+            result[m, n] = acc
+    return result
+
 
 
 def main():

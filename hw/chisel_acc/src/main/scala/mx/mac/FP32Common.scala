@@ -313,7 +313,12 @@ class DirectToFPn(
    *  `scfg.resOperatorMantWidth` (legacy).  Set this to the tree's absMagW
    *  when running with skipFinalRound so the wider mantissa propagates
    *  without an intermediate RNE in the tree. */
-  val opMantWOverride: Int = -1
+  val opMantWOverride: Int = -1,
+  /** Override the inOpExp width.  Default (-1) uses
+   *  `scfg.resOperatorExpWidth` (legacy).  Widen to match the tree's
+   *  effective expW when the post-LZC outExp range exceeds the legacy
+   *  expW (e.g. narrow-exp element formats like E2M3 / E2M1). */
+  val opExpWOverride: Int = -1
 ) extends Module {
   require(scfg.stype.mantScaleWidth == 0, "DirectToFPn requires UE8M0 (mantScaleWidth == 0)")
   require(outMantBits >= 1 && outMantBits <= 23)
@@ -325,10 +330,12 @@ class DirectToFPn(
   private val outW   = 1 + 8 + outMantBits
   private val opMantW =
     if (opMantWOverride > 0) opMantWOverride else scfg.resOperatorMantWidth
+  private val opExpW =
+    if (opExpWOverride > 0) opExpWOverride else scfg.resOperatorExpWidth
 
   val io = IO(new Bundle {
     val inOpSign      = Input(UInt(1.W))
-    val inOpExp       = Input(SInt(scfg.resOperatorExpWidth.W))
+    val inOpExp       = Input(SInt(opExpW.W))
     val inOpMant      = Input(UInt(opMantW.W))
     val inShareScaleA = Input(UInt(scfg.stype.totalScaleWidth.W))
     val inShareScaleB = Input(UInt(scfg.stype.totalScaleWidth.W))
@@ -378,9 +385,13 @@ class ScaleToFPn(
   val outMantBits: Int,
   /** Override the inMant width.  Default (-1) uses
    *  `scfg.resScaleAddMantWidth` (legacy).  Set this when the upstream
-   *  ScaleAddition has been widened via its `inOpMantWOverride` so that
-   *  the LZC + RNE here absorbs the bits the tree did not pre-round. */
-  val inMantWOverride: Int = -1
+   *  ScaleAddition has been widened via its `inOpMantWOverride`. */
+  val inMantWOverride: Int = -1,
+  /** Override the inExp width.  Default (-1) uses
+   *  `scfg.resScaleAddExpWidth` (legacy).  Must match the upstream
+   *  ScaleAddition's effectiveOutExpW when the operator-exp side has
+   *  been widened in lockstep with the operator-mantissa. */
+  val inExpWOverride: Int  = -1
 ) extends Module {
   require(outMantBits >= 1 && outMantBits <= 23)
   override def desiredName = {
@@ -391,10 +402,12 @@ class ScaleToFPn(
   private val outW      = 1 + 8 + outMantBits
   private val mantWidth =
     if (inMantWOverride > 0) inMantWOverride else scfg.resScaleAddMantWidth
+  private val expWidth  =
+    if (inExpWOverride  > 0) inExpWOverride  else scfg.resScaleAddExpWidth
 
   val io = IO(new Bundle {
     val inSign = Input(UInt(1.W))
-    val inExp  = Input(SInt(scfg.resScaleAddExpWidth.W))
+    val inExp  = Input(SInt(expWidth.W))
     val inMant = Input(UInt(mantWidth.W))
     val out    = Output(UInt(outW.W))
   })

@@ -26,10 +26,9 @@ import mx.requant.{RequantConfig, RequantINT8Config}
 //
 // Activation formats (5): INT8, E5M2, E4M3, E3M2, E2M3
 // Weight     formats (6): INT8, E5M2, E4M3, E3M2, E2M3, E2M1
-// Shared scale       (3): UE8M0, UE6M2, UE4M4
-// Architectures      (3): baseline   — Generic tree, cpb=1 (buildSingleAcc)
-//                         blockdef   — Generic tree, cpb=8 (buildBlockDeferred)
-//                         kulisch    — KulischInner,  cpb=8 (buildKulischDeferred)
+// Shared scale       (6): UE8M0, UE7M1, UE6M2, UE5M3, UE4M4, UE4M3 (NVFP4)
+// Architecture       (1): baseline   — Generic tree, cpb=1 (buildSingleAcc),
+//                                      blockSize=16 (NVFP4-style micro-block)
 // ============================================================
 object DSEFullSweepMain extends App {
 
@@ -38,20 +37,24 @@ object DSEFullSweepMain extends App {
   private val vsize     = 4
   private val tileRows  = 4
   private val tileCols  = 16
-  private val blockSize = 32                // MX standard
+  private val blockSize = 16                // NVFP4-style 16-element micro-block
   private val Kdefault  = 16384
 
   private val activations: Seq[ElementType] =
     Seq(MXFormats.INT8, MXFormats.E5M2, MXFormats.E4M3, MXFormats.E3M2, MXFormats.E2M3)
   private val weights: Seq[ElementType] =
     Seq(MXFormats.INT8, MXFormats.E5M2, MXFormats.E4M3, MXFormats.E3M2, MXFormats.E2M3, MXFormats.E2M1)
-  private val scales = Seq(ScaleFormats.UE8M0, ScaleFormats.UE6M2, ScaleFormats.UE4M4)
+  private val scales = Seq(
+    ScaleFormats.UE8M0, ScaleFormats.UE7M1, ScaleFormats.UE6M2,
+    ScaleFormats.UE5M3, ScaleFormats.UE4M4, ScaleFormats.UE4M3
+  )
 
   private case class Arch(label: String, treeArch: TreeArch, cpb: Int)
   private val archs = Seq(
     Arch("baseline", TreeArch.Generic,      1),
-    Arch("blockdef", TreeArch.Generic,      blockSize / vsize),
-    Arch("kulisch",  TreeArch.KulischInner, blockSize / vsize),
+    // Block-FX / blockdef removed — thesis adopts Cycle-FP (baseline) only.
+    // Arch("blockdef", TreeArch.Generic,      blockSize / vsize),
+    // Arch("kulisch",  TreeArch.KulischInner, blockSize / vsize),
   )
 
   // ─── Helpers ────────────────────────────────────────────────────────────

@@ -57,28 +57,53 @@ class FDPUPostScaleReductionTree(
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
 
-  // K-derived M_acc plus a STRUCTURAL CAP from the non-UE8M0 ScaleToFPn path.
-  //
-  // ScaleToFPn extracts M_acc mantissa bits from a shiftedMant of width
-  // `mantWidth = scfg.resScaleAddMantWidth`.  RNE needs at least 3 real bits
-  // below mantN for guard/round/sticky, so:
-  //     M_acc ≤ mantWidth − 3
-  // When M_acc violates this, paddedShift below the extraction window is all
-  // pad-zero — RNE silently degenerates to truncation, biasing every cycle in
-  // one direction.  Under NN-realistic outlier-skewed inputs this accumulates
-  // as a linear-K systematic error (verified for E5M2² UE4M4 K=8192).
-  //
-  // The UE8M0 path uses DirectToFPn (no scale-mant multiply) so this cap
-  // doesn't apply; only the non-UE8M0 path needs it.
-  private val structuralAccMantCap: Int = {
-    if (scfg.stype.mantScaleWidth == 0) 23
-    else math.max(7, scfg.resScaleAddMantWidth - 3)
-  }
+  // ── K-derived M_acc (output-floor aware via AccPrecision.recommended) ──
+  // The legacy structural cap M_acc ≤ resScaleAddMantWidth − 3 is now
+  // eliminated by widening the tree's output mantissa: instead of capping
+  // M_acc downward, we widen the tree's outMantW upward by exactly enough
+  // bits so the downstream ScaleAddition + ScaleToFPn RNE window keeps
+  // (M_acc + 3) bits below it.  See `treeExtraMantBits` below.
   val actualAccMantBits: Int = {
-    val recommended =
-      if (accMantBits == -1) AccPrecision.recommended(scfg, K)
-      else { require(accMantBits >= 1 && accMantBits <= 23); accMantBits }
-    math.min(recommended, structuralAccMantCap)
+    if (accMantBits == -1) AccPrecision.recommended(scfg, K)
+    else { require(accMantBits >= 1 && accMantBits <= 23); accMantBits }
+  }
+
+  // Tree output mantissa widening (extra bits beyond resOperatorMantWidth):
+  //   UE8M0 path uses DirectToFPn (no scale-mant multiply, no RNE at the
+  //   scale step) → no widening needed.
+  //   Non-UE8M0 path uses ScaleAddition + ScaleToFPn with an RNE that
+  //   needs G=3 guard/round/sticky bits below the M_acc window.  We
+  //   widen the tree's outMantW so resScaleAddMantWidth_effective grows
+  //   from the legacy `resOperatorMantWidth + resScaleMantWidth` to at
+  //   least `actualAccMantBits + 3`, eliminating the cap.
+  private val SAFETY_G = 3
+  val treeExtraMantBits: Int =
+    if (scfg.stype.mantScaleWidth == 0) 0
+    else math.max(0, actualAccMantBits + SAFETY_G - scfg.resScaleAddMantWidth)
+
+  /** Effective tree output mantissa width fed to ScaleAddition / DirectToFPn. */
+  val effectiveTreeOutMantW: Int = scfg.resOperatorMantWidth + treeExtraMantBits
+  /** Effective post-scale mantissa width fed into ScaleToFPn's LZC + RNE. */
+  val effectiveScaleAddMantW: Int = effectiveTreeOutMantW + scfg.resScaleMantWidth
+
+  /** Effective tree output exponent width.  When outMantW > inMantW, the
+   *  tree's LZC normalisation can drive its outExp below the legacy
+   *  resOperatorExpWidth's representable range: with the wider mantissa
+   *  window, expBase = maxExp + (inMantW + log2N − outMantW) − lzc, where
+   *  the (inMantW − outMantW) term contributes an extra negative offset
+   *  that the original expW cannot hold without wrap-around.  We widen
+   *  the tree's expW per config so the natural expBase range fits. */
+  private def sIntBitsForNeg(v: Int): Int =
+    if (v >= 0) 1 else BigInt(-v).bitLength + 2
+  val effectiveExpW: Int = {
+    val log2N    = chisel3.util.log2Ceil(vectorSize.max(2))
+    // Use the conservative Generic-arch fracBits (productExpRange + 3); this
+    // bound is correct or pessimistic for every other tree arch we dispatch
+    // to from this module.
+    val fracBits = scfg.productExpRange + 3
+    val absMagW  = scfg.resOperatorMantWidth + fracBits + log2N
+    val minExp   = scfg.maxProductExp - (absMagW - 1) - treeExtraMantBits
+    math.max(scfg.resOperatorExpWidth, sIntBitsForNeg(minExp))
   }
 
   // Internal FP word width used throughout the post-tree pipeline
@@ -186,21 +211,38 @@ class FDPUPostScaleReductionTree(
     }
 
     // ── FixedFP reduction tree ────────────────────────────────────────────────
+    // outMantW = effectiveTreeOutMantW (= resOperatorMantWidth + treeExtraMantBits)
+    // exposes additional bits from the tree's internal absMagW when M_acc would
+    // otherwise exceed the legacy resScaleAddMantWidth − 3 cap.  expW is
+    // simultaneously widened to absorb the extra negative range introduced
+    // by the (inMantW − outMantW) term in the post-LZC exp arithmetic.
     val tree = Module(new FixedFPReductionTree(
-      expW            = scfg.resOperatorExpWidth,
+      expW            = effectiveExpW,
       inMantW         = scfg.resOperatorMantWidth,
-      outMantW        = scfg.resOperatorMantWidth,
+      outMantW        = effectiveTreeOutMantW,
       vectorSize      = vectorSize,
       productExpRange = scfg.productExpRange,
       arch            = treeArch
     ))
-    tree.io.inputs := laneOp
-    val treeOut = tree.io.out  // CustomFP(resOperatorExpWidth, resOperatorMantWidth)
+    // Lane inputs are still at the legacy operator widths; sign-extend the
+    // per-lane exp to the wider tree-input format.
+    for (i <- 0 until vectorSize) {
+      tree.io.inputs(i).sign := laneOp(i).sign
+      tree.io.inputs(i).mant := laneOp(i).mant
+      tree.io.inputs(i).exp  := laneOp(i).exp     // SInt widening preserves sign
+    }
+    val treeOut = tree.io.out  // CustomFP(effectiveExpW, effectiveTreeOutMantW)
 
     io.debug.foreach { d =>
       d.tree_out_sign := treeOut.sign
       d.tree_out_exp  := treeOut.exp
-      d.tree_out_mant := treeOut.mant
+      // Debug port has fixed resOperatorMantWidth width; zero-pad / truncate
+      // as needed to surface a comparable signal.
+      val mantDebug = if (effectiveTreeOutMantW >= scfg.resOperatorMantWidth)
+                        treeOut.mant(effectiveTreeOutMantW - 1,
+                                     effectiveTreeOutMantW - scfg.resOperatorMantWidth)
+                      else treeOut.mant
+      d.tree_out_mant := mantDebug
     }
 
     // ── ScaleAdd + FPn conversion: path selected at elaboration time ─────────
@@ -211,7 +253,10 @@ class FDPUPostScaleReductionTree(
 
     if (scfg.stype.mantScaleWidth == 0) {
       // ── Path A: UE8M0 — DirectToFPn ──────────────────────────────────────
-      val d2fpn = Module(new DirectToFPn(scfg, actualAccMantBits))
+      // No widening on UE8M0: treeExtraMantBits == 0 so effectiveTreeOutMantW
+      // == resOperatorMantWidth and DirectToFPn's default operand width is OK.
+      val d2fpn = Module(new DirectToFPn(scfg, actualAccMantBits,
+        opExpWOverride = effectiveExpW))
       d2fpn.io.inOpSign      := treeOut.sign
       d2fpn.io.inOpExp       := treeOut.exp
       d2fpn.io.inOpMant      := treeOut.mant
@@ -231,7 +276,12 @@ class FDPUPostScaleReductionTree(
 
     } else {
       // ── Path B: non-UE8M0 — ScaleAddition + ScaleToFPn ───────────────────
-      val sa = Module(new ScaleAddition(scfg))
+      // Override input mantissa/exp widths so the widened tree output
+      // propagates through ScaleAddition's multiplier and ScaleToFPn's
+      // LZC + RNE without bit truncation or sign wrap-around.
+      val sa = Module(new ScaleAddition(scfg,
+        inOpMantWOverride = effectiveTreeOutMantW,
+        inOpExpWOverride  = effectiveExpW))
       sa.io.inOpSign      := treeOut.sign
       sa.io.inOpExp       := treeOut.exp
       sa.io.inOpMant      := treeOut.mant
@@ -240,11 +290,19 @@ class FDPUPostScaleReductionTree(
 
       io.debug.foreach { d =>
         d.sa_out_sign := sa.io.outSign
-        d.sa_out_exp  := sa.io.outExp
-        d.sa_out_mant := sa.io.outMant
+        // sa.io.outExp may be wider than the debug port; truncate (lossy
+        // for diagnostic only — the real signal path is intact).
+        d.sa_out_exp  := sa.io.outExp(scfg.resScaleAddExpWidth - 1, 0).asSInt
+        val saMantDebug = if (effectiveScaleAddMantW >= scfg.resScaleAddMantWidth)
+                            sa.io.outMant(effectiveScaleAddMantW - 1,
+                                          effectiveScaleAddMantW - scfg.resScaleAddMantWidth)
+                          else sa.io.outMant
+        d.sa_out_mant := saMantDebug
       }
 
-      val conv = Module(new ScaleToFPn(scfg, actualAccMantBits))
+      val conv = Module(new ScaleToFPn(scfg, actualAccMantBits,
+        inMantWOverride = effectiveScaleAddMantW,
+        inExpWOverride  = sa.effectiveOutExpW))
       conv.io.inSign := sa.io.outSign
       conv.io.inExp  := sa.io.outExp
       conv.io.inMant := sa.io.outMant
@@ -337,22 +395,30 @@ class FDPUPostScaleReductionTree(
       }
     }
 
-    // ── FixedFP reduction tree ─────────────────────────────────────────────
+    // ── FixedFP reduction tree (widened outMantW + expW; see buildSingleAcc)
     val tree = Module(new FixedFPReductionTree(
-      expW            = scfg.resOperatorExpWidth,
+      expW            = effectiveExpW,
       inMantW         = scfg.resOperatorMantWidth,
-      outMantW        = scfg.resOperatorMantWidth,
+      outMantW        = effectiveTreeOutMantW,
       vectorSize      = vectorSize,
       productExpRange = scfg.productExpRange,
       arch            = treeArch
     ))
-    tree.io.inputs := laneOp
+    for (i <- 0 until vectorSize) {
+      tree.io.inputs(i).sign := laneOp(i).sign
+      tree.io.inputs(i).mant := laneOp(i).mant
+      tree.io.inputs(i).exp  := laneOp(i).exp
+    }
     val treeOut = tree.io.out
 
     io.debug.foreach { d =>
       d.tree_out_sign := treeOut.sign
       d.tree_out_exp  := treeOut.exp
-      d.tree_out_mant := treeOut.mant
+      val mantDebug = if (effectiveTreeOutMantW >= scfg.resOperatorMantWidth)
+                        treeOut.mant(effectiveTreeOutMantW - 1,
+                                     effectiveTreeOutMantW - scfg.resOperatorMantWidth)
+                      else treeOut.mant
+      d.tree_out_mant := mantDebug
     }
 
     // ── Tree CustomFP → FP (NO scale) ────────────────────────────────────
@@ -361,9 +427,10 @@ class FDPUPostScaleReductionTree(
     // eliminating the scale-mant multiplier from the per-cycle datapath.
     val cycleFPnoscale = Wire(UInt(fpNW.W))
     if (scfg.stype.mantScaleWidth == 0) {
-      // UE8M0: scaleA = scaleB = bias  ⇒  scale value = 1.0
+      // UE8M0: scaleA = scaleB = bias  ⇒  scale value = 1.0  (no widening)
       val biasU = scfg.stype.bias.U(scfg.stype.totalScaleWidth.W)
-      val d2fpnInner = Module(new DirectToFPn(scfg, actualAccMantBits))
+      val d2fpnInner = Module(new DirectToFPn(scfg, actualAccMantBits,
+        opExpWOverride = effectiveExpW))
       d2fpnInner.io.inOpSign      := treeOut.sign
       d2fpnInner.io.inOpExp       := treeOut.exp
       d2fpnInner.io.inOpMant      := treeOut.mant
@@ -379,11 +446,13 @@ class FDPUPostScaleReductionTree(
         d.sa_out_mant := Cat(0.U(2.W), treeOut.mant)
       }
     } else {
-      // non-UE8M0: 1.0_rep = (exp = bias) || (mant = 0)
-      // bit pattern = bias << mantScaleW
+      // non-UE8M0: 1.0_rep = (exp = bias) || (mant = 0); widen ScaleAddition
+      // mantissa AND exp inputs to propagate the wider tree output.
       val unityScale =
         (scfg.stype.bias << scfg.stype.mantScaleWidth).U(scfg.stype.totalScaleWidth.W)
-      val sa = Module(new ScaleAddition(scfg))
+      val sa = Module(new ScaleAddition(scfg,
+        inOpMantWOverride = effectiveTreeOutMantW,
+        inOpExpWOverride  = effectiveExpW))
       sa.io.inOpSign      := treeOut.sign
       sa.io.inOpExp       := treeOut.exp
       sa.io.inOpMant      := treeOut.mant
@@ -392,11 +461,17 @@ class FDPUPostScaleReductionTree(
 
       io.debug.foreach { d =>
         d.sa_out_sign := sa.io.outSign
-        d.sa_out_exp  := sa.io.outExp
-        d.sa_out_mant := sa.io.outMant
+        d.sa_out_exp  := sa.io.outExp(scfg.resScaleAddExpWidth - 1, 0).asSInt
+        val saMantDebug = if (effectiveScaleAddMantW >= scfg.resScaleAddMantWidth)
+                            sa.io.outMant(effectiveScaleAddMantW - 1,
+                                          effectiveScaleAddMantW - scfg.resScaleAddMantWidth)
+                          else sa.io.outMant
+        d.sa_out_mant := saMantDebug
       }
 
-      val s2fpn = Module(new ScaleToFPn(scfg, actualAccMantBits))
+      val s2fpn = Module(new ScaleToFPn(scfg, actualAccMantBits,
+        inMantWOverride = effectiveScaleAddMantW,
+        inExpWOverride  = sa.effectiveOutExpW))
       s2fpn.io.inSign := sa.io.outSign
       s2fpn.io.inExp  := sa.io.outExp
       s2fpn.io.inMant := sa.io.outMant

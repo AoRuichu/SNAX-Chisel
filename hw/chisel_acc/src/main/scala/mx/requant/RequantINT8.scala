@@ -85,7 +85,7 @@ class FP32ToMXINT8(val cfg: RequantINT8Config) extends Module {
 
   val io = IO(new Bundle {
     val fp32_in      = Input(UInt(32.W))
-    val shared_scale = Input(UInt(8.W))   // UE8M0: max biased FP32 exp; ExMy: {biased_exp[E-1:0], mant[M-1:0]}
+    val shared_scale = Input(UInt(cfg.scaleType.totalScaleWidth.W))   // UE8M0: max biased FP32 exp; ExMy: {biased_exp[E-1:0], mant[M-1:0]}
     val int8_out     = Output(UInt(8.W))  // two's complement signed INT8
   })
 
@@ -138,7 +138,7 @@ class FP32ToMXINT8(val cfg: RequantINT8Config) extends Module {
     val scaleBias  = cfg.scaleType.bias
     val correction = scaleBias - 127 + 6   // analog of FP8's "(scale_bias − 127 + outBias)"
 
-    val scale_biased_exp = io.shared_scale(7, M)
+    val scale_biased_exp = io.shared_scale(cfg.scaleType.totalScaleWidth - 1, M)
     val scale_mant_raw   = io.shared_scale(M - 1, 0)
     val isZeroScale      = !scale_biased_exp.orR && !scale_mant_raw.orR
     val isSubnormScale   = !scale_biased_exp.orR &&  scale_mant_raw.orR
@@ -225,7 +225,7 @@ class MaxScaleFinderINT8(val cfg: RequantINT8Config) extends Module {
 
   val io = IO(new Bundle {
     val fp32_in   = Input(Vec(cfg.blockSize, UInt(32.W)))
-    val max_scale = Output(UInt(8.W))
+    val max_scale = Output(UInt(cfg.scaleType.totalScaleWidth.W))
   })
 
   def maxTree(vals: Seq[UInt]): UInt =
@@ -314,7 +314,7 @@ class RequantBlockINT8(val cfg: RequantINT8Config) extends Module {
 
   val io = IO(new Bundle {
     val fp32_in      = Input(Vec(cfg.blockSize, UInt(32.W)))
-    val shared_scale = Output(UInt(8.W))
+    val shared_scale = Output(UInt(cfg.scaleType.totalScaleWidth.W))
     val int8_out     = Output(Vec(cfg.blockSize, UInt(8.W)))
   })
 
@@ -352,7 +352,7 @@ class RequantINT8(val cfg: RequantINT8Config) extends Module {
   val io = IO(new Bundle {
     val fp32_in          = Input(UInt((nIn * 32).W))
     val valid_in         = Input(Bool())
-    val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
+    val shared_scale_out = Output(UInt((cfg.tileRows * cfg.scaleType.totalScaleWidth).W))
     val int8_out         = Output(UInt((cfg.tileRows * cfg.blockSize * 8).W))
     val valid_out        = Output(Bool())
   })
@@ -379,7 +379,7 @@ class RequantINT8(val cfg: RequantINT8Config) extends Module {
     batchCnt := Mux(blockDone, 0.U, batchCnt + 1.U)
   }
 
-  val sharedScaleWire = Wire(Vec(cfg.tileRows, UInt(8.W)))
+  val sharedScaleWire = Wire(Vec(cfg.tileRows, UInt(cfg.scaleType.totalScaleWidth.W)))
   val int8Wire        = Wire(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(8.W))))
 
   for (row <- 0 until cfg.tileRows) {
@@ -399,7 +399,7 @@ class RequantINT8(val cfg: RequantINT8Config) extends Module {
   }
 
   val validOutReg    = withReset(asyncRstN)(RegNext(blockDone, init = false.B))
-  val sharedScaleReg = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, UInt(8.W))))
+  val sharedScaleReg = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, UInt(cfg.scaleType.totalScaleWidth.W))))
   val int8OutReg     = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(8.W)))))
 
   when(blockDone) {

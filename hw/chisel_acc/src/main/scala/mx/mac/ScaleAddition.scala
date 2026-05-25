@@ -11,16 +11,28 @@ class ScaleAddition(
   val scfg: ScaleAddConfig,
   /** Override the input operator-mantissa width.  Default (-1) uses the
    *  legacy `scfg.resOperatorMantWidth`.  Set this to the FixedFPReductionTree's
-   *  absMagW when the tree is operated in skipFinalRound mode so the wider
-   *  mantissa flows through without an intermediate RNE. */
-  val inOpMantWOverride: Int = -1
+   *  effective outMantW when the tree's output is widened beyond
+   *  resOperatorMantWidth (cap-binding fix). */
+  val inOpMantWOverride: Int = -1,
+  /** Override the input operator-exponent width.  Default (-1) uses the
+   *  legacy `scfg.resOperatorExpWidth`.  Must be widened in lockstep with
+   *  inOpMantWOverride when the tree's outMantW grows, because the tree's
+   *  LZC normalisation can drive its outExp below the legacy expW's
+   *  representable range (sign truncation → 2^k value wraparound). */
+  val inOpExpWOverride: Int = -1
 ) extends Module {
   val effectiveInOpMantW: Int =
     if (inOpMantWOverride > 0) inOpMantWOverride else scfg.resOperatorMantWidth
+  val effectiveInOpExpW: Int =
+    if (inOpExpWOverride > 0) inOpExpWOverride else scfg.resOperatorExpWidth
   /** scaleMantProduct width is fixed by the scale type (independent of the
    *  operator mantissa width). */
   val effectiveOutMantW: Int  =
     effectiveInOpMantW + scfg.resScaleMantWidth
+  /** Effective output-exp width: must accommodate the (now-possibly-wider)
+   *  input exp plus the scale-exp sum plus carry. */
+  val effectiveOutExpW: Int =
+    math.max(scfg.resScaleAddExpWidth, effectiveInOpExpW + 2)
 
   override def desiredName = {
     val tag = if (inOpMantWOverride > 0) s"_wide${effectiveInOpMantW}" else ""
@@ -31,13 +43,13 @@ class ScaleAddition(
   val io = IO(new Bundle {
     //input
     val inOpSign = Input(UInt(1.W))
-    val inOpExp  = Input(SInt(scfg.resOperatorExpWidth.W))
+    val inOpExp  = Input(SInt(effectiveInOpExpW.W))
     val inOpMant = Input(UInt(effectiveInOpMantW.W))
     val inShareScaleA = Input(UInt(scfg.stype.totalScaleWidth.W))
     val inShareScaleB = Input(UInt(scfg.stype.totalScaleWidth.W))
     //output
     val outSign = Output(UInt(1.W))
-    val outExp  = Output(SInt(scfg.resScaleAddExpWidth.W))
+    val outExp  = Output(SInt(effectiveOutExpW.W))
     val outMant = Output(UInt(effectiveOutMantW.W))
   })
 

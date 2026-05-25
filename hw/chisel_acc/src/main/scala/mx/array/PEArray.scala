@@ -64,8 +64,9 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
                            else None
 
     // ── Requantized FP8/FP6 Output ────────────────────────────────────────
-    // One 8-bit shared scale per tile row
-    val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
+    // One shared scale per tile row (width = scaleType.totalScaleWidth bits,
+    // 8 for OCP MX UE7M1..UE4M4, 7 for NVFP4-style UE4M3).
+    val shared_scale_out = Output(UInt((cfg.tileRows * cfg.macCfg.stype.totalScaleWidth).W))
     // Flat packed output: tileRows × blockSize elements
     val result           = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * cfg.fp8Width).W))
     val valid_out        = Output(Bool())
@@ -208,8 +209,8 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
                            else None
 
     // ── Requantized INT8 Output ───────────────────────────────────────────
-    // One 8-bit UE8M0 shared scale per tile row
-    val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
+    // One shared scale per tile row (width = scaleType.totalScaleWidth bits).
+    val shared_scale_out = Output(UInt((cfg.tileRows * cfg.macCfg.stype.totalScaleWidth).W))
     // Flat packed INT8: tileRows × blockSize elements (two's complement)
     val result           = Output(UInt((cfg.tileRows * cfg.requantCfg.blockSize * 8).W))
     val valid_out        = Output(Bool())

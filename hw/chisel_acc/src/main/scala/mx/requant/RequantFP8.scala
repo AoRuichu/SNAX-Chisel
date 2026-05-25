@@ -60,7 +60,7 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
 
   val io = IO(new Bundle {
     val fp32_in      = Input(UInt(32.W))
-    val shared_scale = Input(UInt(8.W))   // always 8 bits; format depends on cfg.scaleType
+    val shared_scale = Input(UInt(cfg.scaleType.totalScaleWidth.W))
     val elem_out     = Output(UInt(cfg.outputType.totalWidth.W))
   })
 
@@ -106,7 +106,8 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     // ── ExMy path (NVFP4-style) ────────────────────────────
     //
     // shared_scale = {biased_scale_exp[E-1:0], scale_mant[M-1:0]}
-    // where E = expScaleWidth, M = mantScaleWidth, E+M = 8.
+    // where E = expScaleWidth, M = mantScaleWidth, total width = E+M
+    // (8 bits for OCP MX UE7M1..UE4M4; 7 bits for NVFP4-style UE4M3).
     //
     // Scale value  = (1.scale_mant) × 2^(scale_biased_exp − scale_bias)   (normal)
     //              = (0.scale_mant) × 2^(1 − scale_bias)                  (subnormal)
@@ -125,8 +126,8 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     val scaleBias  = cfg.scaleType.bias             // (1 << (E-1)) − 1
     val correction = scaleBias - 127 + outBias       // design-time Scala Int
 
-    val scale_biased_exp = io.shared_scale(7, M)          // E bits
-    val scale_mant_raw   = io.shared_scale(M - 1, 0)      // M bits
+    val scale_biased_exp = io.shared_scale(cfg.scaleType.totalScaleWidth - 1, M)  // E bits
+    val scale_mant_raw   = io.shared_scale(M - 1, 0)                              // M bits
     val isZeroScale      = !scale_biased_exp.orR && !scale_mant_raw.orR
     val isSubnormScale   = !scale_biased_exp.orR &&  scale_mant_raw.orR
 
@@ -260,7 +261,7 @@ class MaxScaleFinder(val cfg: RequantConfig) extends Module {
 
   val io = IO(new Bundle {
     val fp32_in   = Input(Vec(cfg.blockSize, UInt(32.W)))
-    val max_scale = Output(UInt(8.W))
+    val max_scale = Output(UInt(cfg.scaleType.totalScaleWidth.W))
   })
 
   // Generic balanced max-tree for any UInt width
@@ -372,7 +373,7 @@ class RequantBlock(val cfg: RequantConfig) extends Module {
 
   val io = IO(new Bundle {
     val fp32_in      = Input(Vec(cfg.blockSize, UInt(32.W)))
-    val shared_scale = Output(UInt(8.W))
+    val shared_scale = Output(UInt(cfg.scaleType.totalScaleWidth.W))
     val elem_out     = Output(Vec(cfg.blockSize, UInt(cfg.outputType.totalWidth.W)))
   })
 
@@ -415,7 +416,7 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
   val io = IO(new Bundle {
     val fp32_in          = Input(UInt((nIn * 32).W))
     val valid_in         = Input(Bool())
-    val shared_scale_out = Output(UInt((cfg.tileRows * 8).W))
+    val shared_scale_out = Output(UInt((cfg.tileRows * cfg.scaleType.totalScaleWidth).W))
     val elem_out         = Output(UInt((cfg.tileRows * cfg.blockSize * elemW).W))
     val valid_out        = Output(Bool())
   })
@@ -443,7 +444,7 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
     batchCnt := Mux(blockDone, 0.U, batchCnt + 1.U)
   }
 
-  val sharedScaleWire = Wire(Vec(cfg.tileRows, UInt(8.W)))
+  val sharedScaleWire = Wire(Vec(cfg.tileRows, UInt(cfg.scaleType.totalScaleWidth.W)))
   val elemWire        = Wire(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(elemW.W))))
 
   for (row <- 0 until cfg.tileRows) {
@@ -463,7 +464,7 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
   }
 
   val validOutReg    = withReset(asyncRstN)(RegNext(blockDone, init = false.B))
-  val sharedScaleReg = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, UInt(8.W))))
+  val sharedScaleReg = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, UInt(cfg.scaleType.totalScaleWidth.W))))
   val elemOutReg     = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(elemW.W)))))
 
   when(blockDone) {
