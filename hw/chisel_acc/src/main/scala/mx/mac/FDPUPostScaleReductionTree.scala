@@ -483,36 +483,53 @@ class FDPUPostScaleReductionTree(
         d.sa_out_mant := Cat(0.U(2.W), treeOut.mant)
       }
     } else {
-      // non-UE8M0: 1.0_rep = (exp = bias) || (mant = 0); widen ScaleAddition
-      // mantissa AND exp inputs to propagate the wider tree output.
-      val unityScale =
-        (scfg.stype.bias << scfg.stype.mantScaleWidth).U(scfg.stype.totalScaleWidth.W)
-      val sa = Module(new ScaleAddition(scfg,
-        inOpMantWOverride = effectiveTreeOutMantW,
-        inOpExpWOverride  = effectiveExpW))
-      sa.io.inOpSign      := treeOut.sign
-      sa.io.inOpExp       := treeOut.exp
-      sa.io.inOpMant      := treeOut.mant
-      sa.io.inShareScaleA := unityScale
-      sa.io.inShareScaleB := unityScale
+      // non-UE8M0 PER-CYCLE PATH — direct CustomFP → IEEE FP bit-concat.
+      //
+      // Rationale: the per-cycle inner accumulation must NOT apply the real
+      // scale (that happens only at the block boundary).  The previous
+      // implementation instantiated ScaleAddition + ScaleToFPn with a
+      // hard-coded unity scale and relied on synthesis to fold the mantissa
+      // multiplier into identity.  This left an LZC/barrel-shift and a
+      // dead RNE stage in the RTL even after constant folding.
+      //
+      // The tree output is already a normalised CustomFP, so we can compose
+      // the IEEE FP word directly:
+      //   sign     : 1 bit from tree
+      //   exp      : tree.exp (already adjusted) + IEEE bias (127)
+      //   mantissa : tree.mant zero-padded from effectiveTreeOutMantW to
+      //              actualAccMantBits  (precondition: tree mant <= M_acc)
+      // The implicit-1 of the CustomFP normalisation lives at the top of
+      // tree.mant; IEEE drops it during encoding, so we just keep the lower
+      // effectiveTreeOutMantW bits and pad zeros below.  Net per-cycle work
+      // on this path: zero mantissa multiplications, zero RNE stages.
+      require(effectiveTreeOutMantW <= actualAccMantBits,
+        s"per-cycle no-scale path requires effectiveTreeOutMantW " +
+        s"($effectiveTreeOutMantW) <= actualAccMantBits ($actualAccMantBits)")
+      val padBits  = actualAccMantBits - effectiveTreeOutMantW
+      val biasedE  = (treeOut.exp.asSInt + 127.S).asUInt
+      // Clamp encoded exp to 8 bits; widen treeOut exp may exceed 8 in theory
+      // but for realistic configs (productExpRange < 256) it fits.
+      val encExp   = biasedE(7, 0)
+      val padded   = if (padBits > 0) Cat(treeOut.mant, 0.U(padBits.W))
+                     else if (padBits == 0) treeOut.mant
+                     else treeOut.mant(effectiveTreeOutMantW - 1,
+                                       effectiveTreeOutMantW - actualAccMantBits)
+      cycleFPnoscale := Cat(treeOut.sign, encExp, padded)
 
       io.debug.foreach { d =>
-        d.sa_out_sign := sa.io.outSign
-        d.sa_out_exp  := sa.io.outExp(scfg.resScaleAddExpWidth - 1, 0).asSInt
-        val saMantDebug = if (effectiveScaleAddMantW >= scfg.resScaleAddMantWidth)
-                            sa.io.outMant(effectiveScaleAddMantW - 1,
-                                          effectiveScaleAddMantW - scfg.resScaleAddMantWidth)
-                          else sa.io.outMant
-        d.sa_out_mant := saMantDebug
+        // No ScaleAddition exists on this path; expose tree output instead.
+        val expDebug = Wire(SInt(scfg.resScaleAddExpWidth.W))
+        expDebug := treeOut.exp
+        d.sa_out_sign := treeOut.sign
+        d.sa_out_exp  := expDebug
+        val mantDebug = if (effectiveScaleAddMantW >= scfg.resScaleAddMantWidth)
+                          Cat(treeOut.mant, 0.U((effectiveScaleAddMantW
+                              - effectiveTreeOutMantW).W))(
+                              effectiveScaleAddMantW - 1,
+                              effectiveScaleAddMantW - scfg.resScaleAddMantWidth)
+                        else treeOut.mant
+        d.sa_out_mant := mantDebug
       }
-
-      val s2fpn = Module(new ScaleToFPn(scfg, actualAccMantBits,
-        inMantWOverride = effectiveScaleAddMantW,
-        inExpWOverride  = sa.effectiveOutExpW))
-      s2fpn.io.inSign := sa.io.outSign
-      s2fpn.io.inExp  := sa.io.outExp
-      s2fpn.io.inMant := sa.io.outMant
-      cycleFPnoscale := s2fpn.io.out
     }
 
     // ── Inner FP accumulator (no scale applied yet) ────────────────────────
