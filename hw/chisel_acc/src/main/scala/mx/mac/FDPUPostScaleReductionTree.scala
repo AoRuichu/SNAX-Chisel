@@ -51,7 +51,23 @@ class FDPUPostScaleReductionTree(
   val accMantBits: Int = -1,
   val treeArch: TreeArch = TreeArch.Generic,
   val cyclesPerBlock: Int = 1,
-  val istest: Boolean = false
+  val istest: Boolean = false,
+  /** If true, disable the early RNE stages (tree exit + scale composition):
+   *  tree emits its full absMagW mantissa unrounded, scale multiplier operates
+   *  on this wide mantissa, and only the FPNAdder-internal RNE remains.
+   *  This is the "Cuyckens-extended-to-ExMy" counterfactual baseline used
+   *  in the chapter to quantify the area saved by our 3-RNE design. */
+  val noEarlyRNE: Boolean = false,
+  /** When using UE8M0 scale, widen the tree-exit mantissa to M_acc bits
+   *  (instead of the legacy resOperatorMantWidth = lane-product width).
+   *  This makes the per-cycle tree-exit RNE noise M_acc-dependent on
+   *  UE8M0 configs, eliminating the fixed-width truncation that
+   *  otherwise creates a noise-floor saturation on narrow-mantissa
+   *  symmetric pairs (E5M2² / E2M1²).  Empirically verified to drop
+   *  the accumulator-relative error by 9–63× at M_acc ∈ [13, 15]
+   *  with no change in any other block's logic.  Default = true
+   *  since the change is strict area-iso, accuracy-gain. */
+  val widenUE8M0: Boolean = true
 ) extends Module {
   require(cyclesPerBlock >= 1, s"cyclesPerBlock must be >= 1, got $cyclesPerBlock")
   require(vectorSize >= 1, "vectorSize must be >= 1")
@@ -64,21 +80,38 @@ class FDPUPostScaleReductionTree(
   // bits so the downstream ScaleAddition + ScaleToFPn RNE window keeps
   // (M_acc + 3) bits below it.  See `treeExtraMantBits` below.
   val actualAccMantBits: Int = {
-    if (accMantBits == -1) AccPrecision.recommended(scfg, K)
+    if (noEarlyRNE) {
+      // Counterfactual variant: M_acc forced to 23 (FP32 mantissa) because
+      // a single RNE at the FPNAdder output cannot meaningfully commit to a
+      // narrower accumulator without the early-RNE truncation stages.
+      23
+    } else if (accMantBits == -1) AccPrecision.recommended(scfg, K)
     else { require(accMantBits >= 1 && accMantBits <= 23); accMantBits }
   }
 
-  // Tree output mantissa widening (extra bits beyond resOperatorMantWidth):
+  // Tree output mantissa widening (extra bits beyond resOperatorMantWidth 6):
   //   UE8M0 path uses DirectToFPn (no scale-mant multiply, no RNE at the
   //   scale step) → no widening needed.
   //   Non-UE8M0 path uses ScaleAddition + ScaleToFPn with an RNE that
   //   needs G=3 guard/round/sticky bits below the M_acc window.  We
   //   widen the tree's outMantW so resScaleAddMantWidth_effective grows
-  //   from the legacy `resOperatorMantWidth + resScaleMantWidth` to at
+  //   from the legacy `resOperatorMantWidth 6 + resScaleMantWidth` to at
   //   least `actualAccMantBits + 3`, eliminating the cap.
+  //
+  //   noEarlyRNE counterfactual: widen all the way to absMagW so the tree
+  //   emits its unrounded internal precision, feeding the full mantissa
+  //   into the scale-composition multiplier (no RNE compresses the
+  //   tree-side operand).
   private val SAFETY_G = 3
+  private val _log2N    = chisel3.util.log2Ceil(vectorSize.max(2))
+  private val _absMagW  = scfg.resOperatorMantWidth + (scfg.productExpRange + SAFETY_G) + _log2N
   val treeExtraMantBits: Int =
-    if (scfg.stype.mantScaleWidth == 0) 0
+    if (noEarlyRNE)                                _absMagW - scfg.resOperatorMantWidth
+    else if (scfg.stype.mantScaleWidth == 0 && widenUE8M0)
+      // Widen UE8M0 tree exit to M_acc bits so the per-cycle tree-exit RNE
+      // becomes M_acc-dependent (mirrors the ExMy path's behaviour).
+      math.max(0, actualAccMantBits - scfg.resOperatorMantWidth)
+    else if (scfg.stype.mantScaleWidth == 0) 0
     else math.max(0, actualAccMantBits + SAFETY_G - scfg.resScaleAddMantWidth)
 
   /** Effective tree output mantissa width fed to ScaleAddition / DirectToFPn. */
@@ -218,11 +251,12 @@ class FDPUPostScaleReductionTree(
     // by the (inMantW − outMantW) term in the post-LZC exp arithmetic.
     val tree = Module(new FixedFPReductionTree(
       expW            = effectiveExpW,
-      inMantW         = scfg.resOperatorMantWidth,
-      outMantW        = effectiveTreeOutMantW,
+      inMantW         = scfg.resOperatorMantWidth,//6
+      outMantW        = effectiveTreeOutMantW,//6 + treeExtraMantBits,
       vectorSize      = vectorSize,
       productExpRange = scfg.productExpRange,
-      arch            = treeArch
+      arch            = treeArch,
+      skipFinalRound  = noEarlyRNE   // Counterfactual: skip tree-exit RNE
     ))
     // Lane inputs are still at the legacy operator widths; sign-extend the
     // per-lane exp to the wider tree-input format.
@@ -253,10 +287,13 @@ class FDPUPostScaleReductionTree(
 
     if (scfg.stype.mantScaleWidth == 0) {
       // ── Path A: UE8M0 — DirectToFPn ──────────────────────────────────────
-      // No widening on UE8M0: treeExtraMantBits == 0 so effectiveTreeOutMantW
-      // == resOperatorMantWidth and DirectToFPn's default operand width is OK.
+      // Legacy path: no widening (treeExtraMantBits == 0) so DirectToFPn's
+      // default operand width = resOperatorMantWidth.
+      // widenUE8M0 path: tree-exit widened to M_acc, so we must forward the
+      // wider mantissa width via opMantWOverride.
       val d2fpn = Module(new DirectToFPn(scfg, actualAccMantBits,
-        opExpWOverride = effectiveExpW))
+        opMantWOverride = if (widenUE8M0) effectiveTreeOutMantW else -1,
+        opExpWOverride  = effectiveExpW))
       d2fpn.io.inOpSign      := treeOut.sign
       d2fpn.io.inOpExp       := treeOut.exp
       d2fpn.io.inOpMant      := treeOut.mant

@@ -107,7 +107,12 @@ class FixedFPReductionTree(
     // headroom when outMantW > inMantW (so the widened RNE has G guard
     // bits below the extraction window).  G is included once.
     val fracBitsBase    = productExpRange + G
-    val wideningExtra   = math.max(0, outMantW + G - (inMantW + log2N) - fracBitsBase)
+    // Widening logic for the rounding path: when outMantW > inMantW+log2N we
+    // need extra fracBits so the RNE has G guard bits below the extraction
+    // window.  In skipFinalRound mode we emit the entire absMagW unrounded,
+    // so the widening (which assumes outMantW < absMagW) does not apply.
+    val wideningExtra   = if (skipFinalRound) 0
+                          else math.max(0, outMantW + G - (inMantW + log2N) - fracBitsBase)
     val fracBits        = fracBitsBase + wideningExtra
     // Width of the magnitude accumulator (sign bit separate).
     // = inMantW integer bits + fracBits fractional bits + log2N carry-overflow bits.
