@@ -59,10 +59,14 @@ object EmitKeyConfigs extends App {
     val scale = SCL(cfg.scale)
     val mac   = ScaleAddConfig(act, wt, scale)
 
-    // Force Generic tree arch — SmallFixedShift / TwoStageBarrel omit G
-    // slack at the alignment stage and fail the (outMantW + G ≤ absMagW)
-    // require check when M_acc is set above the auto-recommended value.
-    val arch = Some(ArchOverride(TreeArch.Generic, BLOCK_SIZE / VEC))
+    // Force Generic tree arch with cyclesPerBlock=1 (cycleFP — current
+    // baseline / thesis architecture).  SmallFixedShift / TwoStageBarrel
+    // omit G slack at the alignment stage and fail the
+    // (outMantW + G ≤ absMagW) require when M_acc is set above the
+    // auto-recommended value, so we force Generic.  cpb=4 (blockdef) was
+    // dropped from the thesis after Pareto comparison (+10% power,
+    // −30% fmax).
+    val arch = Some(ArchOverride(TreeArch.Generic, 1))
 
     if (cfg.act == "INT8") {
       // INT8 output → PEArrayWrapperINT8

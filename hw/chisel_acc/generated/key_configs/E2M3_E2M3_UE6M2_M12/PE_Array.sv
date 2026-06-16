@@ -165,6 +165,83 @@ module FixedFPTree_exp6_mant8_out9_vec4_range4(	// src/main/scala/mx/mac/CustomR
   assign io_out_mant = isZero ? 9'h0 : roundedM[9] ? 9'h100 : roundedM[8:0];	// src/main/scala/mx/mac/CustomReduction.scala:49:7, :161:25, :192:33, :193:32, :194:23, :196:19, :208:23
 endmodule
 
+module ScaleAddition_E2M3_to_E2M3_scale_UE6M2_wide9(	// src/main/scala/mx/mac/ScaleAddition.scala:10:7
+  input         io_inOpSign,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+  input  [5:0]  io_inOpExp,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+  input  [8:0]  io_inOpMant,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+  input  [7:0]  io_inShareScaleA,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+                io_inShareScaleB,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+  output        io_outSign,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+  output [8:0]  io_outExp,	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+  output [14:0] io_outMant	// src/main/scala/mx/mac/ScaleAddition.scala:43:14
+);
+
+  wire [6:0] adjExpScaleA =
+    io_inShareScaleA[7:2] == 6'h0 ? 7'h62 : {1'h0, io_inShareScaleA[7:2]} - 7'h1F;	// src/main/scala/mx/mac/ScaleAddition.scala:57:17, :62:29, :75:{25,36}, :76:30, :77:{36,41}
+  wire [6:0] adjExpScaleB =
+    io_inShareScaleB[7:2] == 6'h0 ? 7'h62 : {1'h0, io_inShareScaleB[7:2]} - 7'h1F;	// src/main/scala/mx/mac/ScaleAddition.scala:57:17, :62:29, :76:30, :77:36, :78:{25,36}, :80:41
+  wire [7:0] scaleExpSum =
+    {adjExpScaleA[6], adjExpScaleA} + {adjExpScaleB[6], adjExpScaleB};	// src/main/scala/mx/mac/ScaleAddition.scala:75:25, :78:25, :83:34
+  assign io_outSign = io_inOpSign;	// src/main/scala/mx/mac/ScaleAddition.scala:10:7
+  assign io_outExp = {scaleExpSum[7], scaleExpSum} + {{3{io_inOpExp[5]}}, io_inOpExp};	// src/main/scala/mx/mac/ScaleAddition.scala:10:7, :83:34, :86:28
+  assign io_outMant =
+    {9'h0,
+     {3'h0, |(io_inShareScaleA[7:2]), io_inShareScaleA[1:0]}
+       * {3'h0, |(io_inShareScaleB[7:2]), io_inShareScaleB[1:0]}} * {6'h0, io_inOpMant};	// src/main/scala/mx/mac/ScaleAddition.scala:10:7, :57:17, :61:20, :62:29, :84:41, :87:38
+endmodule
+
+module ScaleToFP12b_E2M3_x_E2M3_UE6M2_wide15(	// src/main/scala/mx/mac/FP32Common.scala:383:7
+  input         io_inSign,	// src/main/scala/mx/mac/FP32Common.scala:408:14
+  input  [8:0]  io_inExp,	// src/main/scala/mx/mac/FP32Common.scala:408:14
+  input  [14:0] io_inMant,	// src/main/scala/mx/mac/FP32Common.scala:408:14
+  output [20:0] io_out	// src/main/scala/mx/mac/FP32Common.scala:408:14
+);
+
+  wire [3:0]  lzc =
+    io_inMant[14]
+      ? 4'h0
+      : io_inMant[13]
+          ? 4'h1
+          : io_inMant[12]
+              ? 4'h2
+              : io_inMant[11]
+                  ? 4'h3
+                  : io_inMant[10]
+                      ? 4'h4
+                      : io_inMant[9]
+                          ? 4'h5
+                          : io_inMant[8]
+                              ? 4'h6
+                              : io_inMant[7]
+                                  ? 4'h7
+                                  : io_inMant[6]
+                                      ? 4'h8
+                                      : io_inMant[5]
+                                          ? 4'h9
+                                          : io_inMant[4]
+                                              ? 4'hA
+                                              : io_inMant[3]
+                                                  ? 4'hB
+                                                  : io_inMant[2]
+                                                      ? 4'hC
+                                                      : io_inMant[1] ? 4'hD : 4'hE;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:423:47
+  wire [29:0] shiftedMant = {15'h0, io_inMant} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:421:26, :424:31
+  wire [12:0] roundedM =
+    {1'h0, shiftedMant[13:2]}
+    + {12'h0, shiftedMant[1] & (shiftedMant[2] | shiftedMant[0] | (&lzc))};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:424:31, :428:23, :433:30, :434:30, :435:30, :438:42, :440:{29,38,54}, :441:26, :448:33
+  wire [8:0]  _adjustedExp_T_8 = io_inExp - {5'h0, lzc} + {8'h0, roundedM[12]} + 9'h83;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:441:26, :443:29, :446:{30,41,53}, :451:21
+  wire        isOverflow = _adjustedExp_T_8 == 9'hFF;	// src/main/scala/mx/mac/FP32Common.scala:446:53, :447:33
+  wire        isUnderflow = $signed(_adjustedExp_T_8) < 9'sh1;	// src/main/scala/mx/mac/FP32Common.scala:446:53, :448:33
+  assign io_out =
+    io_inMant == 15'h0 | isUnderflow
+      ? 21'h0
+      : {io_inSign,
+         isOverflow
+           ? 20'hFF000
+           : {isOverflow ? 8'hFF : isUnderflow ? 8'h0 : _adjustedExp_T_8[7:0],
+              roundedM[11:0]}};	// src/main/scala/mx/mac/FP32Common.scala:383:7, :421:26, :441:26, :444:29, :446:53, :447:33, :448:33, :450:21, :451:{21,63}, :453:{16,24}, :454:{16,44}, :455:44
+endmodule
+
 module FPNAdder(	// src/main/scala/mx/mac/FP32Common.scala:233:7
   input  [20:0] io_a,	// src/main/scala/mx/mac/FP32Common.scala:237:14
                 io_b,	// src/main/scala/mx/mac/FP32Common.scala:237:14
@@ -232,89 +309,6 @@ module FPNAdder(	// src/main/scala/mx/mac/FP32Common.scala:233:7
          _finalE_wide_T_9 == 9'hFF ? 20'hFF000 : {_finalE_wide_T_9[7:0], roundedM[11:0]}};	// src/main/scala/mx/mac/FP32Common.scala:233:7, :243:20, :247:20, :252:32, :266:25, :272:20, :285:25, :288:30, :289:{48,54}, :291:{30,38,53}, :292:35, :294:16, :295:{17,36}, :296:{36,64}
 endmodule
 
-module FPxScale12b_E2M3_x_E2M3_UE6M2(	// src/main/scala/mx/mac/FP32Common.scala:478:7
-  input  [20:0] io_fpIn,	// src/main/scala/mx/mac/FP32Common.scala:498:14
-  input  [7:0]  io_scaleA,	// src/main/scala/mx/mac/FP32Common.scala:498:14
-                io_scaleB,	// src/main/scala/mx/mac/FP32Common.scala:498:14
-  output [20:0] io_fpOut	// src/main/scala/mx/mac/FP32Common.scala:498:14
-);
-
-  wire [6:0]  _scaleExpSum_T_5 =
-    io_scaleA[7:2] == 6'h0 ? 7'h62 : {1'h0, io_scaleA[7:2]} - 7'h1F;	// src/main/scala/mx/mac/FP32Common.scala:518:21, :520:25, :535:{10,16,54}, :612:33
-  wire [6:0]  _scaleExpSum_T_11 =
-    io_scaleB[7:2] == 6'h0 ? 7'h62 : {1'h0, io_scaleB[7:2]} - 7'h1F;	// src/main/scala/mx/mac/FP32Common.scala:518:21, :520:25, :535:{10,16,54}, :612:33
-  wire [7:0]  scaleExpSum =
-    {_scaleExpSum_T_5[6], _scaleExpSum_T_5} + {_scaleExpSum_T_11[6], _scaleExpSum_T_11};	// src/main/scala/mx/mac/FP32Common.scala:535:10, :538:44
-  wire [18:0] rawProduct =
-    {6'h0, |(io_fpIn[19:12]), io_fpIn[11:0]}
-    * {13'h0,
-       {3'h0, |(io_scaleA[7:2]), io_scaleA[1:0]}
-         * {3'h0, |(io_scaleB[7:2]), io_scaleB[1:0]}};	// src/main/scala/mx/mac/FP32Common.scala:507:28, :508:28, :509:33, :518:21, :519:21, :520:25, :555:36, :556:40
-  wire        isProductZero = rawProduct == 19'h0 | ~(|(io_fpIn[19:12]));	// src/main/scala/mx/mac/FP32Common.scala:507:28, :509:33, :510:21, :556:40, :587:{37,45}
-  wire [3:0]  _GEN =
-    {{rawProduct[5:4], rawProduct[7]} & 3'h5, 1'h0} | {rawProduct[7:6], rawProduct[9:8]}
-    & 4'h5;	// src/main/scala/mx/mac/FP32Common.scala:556:40, :588:48, :612:33
-  wire [4:0]  lzc =
-    rawProduct[18]
-      ? 5'h0
-      : rawProduct[17]
-          ? 5'h1
-          : rawProduct[16]
-              ? 5'h2
-              : rawProduct[15]
-                  ? 5'h3
-                  : rawProduct[14]
-                      ? 5'h4
-                      : rawProduct[13]
-                          ? 5'h5
-                          : rawProduct[12]
-                              ? 5'h6
-                              : rawProduct[11]
-                                  ? 5'h7
-                                  : rawProduct[10]
-                                      ? 5'h8
-                                      : rawProduct[9]
-                                          ? 5'h9
-                                          : _GEN[0]
-                                              ? 5'hA
-                                              : _GEN[1]
-                                                  ? 5'hB
-                                                  : _GEN[2]
-                                                      ? 5'hC
-                                                      : _GEN[3]
-                                                          ? 5'hD
-                                                          : rawProduct[4]
-                                                              ? 5'hE
-                                                              : rawProduct[3]
-                                                                  ? 5'hF
-                                                                  : rawProduct[2]
-                                                                      ? 5'h10
-                                                                      : rawProduct[1]
-                                                                          ? 5'h11
-                                                                          : 5'h12;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/chisel3/util/OneHot.scala:48:45, src/main/scala/mx/mac/FP32Common.scala:556:40, :588:48
-  wire [49:0] _normalized_T = {31'h0, rawProduct} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:556:40, :589:38
-  wire [12:0] roundedM =
-    {1'h0, _normalized_T[17:6]}
-    + {12'h0,
-       _normalized_T[5]
-         & (_normalized_T[6] | _normalized_T[4] | (|(_normalized_T[3:0])))};	// src/main/scala/mx/mac/FP32Common.scala:589:{38,45}, :593:30, :597:45, :598:45, :599:{45,55}, :600:{29,40,63}, :601:28, :603:27, :612:33
-  wire [9:0]  _newExpBase_T_1 = {2'h0, io_fpIn[19:12]} + 10'h2;	// src/main/scala/mx/mac/FP32Common.scala:507:28, :588:48, :608:41
-  wire [10:0] _newExpBase_T_2 =
-    {_newExpBase_T_1[9], _newExpBase_T_1} + {{3{scaleExpSum[7]}}, scaleExpSum};	// src/main/scala/mx/mac/FP32Common.scala:538:44, :608:{41,58}
-  wire [11:0] newExpBase = {_newExpBase_T_2[10], _newExpBase_T_2} - {7'h0, lzc};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:608:{58,74}
-  wire [11:0] newExpRaw = roundedM[12] ? newExpBase + 12'h1 : newExpBase;	// src/main/scala/mx/mac/FP32Common.scala:601:28, :602:28, :608:74, :609:{26,46}
-  wire        isOverflow = $signed(newExpRaw) > 12'shFE;	// src/main/scala/mx/mac/FP32Common.scala:609:26, :611:33
-  wire        isUnderflow = $signed(newExpRaw) < 12'sh1;	// src/main/scala/mx/mac/FP32Common.scala:609:{26,46}, :612:33
-  assign io_fpOut =
-    isProductZero | isUnderflow & ~isOverflow
-      ? 21'h0
-      : {io_fpIn[20],
-         isOverflow
-           ? 20'hFF000
-           : {isOverflow ? 8'hFF : isUnderflow | isProductZero ? 8'h0 : newExpRaw[7:0],
-              roundedM[12] ? 12'h0 : roundedM[11:0]}};	// src/main/scala/mx/mac/FP32Common.scala:478:7, :506:28, :587:45, :588:48, :601:28, :602:28, :603:{27,61}, :609:26, :611:33, :612:33, :614:29, :615:{29,42}, :616:{74,80}, :617:{20,35,51,54}, :618:{20,36}, :619:36
-endmodule
-
 module BFP_PE(	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
   input         clock,	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
                 reset,	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
@@ -328,170 +322,133 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
   output [20:0] io_accOut	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:161:14
 );
 
-  wire [20:0] _outerAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:614:28
-  wire [20:0] _fpScale_io_fpOut;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:594:27
-  wire [20:0] _innerAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:545:28
-  wire        _tree_io_out_sign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:442:22
-  wire [5:0]  _tree_io_out_exp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:442:22
-  wire [8:0]  _tree_io_out_mant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:442:22
-  wire        _op_3_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [3:0]  _op_3_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [7:0]  _op_3_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire        _op_2_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [3:0]  _op_2_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [7:0]  _op_2_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire        _op_1_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [3:0]  _op_1_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [7:0]  _op_1_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire        _op_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [3:0]  _op_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire [7:0]  _op_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-  wire        _asyncRstN_T_1 = ~reset;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:542:24
-  reg  [20:0] innerAccReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51
-  reg  [1:0]  blockCnt;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:551:48
-  reg  [20:0] innerHeld;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:588:54
-  reg  [7:0]  scaleAHeld;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:590:54
-  reg  [7:0]  scaleBHeld;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:592:54
-  reg  [20:0] outerAccReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:605:51
-  reg  [20:0] blockPartialHeld;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:612:58
-  reg         validReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:618:48
-  always @(posedge clock or posedge _asyncRstN_T_1) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :542:24
-    if (_asyncRstN_T_1) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :542:24
-      innerAccReg <= 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51
-      blockCnt <= 2'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :551:48
-      outerAccReg <= 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51, :605:51
-      validReg <= 1'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:542:24, :618:48
+  wire [20:0] _accAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:370:26
+  wire [20:0] _conv_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:346:24
+  wire        _sa_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+  wire [8:0]  _sa_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+  wire [14:0] _sa_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+  wire        _tree_io_out_sign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+  wire [5:0]  _tree_io_out_exp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+  wire [8:0]  _tree_io_out_mant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+  wire        _op_3_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [3:0]  _op_3_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [7:0]  _op_3_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire        _op_2_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [3:0]  _op_2_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [7:0]  _op_2_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire        _op_1_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [3:0]  _op_1_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [7:0]  _op_1_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire        _op_io_outSign;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [3:0]  _op_io_outExp;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire [7:0]  _op_io_outMant;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+  wire        _asyncRstN_T_1 = ~reset;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:366:22
+  reg  [20:0] accReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:367:49
+  reg         validReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:368:49
+  always @(posedge clock or posedge _asyncRstN_T_1) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :366:22
+    if (_asyncRstN_T_1) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :366:22
+      accReg <= 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:367:49
+      validReg <= 1'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :368:49
     end
     else begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
-      if (io_resetAcc) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:161:14
-        innerAccReg <= 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51
-        blockCnt <= 2'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :551:48
-        outerAccReg <= 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51, :605:51
-      end
-      else begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:161:14
-        automatic logic blockDone;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:553:32
-        blockDone = io_validIn & (&blockCnt);	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:551:48, :552:39, :553:32
-        if (io_validIn) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:161:14
-          innerAccReg <= blockDone ? 21'h0 : _innerAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51, :545:28, :553:32, :627:23, :628:21, :632:21
-          if (blockDone)	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:553:32
-            blockCnt <= 2'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :551:48
-          else	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:553:32
-            blockCnt <= blockCnt + 2'h1;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :551:48, :633:33
-        end
-        if (io_validIn & blockDone)	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:553:32, :605:51, :626:28, :627:23, :629:21
-          outerAccReg <= _outerAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:605:51, :614:28
-      end
-      validReg <= ~io_resetAcc & io_validIn;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:618:48, :621:23, :625:19, :626:28
+      if (io_resetAcc)	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:161:14
+        accReg <= 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:367:49
+      else if (io_validIn)	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:161:14
+        accReg <= _accAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:367:49, :370:26
+      validReg <= ~io_resetAcc & io_validIn;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:368:49, :374:23, :376:16, :377:28
     end
   end // always @(posedge, posedge)
-  always @(posedge clock) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
-    if (&blockCnt) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:551:48, :552:39
-      innerHeld <= _innerAdder_io_out;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:545:28, :588:54
-      scaleAHeld <= io_share_exp_A_i;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:590:54
-      scaleBHeld <= io_share_exp_B_i;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:592:54
-      blockPartialHeld <= _fpScale_io_fpOut;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:594:27, :612:58
-    end
-  end // always @(posedge)
   `ifdef ENABLE_INITIAL_REG_	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
     `ifdef FIRRTL_BEFORE_INITIAL	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
       `FIRRTL_BEFORE_INITIAL	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
     `endif // FIRRTL_BEFORE_INITIAL
     initial begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
-      automatic logic [31:0] _RANDOM[0:3];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
+      automatic logic [31:0] _RANDOM[0:0];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
       `ifdef INIT_RANDOM_PROLOG_	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
         `INIT_RANDOM_PROLOG_	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
       `endif // INIT_RANDOM_PROLOG_
       `ifdef RANDOMIZE_REG_INIT	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
-        for (logic [2:0] i = 3'h0; i < 3'h4; i += 3'h1) begin
-          _RANDOM[i[1:0]] = `RANDOM;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
-        end	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
-        innerAccReg = _RANDOM[2'h0][20:0];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :543:51
-        blockCnt = _RANDOM[2'h0][22:21];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :543:51, :551:48
-        innerHeld = {_RANDOM[2'h0][31:23], _RANDOM[2'h1][11:0]};	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :543:51, :588:54
-        scaleAHeld = _RANDOM[2'h1][19:12];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :588:54, :590:54
-        scaleBHeld = _RANDOM[2'h1][27:20];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :588:54, :592:54
-        outerAccReg = {_RANDOM[2'h1][31:28], _RANDOM[2'h2][16:0]};	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :588:54, :605:51
-        blockPartialHeld = {_RANDOM[2'h2][31:17], _RANDOM[2'h3][5:0]};	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :605:51, :612:58
-        validReg = _RANDOM[2'h3][6];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :612:58, :618:48
+        _RANDOM[/*Zero width*/ 1'b0] = `RANDOM;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
+        accReg = _RANDOM[/*Zero width*/ 1'b0][20:0];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :367:49
+        validReg = _RANDOM[/*Zero width*/ 1'b0][21];	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :367:49, :368:49
       `endif // RANDOMIZE_REG_INIT
-      if (_asyncRstN_T_1) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :542:24
-        innerAccReg = 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51
-        blockCnt = 2'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :551:48
-        outerAccReg = 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51, :605:51
-        validReg = 1'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:542:24, :618:48
+      if (_asyncRstN_T_1) begin	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :366:22
+        accReg = 21'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:367:49
+        validReg = 1'h0;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :368:49
       end
     end // initial
     `ifdef FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
       `FIRRTL_AFTER_INITIAL	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7
     `endif // FIRRTL_AFTER_INITIAL
   `endif // ENABLE_INITIAL_REG_
-  CustomOperator_E2M3_to_E2M3 op (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inA     (io_op_a_i[5:0]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:428:29
-    .io_inB     (io_op_b_i[5:0]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:429:29
+  CustomOperator_E2M3_to_E2M3 op (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inA     (io_op_a_i[5:0]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:238:29
+    .io_inB     (io_op_b_i[5:0]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:239:29
     .io_outSign (_op_io_outSign),
     .io_outExp  (_op_io_outExp),
     .io_outMant (_op_io_outMant)
   );
-  CustomOperator_E2M3_to_E2M3 op_1 (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inA     (io_op_a_i[11:6]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:428:29
-    .io_inB     (io_op_b_i[11:6]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:429:29
+  CustomOperator_E2M3_to_E2M3 op_1 (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inA     (io_op_a_i[11:6]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:238:29
+    .io_inB     (io_op_b_i[11:6]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:239:29
     .io_outSign (_op_1_io_outSign),
     .io_outExp  (_op_1_io_outExp),
     .io_outMant (_op_1_io_outMant)
   );
-  CustomOperator_E2M3_to_E2M3 op_2 (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inA     (io_op_a_i[17:12]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:428:29
-    .io_inB     (io_op_b_i[17:12]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:429:29
+  CustomOperator_E2M3_to_E2M3 op_2 (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inA     (io_op_a_i[17:12]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:238:29
+    .io_inB     (io_op_b_i[17:12]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:239:29
     .io_outSign (_op_2_io_outSign),
     .io_outExp  (_op_2_io_outExp),
     .io_outMant (_op_2_io_outMant)
   );
-  CustomOperator_E2M3_to_E2M3 op_3 (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inA     (io_op_a_i[23:18]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:428:29
-    .io_inB     (io_op_b_i[23:18]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:429:29
+  CustomOperator_E2M3_to_E2M3 op_3 (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inA     (io_op_a_i[23:18]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:238:29
+    .io_inB     (io_op_b_i[23:18]),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:239:29
     .io_outSign (_op_3_io_outSign),
     .io_outExp  (_op_3_io_outExp),
     .io_outMant (_op_3_io_outMant)
   );
-  FixedFPTree_exp6_mant8_out9_vec4_range4 tree (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:442:22
-    .io_inputs_0_sign (_op_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_0_exp  ({{2{_op_io_outExp[3]}}, _op_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22, :453:30
-    .io_inputs_0_mant (_op_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_1_sign (_op_1_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_1_exp  ({{2{_op_1_io_outExp[3]}}, _op_1_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22, :453:30
-    .io_inputs_1_mant (_op_1_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_2_sign (_op_2_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_2_exp  ({{2{_op_2_io_outExp[3]}}, _op_2_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22, :453:30
-    .io_inputs_2_mant (_op_2_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_3_sign (_op_3_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
-    .io_inputs_3_exp  ({{2{_op_3_io_outExp[3]}}, _op_3_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22, :453:30
-    .io_inputs_3_mant (_op_3_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:427:22
+  FixedFPTree_exp6_mant8_out9_vec4_range4 tree (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+    .io_inputs_0_sign (_op_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_0_exp  ({{2{_op_io_outExp[3]}}, _op_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22, :272:30
+    .io_inputs_0_mant (_op_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_1_sign (_op_1_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_1_exp  ({{2{_op_1_io_outExp[3]}}, _op_1_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22, :272:30
+    .io_inputs_1_mant (_op_1_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_2_sign (_op_2_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_2_exp  ({{2{_op_2_io_outExp[3]}}, _op_2_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22, :272:30
+    .io_inputs_2_mant (_op_2_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_3_sign (_op_3_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
+    .io_inputs_3_exp  ({{2{_op_3_io_outExp[3]}}, _op_3_io_outExp}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22, :272:30
+    .io_inputs_3_mant (_op_3_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:237:22
     .io_out_sign      (_tree_io_out_sign),
     .io_out_exp       (_tree_io_out_exp),
     .io_out_mant      (_tree_io_out_mant)
   );
-  FPNAdder innerAdder (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:545:28
-    .io_a   (innerAccReg),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:543:51
-    .io_b
-      ({_tree_io_out_sign,
-        {{2{_tree_io_out_exp[5]}}, _tree_io_out_exp} + 8'h7F,
-        _tree_io_out_mant,
-        3'h0}),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :442:22, :515:42, :523:28
-    .io_out (_innerAdder_io_out)
+  ScaleAddition_E2M3_to_E2M3_scale_UE6M2_wide9 sa (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+    .io_inOpSign      (_tree_io_out_sign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+    .io_inOpExp       (_tree_io_out_exp),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+    .io_inOpMant      (_tree_io_out_mant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:258:22
+    .io_inShareScaleA (io_share_exp_A_i),
+    .io_inShareScaleB (io_share_exp_B_i),
+    .io_outSign       (_sa_io_outSign),
+    .io_outExp        (_sa_io_outExp),
+    .io_outMant       (_sa_io_outMant)
   );
-  FPxScale12b_E2M3_x_E2M3_UE6M2 fpScale (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:594:27
-    .io_fpIn   ((&blockCnt) ? _innerAdder_io_out : innerHeld),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:545:28, :551:48, :552:39, :588:54, :595:31
-    .io_scaleA ((&blockCnt) ? io_share_exp_A_i : scaleAHeld),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:551:48, :552:39, :590:54, :597:31
-    .io_scaleB ((&blockCnt) ? io_share_exp_B_i : scaleBHeld),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:551:48, :552:39, :592:54, :599:31
-    .io_fpOut  (_fpScale_io_fpOut)
+  ScaleToFP12b_E2M3_x_E2M3_UE6M2_wide15 conv (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:346:24
+    .io_inSign (_sa_io_outSign),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+    .io_inExp  (_sa_io_outExp),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+    .io_inMant (_sa_io_outMant),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:325:22
+    .io_out    (_conv_io_out)
   );
-  FPNAdder outerAdder (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:614:28
-    .io_a   (outerAccReg),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:605:51
-    .io_b   ((&blockCnt) ? _fpScale_io_fpOut : blockPartialHeld),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:551:48, :552:39, :594:27, :612:58, :616:27
-    .io_out (_outerAdder_io_out)
+  FPNAdder accAdder (	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:370:26
+    .io_a   (accReg),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:367:49
+    .io_b   (_conv_io_out),	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:346:24
+    .io_out (_accAdder_io_out)
   );
-  assign io_validOut = validReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :618:48
-  assign io_accOut = outerAccReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :605:51
+  assign io_validOut = validReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :368:49
+  assign io_accOut = accReg;	// src/main/scala/mx/mac/FDPUPostScaleReductionTree.scala:47:7, :367:49
 endmodule
 
 module MaxScaleFinder_UE6M2_E2M3_blk16_in21(	// src/main/scala/mx/requant/RequantFP8.scala:257:7
