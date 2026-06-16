@@ -97,6 +97,7 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
         treeArch = peTreeArch,
         cyclesPerBlock = peCpb,
+        accMantBits = cfg.accMantBitsOverride,
         istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
@@ -143,15 +144,14 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
     accCnt := 0.U
   }
 
-  // ── RequantFP8: FP32 → MXFP8/FP6 ────────────────────────────────────────
+  // ── RequantFP8: PE narrow-FP → MXFP8/FP6 ───────────────────────────────
   val rq = Module(new RequantFP8(cfg.requantCfg))
 
-  // PE.accOut is narrow ({sign[1], exp[8], mant[M]}). Zero-extend each
-  // element's mantissa to 23 bits to form a valid IEEE-754 FP32 word before
-  // packing for RequantFP8. The pad bits are constant '0 — synthesis
-  // (compile_ultra) propagates them through and sweeps the unused FFs in
-  // RequantFP8.buffer.
-  private val fp32Pad = 32 - cfg.dstWidth
+  // PE.accOut is narrow ({sign[1], exp[8], mant[accMantBits]}).  When
+  // requantCfg.inputMantWidth matches the PE's accMantBits, fp32Pad = 0
+  // and the wires connect pad-free.  Otherwise zero-extend each element to
+  // requantCfg.inputWidth before packing.
+  private val fp32Pad = cfg.requantCfg.inputWidth - cfg.dstWidth
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield (if (fp32Pad > 0) Cat(results(r)(c), 0.U(fp32Pad.W)) else results(r)(c))
@@ -240,6 +240,7 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
         treeArch = peTreeArch,
         cyclesPerBlock = peCpb,
+        accMantBits = cfg.accMantBitsOverride,
         istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
@@ -277,11 +278,11 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
     accCnt := 0.U
   }
 
-  // ── RequantINT8: FP32 → INT8 ──────────────────────────────────────────────
+  // ── RequantINT8: PE narrow-FP → INT8 ──────────────────────────────────────
   val rq = Module(new RequantINT8(cfg.requantCfg))
 
-  // Narrow→FP32 zero-extend; see PEArrayWrapper for rationale.
-  private val fp32Pad = 32 - cfg.dstWidth
+  // Narrow→requant zero-extend.  See PEArrayWrapper above for rationale.
+  private val fp32Pad = cfg.requantCfg.inputWidth - cfg.dstWidth
   rq.io.fp32_in := Cat(
     for (r <- 0 until cfg.tileRows; c <- 0 until cfg.tileCols)
       yield (if (fp32Pad > 0) Cat(results(r)(c), 0.U(fp32Pad.W)) else results(r)(c))

@@ -12,6 +12,7 @@ generated/*
 !generated/dse_compare
 !generated/dse_pipeline_sweep
 !generated/dse_full_sweep
+!generated/key_configs
 test_run_dir
 
 # Files

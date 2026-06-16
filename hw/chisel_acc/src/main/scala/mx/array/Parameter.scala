@@ -28,7 +28,12 @@ case class PEArrayConfig(
   requantCfg:    RequantConfig,
   K:             Int               = 16384,
   exposeResults: Boolean           = false,  // expose FP32 results_o IO for testing
-  archOverride:  Option[ArchOverride] = None
+  archOverride:  Option[ArchOverride] = None,
+  /** Override the PE accumulator mantissa width (default -1 = derive from
+   *  AccPrecision.recommended).  Must match requantCfg.inputMantWidth for
+   *  the pad-free narrow path; otherwise wrapper zero-extends PE output
+   *  to requant input width. */
+  accMantBitsOverride: Int = -1
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -43,10 +48,17 @@ case class PEArrayConfig(
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   /** Shared scale factor bit width. */
   val scaleWidth = macCfg.stype.totalScaleWidth
+  /** Effective accumulator mantissa bits used by both FDPU and dstWidth. */
+  val effAccMantBits: Int =
+    if (accMantBitsOverride > 0) accMantBitsOverride
+    else AccPrecision.recommended(macCfg, K)
   /** PE accumulator output width: 1 sign + 8 exp + accMantBits (narrow,
-   *  matches FDPUPostScaleReductionTree.io.accOut). The 3 requant wrappers
-   *  zero-extend this to 32 bits before feeding RequantFP8/INT8/BF16. */
-  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
+   *  matches FDPUPostScaleReductionTree.io.accOut). The requant wrapper
+   *  zero-extends this to requantCfg.inputWidth before feeding the
+   *  requant block.  Pad-free when requantCfg.inputMantWidth == accMantBits. */
+  val dstWidth   = 1 + 8 + effAccMantBits
+  require(requantCfg.inputWidth >= dstWidth,
+    s"requantCfg.inputWidth (${requantCfg.inputWidth}) must be >= PE dstWidth ($dstWidth)")
   /** Single output element bit width. */
   val fp8Width   = requantCfg.outputType.totalWidth
   /** Number of PE-cycles spanning one MX block — used by FDPU's block-deferred
@@ -74,7 +86,8 @@ case class PEArrayINT8Config(
   requantCfg:    RequantINT8Config,
   K:             Int               = 16384,
   exposeResults: Boolean           = false,  // expose FP32 results_o IO for testing
-  archOverride:  Option[ArchOverride] = None
+  archOverride:  Option[ArchOverride] = None,
+  accMantBitsOverride: Int = -1
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -86,7 +99,12 @@ case class PEArrayINT8Config(
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
-  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
+  val effAccMantBits: Int =
+    if (accMantBitsOverride > 0) accMantBitsOverride
+    else AccPrecision.recommended(macCfg, K)
+  val dstWidth   = 1 + 8 + effAccMantBits
+  require(requantCfg.inputWidth >= dstWidth,
+    s"requantCfg.inputWidth (${requantCfg.inputWidth}) must be >= PE dstWidth ($dstWidth)")
   /** PE-cycles per MX block (block-deferred scale apply). See PEArrayConfig. */
   val cyclesPerBlock = requantCfg.blockSize / vectorSize
   require(requantCfg.blockSize % vectorSize == 0,
@@ -115,7 +133,8 @@ case class PEArrayFP32Config(
   vectorSize: Int,
   tileRows:   Int,
   tileCols:   Int,
-  K:          Int = 16384
+  K:          Int = 16384,
+  accMantBitsOverride: Int = -1
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -123,9 +142,12 @@ case class PEArrayFP32Config(
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
+  val effAccMantBits: Int =
+    if (accMantBitsOverride > 0) accMantBitsOverride
+    else AccPrecision.recommended(macCfg, K)
   /** Narrow FP word width: 1 sign + 8 exp + accMantBits. Downstream
    *  consumers must zero-extend to 32 bits if FP32 is required. */
-  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
+  val dstWidth   = 1 + 8 + effAccMantBits
   /** FP32 pass-through carries no block structure here — keep scale-apply
    *  per-cycle for simplicity (cyclesPerBlock=1 ⇒ FDPU uses buildSingleAcc). */
   val cyclesPerBlock = 1
@@ -137,7 +159,8 @@ case class PEArrayBF16Config(
   tileRows:      Int,
   tileCols:      Int,
   K:             Int     = 16384,
-  exposeResults: Boolean = false  // expose FP32 results_o IO for testing
+  exposeResults: Boolean = false,  // expose FP32 results_o IO for testing
+  accMantBitsOverride: Int = -1
 ) {
   require(vectorSize >= 1, "vectorSize must be >= 1")
   require(K >= 1, "K must be >= 1")
@@ -147,7 +170,10 @@ case class PEArrayBF16Config(
   val srcWidthA  = macCfg.elementTypeA.totalWidth * vectorSize
   val srcWidthB  = macCfg.elementTypeB.totalWidth * vectorSize
   val scaleWidth = macCfg.stype.totalScaleWidth
-  val dstWidth   = 1 + 8 + AccPrecision.recommended(macCfg, K)
+  val effAccMantBits: Int =
+    if (accMantBitsOverride > 0) accMantBitsOverride
+    else AccPrecision.recommended(macCfg, K)
+  val dstWidth   = 1 + 8 + effAccMantBits
   /** BF16 wrapper has no requantCfg.blockSize exposed — keep scale-apply
    *  per-cycle for simplicity (cyclesPerBlock=1 ⇒ FDPU uses buildSingleAcc). */
   val cyclesPerBlock = 1

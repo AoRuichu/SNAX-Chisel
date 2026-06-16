@@ -18,7 +18,14 @@ case class RequantConfig(
   tileRows:   Int,
   tileCols:   Int,
   outputType: ElementType,
-  scaleType:  ScaleType = ScaleFormats.UE8M0
+  scaleType:  ScaleType = ScaleFormats.UE8M0,
+  /** Mantissa width (explicit, no implicit-1) of the FP input that the PE
+   *  produces.  Default 23 reproduces full IEEE-754 FP32 (32-bit input).
+   *  When the upstream PE outputs a narrower FP format (e.g. FP20 for
+   *  M_acc=11, FP21 for M_acc=12), set this to that M_acc.  The exponent
+   *  field width is fixed at 8 bits, so total input bit-width per element
+   *  becomes  1 + 8 + inputMantWidth. */
+  inputMantWidth: Int = 23
 ) {
   require(Seq(16, 32, 64).contains(blockSize),
     s"blockSize must be 16, 32, or 64; got $blockSize")
@@ -26,13 +33,18 @@ case class RequantConfig(
     s"tileRows must be 4, 8, or 16; got $tileRows")
   require(Seq(4, 8, 16).contains(tileCols),
     s"tileCols must be 4, 8, or 16; got $tileCols")
-  require(Seq("E5M2", "E4M3", "E3M2", "E2M3").contains(outputType.name),
-    s"outputType must be E5M2, E4M3, E3M2, or E2M3; got ${outputType.name}")
+  require(Seq("E5M2", "E4M3", "E3M2", "E2M3", "E2M1").contains(outputType.name),
+    s"outputType must be E5M2, E4M3, E3M2, E2M3, or E2M1; got ${outputType.name}")
   require(blockSize % tileCols == 0,
     s"blockSize ($blockSize) must be divisible by tileCols ($tileCols)")
+  require(inputMantWidth >= outputType.elementWidthMant + 2 && inputMantWidth <= 23,
+    s"inputMantWidth must be in [${outputType.elementWidthMant + 2}, 23] " +
+    s"(need >= outMantBits+2 for guard/sticky); got $inputMantWidth")
 
   /** How many PE-array outputs (each of width tileCols) fill one MX block. */
   val batchesPerBlock: Int = blockSize / tileCols
+  /** Total per-element FP input width (sign + 8-bit exp + mantissa). */
+  val inputWidth: Int = 1 + 8 + inputMantWidth
 }
 
 object DefaultRequantConfigs {

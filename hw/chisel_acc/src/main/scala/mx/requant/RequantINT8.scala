@@ -21,7 +21,13 @@ case class RequantINT8Config(
   blockSize: Int,
   tileRows:  Int,
   tileCols:  Int,
-  scaleType: ScaleType = ScaleFormats.UE8M0
+  scaleType: ScaleType = ScaleFormats.UE8M0,
+  /** Mantissa width (explicit, no implicit-1) of the FP input.  Default 23
+   *  reproduces full IEEE-754 FP32.  Set this to the upstream PE's M_acc
+   *  (e.g. 13 / 14 for INT8² configs) to shrink the buffer + division
+   *  datapath.  Exponent width is fixed at 8 bits, so total per-element
+   *  input width = 1 + 8 + inputMantWidth. */
+  inputMantWidth: Int = 23
 ) {
   require(Seq(16, 32, 64).contains(blockSize),
     s"blockSize must be 16, 32, or 64; got $blockSize")
@@ -31,8 +37,12 @@ case class RequantINT8Config(
     s"tileCols must be 4, 8, or 16; got $tileCols")
   require(blockSize % tileCols == 0,
     s"blockSize ($blockSize) must be divisible by tileCols ($tileCols)")
+  require(inputMantWidth >= 8 && inputMantWidth <= 23,
+    s"inputMantWidth must be in [8, 23] for INT8 requant; got $inputMantWidth")
 
   val batchesPerBlock: Int = blockSize / tileCols
+  /** Total per-element FP input width (sign + 8-bit exp + mantissa). */
+  val inputWidth: Int = 1 + 8 + inputMantWidth
 }
 
 // ============================================================
@@ -81,30 +91,40 @@ private object INT8Limits {
  * Subnormals: flush to 0.
  */
 class FP32ToMXINT8(val cfg: RequantINT8Config) extends Module {
-  override def desiredName = s"FP32ToMXINT8_${cfg.scaleType.name}_blk${cfg.blockSize}"
+  override def desiredName = {
+    val tag = if (cfg.inputMantWidth == 23) "" else s"_in${cfg.inputWidth}"
+    s"FP32ToMXINT8_${cfg.scaleType.name}_blk${cfg.blockSize}${tag}"
+  }
+
+  // Input bit layout: [sign | 8-bit exp | inputMantWidth mantissa]
+  private val IN_W = cfg.inputWidth
+  private val M_IN = cfg.inputMantWidth
 
   val io = IO(new Bundle {
-    val fp32_in      = Input(UInt(32.W))
+    val fp32_in      = Input(UInt(IN_W.W))
     val shared_scale = Input(UInt(cfg.scaleType.totalScaleWidth.W))   // UE8M0: max biased FP32 exp; ExMy: {biased_exp[E-1:0], mant[M-1:0]}
     val int8_out     = Output(UInt(8.W))  // two's complement signed INT8
   })
 
-  // ── Unpack FP32 ──────────────────────────────────────────
-  val sign     = io.fp32_in(31)
-  val fp32_exp = io.fp32_in(30, 23)
-  val fp32_man = io.fp32_in(22, 0)
+  // ── Unpack narrow-FP input ───────────────────────────────
+  val sign     = io.fp32_in(IN_W - 1)            // bit M_IN+8
+  val fp32_exp = io.fp32_in(IN_W - 2, M_IN)      // 8 bits
+  val fp32_man = io.fp32_in(M_IN - 1, 0)         // M_IN-bit mantissa
   val isZeroOrSubnormal = fp32_exp === 0.U
   val fp32_exp_s = fp32_exp.zext
 
   if (cfg.scaleType.mantScaleWidth == 0) {
-    // ── UE8M0 path (legacy barrel-shift, unchanged) ────────
+    // ── UE8M0 path (barrel-shift; widths parameterised) ────
     val k = fp32_exp_s - io.shared_scale.zext + 6.S
 
-    val FRAC = 24
-    val fp32FullMant = Cat(fp32_exp.orR, fp32_man)           // 24 bits
-    val mantExt      = Cat(fp32FullMant, 0.U(FRAC.W))        // 48 bits
+    // FRAC = 1 + M_IN = width of the implicit-1 + mantissa stack.
+    // Below it we pad FRAC zero bits to provide guard + sticky room.
+    val FRAC         = 1 + M_IN
+    val fp32FullMant = Cat(fp32_exp.orR, fp32_man)           // (1+M_IN) bits
+    val mantExt      = Cat(fp32FullMant, 0.U(FRAC.W))        // 2*(1+M_IN) bits
 
-    val shiftAmt = (23.S - k).asUInt
+    // shiftAmt = M_IN − k positions the int8 magnitude at bits [FRAC+6:FRAC]
+    val shiftAmt = (M_IN.S - k).asUInt
     val shifted  = mantExt >> shiftAmt
 
     val mag7      = shifted(FRAC + 6, FRAC)
@@ -158,10 +178,10 @@ class FP32ToMXINT8(val cfg: RequantINT8Config) extends Module {
     // ── Mantissa division q = (1.fp32_mant) / (1.scale_mant) ──
     val M_elem = INT8Limits.mantBits           // 6
     val EXTRA  = M_elem + 3                    // 9, mirrors FP8's "outMantBits + 3"
-    val IMPL   = 23 - M + EXTRA                // (32 − M); implicit-1 position when q ≥ 1
+    val IMPL   = M_IN - M + EXTRA              // implicit-1 position when q ≥ 1
 
-    val fp32FullMant = Cat(fp32_exp.orR, fp32_man)                          // 24-bit
-    val qNum         = Cat(fp32FullMant, 0.U(EXTRA.W))                      // (24+EXTRA)-bit
+    val fp32FullMant = Cat(fp32_exp.orR, fp32_man)                          // (1+M_IN)-bit
+    val qNum         = Cat(fp32FullMant, 0.U(EXTRA.W))                      // (1+M_IN+EXTRA)-bit
     val safeDenom    = Mux(scaleFullMant === 0.U, 1.U((M + 1).W), scaleFullMant)
     val q_int        = qNum / safeDenom
     val q_rem        = qNum % safeDenom
@@ -220,11 +240,16 @@ class FP32ToMXINT8(val cfg: RequantINT8Config) extends Module {
  *   limits (E_elem = 0, maxNormSignifInt = 127, M_elem = 6).
  */
 class MaxScaleFinderINT8(val cfg: RequantINT8Config) extends Module {
-  override def desiredName =
-    s"MaxScaleFinderINT8_${cfg.scaleType.name}_blk${cfg.blockSize}"
+  override def desiredName = {
+    val tag = if (cfg.inputMantWidth == 23) "" else s"_in${cfg.inputWidth}"
+    s"MaxScaleFinderINT8_${cfg.scaleType.name}_blk${cfg.blockSize}${tag}"
+  }
+
+  private val IN_W = cfg.inputWidth
+  private val M_IN = cfg.inputMantWidth
 
   val io = IO(new Bundle {
-    val fp32_in   = Input(Vec(cfg.blockSize, UInt(32.W)))
+    val fp32_in   = Input(Vec(cfg.blockSize, UInt(IN_W.W)))
     val max_scale = Output(UInt(cfg.scaleType.totalScaleWidth.W))
   })
 
@@ -240,8 +265,8 @@ class MaxScaleFinderINT8(val cfg: RequantINT8Config) extends Module {
     }
 
   if (cfg.scaleType.mantScaleWidth == 0) {
-    // UE8M0: just the max biased FP32 exponent (legacy MXINT8).
-    io.max_scale := maxTree(io.fp32_in.map(_(30, 23)))
+    // UE8M0: just the max biased FP exponent (legacy MXINT8).
+    io.max_scale := maxTree(io.fp32_in.map(_(IN_W - 2, M_IN)))
 
   } else {
     // ExMy: NVFP4-style ceil-encode max_abs / (127/64).
@@ -254,13 +279,13 @@ class MaxScaleFinderINT8(val cfg: RequantINT8Config) extends Module {
     val E_elem        = INT8Limits.emax
     val maxNormSignifInt = INT8Limits.maxNormSignifInt
 
-    val maxMag31     = maxTree(io.fp32_in.map(_(30, 0)))
-    val maxBiasedExp = maxMag31(30, 23)
-    val maxMant23    = maxMag31(22, 0)
+    val maxMag31     = maxTree(io.fp32_in.map(_(IN_W - 2, 0)))       // (8+M_IN)-bit magnitude
+    val maxBiasedExp = maxMag31(IN_W - 2, M_IN)                       // 8-bit biased exp
+    val maxMant23    = maxMag31(M_IN - 1, 0)                          // M_IN-bit mantissa
     val maxIsZero    = !maxBiasedExp.orR
 
     val EXTRA = M + 3
-    val IMPL  = 23 - M_elem + EXTRA
+    val IMPL  = M_IN - M_elem + EXTRA
     val fp32FullMant = Cat(maxBiasedExp.orR, maxMant23)
     val qNum         = Cat(fp32FullMant, 0.U(EXTRA.W))
     val divisorU     = maxNormSignifInt.U((M_elem + 1).W)
@@ -309,11 +334,13 @@ class MaxScaleFinderINT8(val cfg: RequantINT8Config) extends Module {
  * Purely combinational: MaxScaleFinderINT8 → blockSize × FP32ToMXINT8.
  */
 class RequantBlockINT8(val cfg: RequantINT8Config) extends Module {
-  override def desiredName =
-    s"RequantBlockINT8_${cfg.scaleType.name}_blk${cfg.blockSize}"
+  override def desiredName = {
+    val tag = if (cfg.inputMantWidth == 23) "" else s"_in${cfg.inputWidth}"
+    s"RequantBlockINT8_${cfg.scaleType.name}_blk${cfg.blockSize}${tag}"
+  }
 
   val io = IO(new Bundle {
-    val fp32_in      = Input(Vec(cfg.blockSize, UInt(32.W)))
+    val fp32_in      = Input(Vec(cfg.blockSize, UInt(cfg.inputWidth.W)))
     val shared_scale = Output(UInt(cfg.scaleType.totalScaleWidth.W))
     val int8_out     = Output(Vec(cfg.blockSize, UInt(8.W)))
   })
@@ -343,14 +370,17 @@ class RequantBlockINT8(val cfg: RequantINT8Config) extends Module {
  *   int8_out[i][k]       — k-th INT8 element of row i (two's complement)
  */
 class RequantINT8(val cfg: RequantINT8Config) extends Module {
-  override def desiredName =
-    s"requant"
+  override def desiredName = {
+    val tag = if (cfg.inputMantWidth == 23) "" else s"_in${cfg.inputWidth}"
+    s"requant${tag}"
+  }
 
-  private val B   = cfg.batchesPerBlock
-  private val nIn = cfg.tileRows * cfg.tileCols
+  private val B    = cfg.batchesPerBlock
+  private val nIn  = cfg.tileRows * cfg.tileCols
+  private val IN_W = cfg.inputWidth
 
   val io = IO(new Bundle {
-    val fp32_in          = Input(UInt((nIn * 32).W))
+    val fp32_in          = Input(UInt((nIn * IN_W).W))
     val valid_in         = Input(Bool())
     val shared_scale_out = Output(UInt((cfg.tileRows * cfg.scaleType.totalScaleWidth).W))
     val int8_out         = Output(UInt((cfg.tileRows * cfg.blockSize * 8).W))
@@ -359,13 +389,13 @@ class RequantINT8(val cfg: RequantINT8Config) extends Module {
 
   def extractFP32(row: Int, col: Int): UInt = {
     val k = row * cfg.tileCols + col
-    io.fp32_in(nIn * 32 - k * 32 - 1, nIn * 32 - (k + 1) * 32)
+    io.fp32_in(nIn * IN_W - k * IN_W - 1, nIn * IN_W - (k + 1) * IN_W)
   }
 
   // Active-low async reset — matches FusedDotProductUnit convention.
   val asyncRstN = (!reset.asBool).asAsyncReset
 
-  val buffer    = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(32.W)))))
+  val buffer    = withReset(asyncRstN)(Reg(Vec(cfg.tileRows, Vec(cfg.blockSize, UInt(IN_W.W)))))
   val batchCnt  = withReset(asyncRstN)(RegInit(0.U(6.W)))
   val blockDone = io.valid_in && (batchCnt === (B - 1).U)
 
