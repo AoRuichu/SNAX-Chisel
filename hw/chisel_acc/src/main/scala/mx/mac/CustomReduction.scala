@@ -100,21 +100,13 @@ class FixedFPReductionTree(
   // LZC normalize + RNE round.  Always correct across all (productExpRange,
   // mantW) combinations; specialised archs trade generality for area/delay.
   private def buildGeneric(): Unit = {
-    val G       = 3   // RNE guard bits (used by wideningExtra + require below)
+    val G       = 3   // guard bits for RNE at the final rounding step
     val log2N   = log2Ceil(vectorSize.max(2))
     // fracBits: bits below the mantissa MSB in the integer representation.
-    // = (a) productExpRange alignment headroom + (b) widening headroom when
-    //   outMantW > inMantW + log2N + productExpRange.
-    //
-    // Note: we deliberately do NOT add G to fracBitsBase.  The shiftAmt is
-    // capped at fracBits, but in practice diffRaw = maxExp − exp_i never
-    // exceeds productExpRange (which is the *definition* of productExpRange).
-    // So shiftAmt ≤ productExpRange always, the lane mantissas land no lower
-    // than bit `fracBits − productExpRange + inMantW − 1` ≥ 0, and the bottom
-    // G bits of absMag would stay permanently zero — pure waste.  RNE sticky
-    // already OR's everything below the round bit, so widening fracBits by G
-    // adds zero-contribution bits to that OR.
-    val fracBitsBase    = productExpRange
+    // Includes (a) productExpRange alignment headroom and (b) widening
+    // headroom when outMantW > inMantW (so the widened RNE has G guard
+    // bits below the extraction window).  G is included once.
+    val fracBitsBase    = productExpRange + G
     // Widening logic for the rounding path: when outMantW > inMantW+log2N we
     // need extra fracBits so the RNE has G guard bits below the extraction
     // window.  In skipFinalRound mode we emit the entire absMagW unrounded,
@@ -143,20 +135,10 @@ class FixedFPReductionTree(
     val aligned = Wire(Vec(vectorSize, SInt((absMagW + 1).W)))
     for (i <- 0 until vectorSize) {
       val diffRaw  = (maxExp - io.inputs(i).exp).asUInt        // ≥ 0, SInt subtraction
-      val overflowed = diffRaw > fracBits.U
-      val shiftAmt = Mux(overflowed, fracBits.U(log2Ceil(fracBits + 1).W),
-                                     diffRaw(log2Ceil(fracBits + 1) - 1, 0))
+      val shiftAmt = Mux(diffRaw > fracBits.U, fracBits.U(log2Ceil(fracBits + 1).W),
+                         diffRaw(log2Ceil(fracBits + 1) - 1, 0))
       val extended = Cat(0.U(log2N.W), io.inputs(i).mant, 0.U(fracBits.W))  // absMagW bits
-      // HARD DROP: when diffRaw > fracBits, the lane's TRUE contribution is
-      // mant·2^(−true_diff) — by definition negligible vs the dominant lane.
-      // Soft-cap (= extended >> fracBits) would represent it as mant·2^(−cap),
-      // an amplified-and-WRONG contribution.  Zeroing it matches the true
-      // contribution to within 2^(cap−true_diff)× precision.  Cost: one extra
-      // Mux2; the comparator is shared with shiftAmt's cap.  When
-      // fracBits = productExpRange (no override), `overflowed` is always
-      // false for valid inputs, the Mux folds out — baseline RTL unchanged.
-      val shiftedRaw = (extended >> shiftAmt)(absMagW - 1, 0)
-      val shifted    = Mux(overflowed, 0.U(absMagW.W), shiftedRaw)
+      val shifted  = (extended >> shiftAmt)(absMagW - 1, 0)                   // absMagW bits, UInt
       // Sign-magnitude → 2's complement
       val posVal = shifted.zext.asSInt  // absMagW+1 SInt (MSB=0)
       aligned(i) := Mux(io.inputs(i).sign.asBool, -posVal, posVal)

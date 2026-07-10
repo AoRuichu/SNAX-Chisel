@@ -129,7 +129,7 @@ object GeneratePEArray extends App {
         tileCols   = tileCols,
         requantCfg = RequantConfig(blockSize, tileRows, tileCols, outType, scale)
       )
-      emitVerilog(new PEArrayWrapper(cfg), Arra  y("--target-dir", outDir))
+      emitVerilog(new PEArrayWrapper(cfg), Array("--target-dir", outDir))
   }
 
   println(s"[GeneratePEArray] Done → $outDir")

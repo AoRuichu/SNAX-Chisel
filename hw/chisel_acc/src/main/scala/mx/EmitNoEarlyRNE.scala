@@ -53,7 +53,7 @@ object EmitNoEarlyRNE extends App {
       new FDPUPostScaleReductionTree(
         scfg = scfg, vectorSize = vsize, K = Kdefault,
         accMantBits = 12,
-        treeArch = TreeArch.Generic,
+        treeArch = TreeArch.Generic, cyclesPerBlock = 1,
         noEarlyRNE = false, istest = false
       ),
       Array("--target-dir", dir)
@@ -69,7 +69,7 @@ object EmitNoEarlyRNE extends App {
     emitVerilog(
       new FDPUPostScaleReductionTree(
         scfg = scfg, vectorSize = vsize, K = Kdefault,
-        treeArch = TreeArch.Generic,
+        treeArch = TreeArch.Generic, cyclesPerBlock = 1,
         noEarlyRNE = true, istest = false
       ),
       Array("--target-dir", dir)

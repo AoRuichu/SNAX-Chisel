@@ -5,7 +5,6 @@ import scala.io.Source
 import chisel3._
 import mx.array._
 import mx.mac.{FDPUPostScaleReductionTree, MXFormats, ScaleAddConfig, ScaleFormats, TreeArch}
-import mx.mac.deferred_archs.FDPUFactory
 
 /** Emit two PE variants of E5M2² × UE6M2 at the same M_acc=12 for area
  *  comparison via Yosys:
@@ -48,7 +47,7 @@ object EmitArchCompare extends App {
   {
     val dir = s"$Root/cycleFP_M$M_acc"
     cleanDir(dir)
-    emitVerilog(FDPUFactory(
+    emitVerilog(new FDPUPostScaleReductionTree(
       scfg = scfg, vectorSize = vsize, K = K,
       accMantBits = M_acc,
       treeArch = TreeArch.Generic, cyclesPerBlock = 1,
@@ -62,7 +61,7 @@ object EmitArchCompare extends App {
   {
     val dir = s"$Root/blockdef_M$M_acc"
     cleanDir(dir)
-    emitVerilog(FDPUFactory(
+    emitVerilog(new FDPUPostScaleReductionTree(
       scfg = scfg, vectorSize = vsize, K = K,
       accMantBits = M_acc,
       treeArch = TreeArch.Generic, cyclesPerBlock = 4,

@@ -5,7 +5,6 @@ import mx.mac.{MXFormats, ScaleFormats, ScaleAddConfig, TreeArch}
 import mx.array.{ArchOverride, PEArrayConfig, PEArrayINT8Config, PEArrayWrapper, PEArrayWrapperINT8}
 import mx.requant.{RequantConfig, RequantFP8, RequantINT8, RequantINT8Config}
 import java.io.File
-import scala.io.Source
 
 /** Emit the 6 representative configs as integrated PE Array + Requant
  *  wrappers, with M_acc-aligned input width for the requant block (no
@@ -13,11 +12,6 @@ import scala.io.Source
  *
  *  All configs:
  *    blockSize=16, tileRows=4, tileCols=16, vectorSize=4
- *
- *  M_acc source of truth: macc_final_selection.csv (sweep output).
- *  Configs not in the CSV fall back to the OVERRIDES map below — kept
- *  explicit so the divergence between sweep-aligned and hand-picked
- *  values stays visible in code review.
  *
  *  Output layout:
  *    generated/key_configs/<label>/PE_Array.sv  (PE + integrated requant)
@@ -31,62 +25,19 @@ object EmitKeyConfigs extends App {
   val TILE_COLS  = 16
   val VEC        = 4
 
-  // ── M_acc source of truth: macc_final_selection.csv ─────────────────────
-  // Mirrors EmitRequantSweep.scala's loader.  Read at elaboration time so
-  // any future sweep refresh propagates automatically into the next emit.
-  case class Key(act: String, weight: String, scale: String)
-  val maccSel: Map[Key, Int] = {
-    val f = new File("macc_final_selection.csv")
-    require(f.exists,
-      "macc_final_selection.csv not found in cwd; run the sweep first " +
-      "(plot_macc_sweep_band.py) or invoke sbt from hw/chisel_acc/.")
-    val src    = Source.fromFile(f)
-    val lines  = try src.getLines().toList finally src.close()
-    val header = lines.head.split(",").map(_.trim)
-    val iA = header.indexOf("typeA")
-    val iB = header.indexOf("typeB")
-    val iS = header.indexOf("scale")
-    val iM = header.indexOf("M_sel")
-    lines.drop(1).flatMap { ln =>
-      val c = ln.split(",").map(_.trim)
-      if (c.length > iM) Some(Key(c(iA), c(iB), c(iS)) -> c(iM).toInt) else None
-    }.toMap
-  }
-
-  // ── Per-pair overrides for configs not covered by the sweep CSV ──────────
-  // Keep this list short and explicit — every entry here is a hand-picked
-  // value that bypassed the safety-margin sweep, so it must be justified.
-  val OVERRIDES: Map[Key, Int] = Map(
-    Key("E2M1", "E2M1", "UE5M3") -> 10,  // A4W4 optimal — extrapolated from UE6M2 row
-    Key("E2M1", "E2M1", "UE4M3") ->  9,  // NVFP4 reference — matches E2M1²+UE6M2 budget
-    Key("INT8", "INT8", "UE8M0") -> 13,  // Cuyckens MXINT8 reference — INT8² has tightest
-                                          //   output floor; AccPrecision recommends 14, but
-                                          //   13 enables the FP22 vs Cuyckens FP24 area win
-                                          //   while still satisfying ε_acc < ½·ε_req.
-  )
-
-  def lookupMacc(act: String, weight: String, scale: String): (Int, String) = {
-    val k = Key(act, weight, scale)
-    maccSel.get(k).map(_ -> "sweep CSV").orElse(
-      OVERRIDES.get(k).map(_ -> "hand-picked override")).getOrElse(
-      throw new RuntimeException(
-        s"No M_acc found for ($act, $weight, $scale) — add to CSV or OVERRIDES."))
-  }
-
   // 6 representative configs covering the energy-breakdown story.
-  // (act, weight, scale, role) — M_acc is looked up; label is derived.
-  case class Config(act: String, weight: String, scale: String, role: String) {
-    val (m_acc, source) = lookupMacc(act, weight, scale)
-    val label: String   = s"${act}_${weight}_${scale}_M${m_acc}"
-  }
+  // M_acc values from macc_final_selection.csv (sweep-aligned) plus two
+  // extrapolated entries for E2M1²+UE5M3 (A4W4 optimal) and E2M1²+UE4M3 (NVFP4).
+  case class Config(label: String, act: String, weight: String,
+                    scale: String, m_acc: Int, role: String)
 
   val CONFIGS = Seq(
-    Config("E5M2", "E5M2", "UE6M2", "Worst case (FP8, mantissa-bearing scale)"),
-    Config("E2M1", "E2M1", "UE8M0", "Smallest (FP4, power-of-2 scale)"),
-    Config("E2M1", "E2M1", "UE5M3", "A4W4 optimal (algo sweep)"),
-    Config("E2M1", "E2M1", "UE4M3", "NVFP4 reference"),
-    Config("INT8", "INT8", "UE8M0", "Cuyckens MXINT8 reference"),
-    Config("E2M3", "E2M3", "UE6M2", "MX FP6 reference"),
+    Config("E5M2_E5M2_UE6M2_M11", "E5M2", "E5M2", "UE6M2", 11, "Worst case (FP8, mantissa-bearing scale)"),
+    Config("E2M1_E2M1_UE8M0_M8",  "E2M1", "E2M1", "UE8M0", 8,  "Smallest (FP4, power-of-2 scale)"),
+    Config("E2M1_E2M1_UE5M3_M10", "E2M1", "E2M1", "UE5M3", 10, "A4W4 optimal (algo sweep)"),
+    Config("E2M1_E2M1_UE4M3_M9",  "E2M1", "E2M1", "UE4M3", 9,  "NVFP4 reference"),
+    Config("INT8_INT8_UE8M0_M13", "INT8", "INT8", "UE8M0", 13, "Cuyckens MXINT8 reference"),
+    Config("E2M3_E2M3_UE6M2_M12", "E2M3", "E2M3", "UE6M2", 12, "MX FP6 reference"),
   )
 
   val FMT = Map[String, mx.mac.ElementType](
@@ -108,14 +59,17 @@ object EmitKeyConfigs extends App {
     val scale = SCL(cfg.scale)
     val mac   = ScaleAddConfig(act, wt, scale)
 
-    // Force Generic tree arch — SmallFixedShift / TwoStageBarrel omit the
-    // SAFETY_G slack at the alignment stage and fail the
+    // Force Generic tree arch with cyclesPerBlock=1 (cycleFP — current
+    // baseline / thesis architecture).  SmallFixedShift / TwoStageBarrel
+    // omit G slack at the alignment stage and fail the
     // (outMantW + G ≤ absMagW) require when M_acc is set above the
-    // auto-recommended value.  The cyclesPerBlock field of ArchOverride
-    // is now vestigial (baseline always cycleFP); pass 1 for clarity.
+    // auto-recommended value, so we force Generic.  cpb=4 (blockdef) was
+    // dropped from the thesis after Pareto comparison (+10% power,
+    // −30% fmax).
     val arch = Some(ArchOverride(TreeArch.Generic, 1))
 
     if (cfg.act == "INT8") {
+      // INT8 output → PEArrayWrapperINT8
       val rqCfg = RequantINT8Config(
         blockSize      = BLOCK_SIZE,
         tileRows       = TILE_ROWS,
@@ -130,7 +84,9 @@ object EmitKeyConfigs extends App {
         requantCfg          = rqCfg,
         archOverride        = arch,
         accMantBitsOverride = cfg.m_acc)
+      // 1) Integrated PE Array + Requant
       emitVerilog(new PEArrayWrapperINT8(arrayCfg), Array("--target-dir", outDir))
+      // 2) Standalone Requant (for separate DC synth)
       emitVerilog(new RequantINT8(rqCfg),
         Array("--target-dir", s"$outDir/requant_standalone"))
     } else {
@@ -138,7 +94,7 @@ object EmitKeyConfigs extends App {
         blockSize      = BLOCK_SIZE,
         tileRows       = TILE_ROWS,
         tileCols       = TILE_COLS,
-        outputType     = act,
+        outputType     = act,             // requant output = activation format
         scaleType      = scale,
         inputMantWidth = cfg.m_acc)
       val arrayCfg = PEArrayConfig(
@@ -155,8 +111,7 @@ object EmitKeyConfigs extends App {
     }
 
     val inW = 1 + 8 + cfg.m_acc
-    println(f"  ✓ ${cfg.label}%-32s  M_acc=${cfg.m_acc}%2d  FP$inW%-2d  " +
-            f"[${cfg.source}%-22s]  ${cfg.role}")
+    println(f"  ✓ ${cfg.label}%-32s  M_acc=${cfg.m_acc}%2d  FP$inW%-2d  ${cfg.role}")
   }
 
   println()

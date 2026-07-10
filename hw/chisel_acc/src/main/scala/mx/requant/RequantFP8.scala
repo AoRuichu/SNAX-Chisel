@@ -8,17 +8,12 @@ import mx.mac.ElementType
 // NVFP4 max-normal limits per element format (OCP-MX semantics)
 // ============================================================
 /**
- * Real OCP-MX max-normal (biased_exp, mant) for every output format.
+ * Real OCP-MX max-normal (biased_exp, mant) for the ExMy / NVFP4 path.
  *
- * Used by BOTH the UE8M0 and ExMy scale paths so the two consumer formulas
- *   UE8M0:  out_biased_exp = fp32_biased_exp − shared_scale + outBias
- *   ExMy :  element = fp32 / scale
- * land the block's max element at the same OCP-MX-compliant max-normal code.
- *
- * OCP-MX semantics (OCP MX v1.0):
- *   E5M2 : IEEE-like → (s, 11111, xx) is Inf/NaN → max normal = 30.
- *   E4M3 : only (s, 1111, 111) is NaN            → max normal = (15, 6).
- *   E3M2 / E2M3 / E2M1 (NVFP4-style FP6/FP4): no Inf/NaN → top code IS a value.
+ * Differs from Chisel's "(1<<exp)-2" convention for E4M3/E3M2/E2M3 because
+ * OCP-MX FP6 has no Inf/NaN and E4M3 reserves only (s, 1111, 111).  The
+ * UE8M0 path keeps the legacy "all-ones-minus-one" convention for backward
+ * compatibility (OCP only defines scale as a pure power of 2 for E8M0).
  */
 private object NVFP4Limits {
   def apply(t: ElementType): (Int, Int) = t.name match {
@@ -61,10 +56,10 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
   private val outExpBits      = cfg.outputType.elementWidthExp
   private val outMantBits     = cfg.outputType.elementWidthMant
   private val outBias         = cfg.outputType.bias
-  // Real OCP-MX / NVFP4 max-normal used by BOTH the UE8M0 and ExMy paths.
-  // For E2M1/E2M3/E3M2 (no Inf/NaN) the top code is a value; for E4M3 the
-  // single NaN pattern (s,1111,111) is excluded so mant is (1<<M)-2.
-  private val (outMaxNormalExp, outMaxNormalMant) = NVFP4Limits(cfg.outputType)
+  // UE8M0 path: legacy "all-ones-minus-one" max-normal (OCP power-of-2 scale).
+  private val outMaxNormalExp = (1 << outExpBits) - 2
+  // ExMy path: real OCP-MX max-normal (NVFP4-style); differs for E4M3/E3M2/E2M3.
+  private val (exMyMaxNormalExp, exMyMaxNormalMant) = NVFP4Limits(cfg.outputType)
 
   // Input bit layout: [sign | 8-bit exp | inputMantWidth mantissa]
   private val IN_W = cfg.inputWidth          // = 1 + 8 + inputMantWidth
@@ -84,7 +79,7 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
   val isZeroOrSubnormal = fp32_exp === 0.U
   val fp32_exp_s        = fp32_exp.zext   // SInt(9)
 
-  val maxNormalMant = outMaxNormalMant.U(outMantBits.W)
+  val maxNormalMant = ((1 << outMantBits) - 1).U(outMantBits.W)
   val maxNormalExpU = outMaxNormalExp.U(outExpBits.W)
 
   if (cfg.scaleType.mantScaleWidth == 0) {
@@ -98,6 +93,7 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     val out_exp_full = fp32_exp_s - shared_exp_s + outBias.S
 
     val underflow = isZeroOrSubnormal || out_exp_full <= 0.S
+    val overflow  = out_exp_full > outMaxNormalExp.S
 
     val out_mant_raw = fp32_man(M_IN - 1, M_IN - outMantBits)
     val guardBit     = fp32_man(M_IN - 1 - outMantBits)
@@ -106,10 +102,6 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
       else false.B
     val roundUp  = guardBit && (out_mant_raw(0) || stickyBits)
     val out_mant = Mux(roundUp, out_mant_raw + 1.U, out_mant_raw)
-
-    // E4M3 borderline: (exp = max, mant > outMaxNormalMant) is NaN → saturate.
-    val overflow  = out_exp_full > outMaxNormalExp.S ||
-                   ((out_exp_full === outMaxNormalExp.S) && (out_mant > outMaxNormalMant.U))
 
     val out_exp_clamped = out_exp_full.asUInt(outExpBits - 1, 0)
     val normalResult    = Cat(sign, out_exp_clamped, out_mant)
@@ -199,9 +191,9 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     val normAdj      = Mux(qGeq1, 0.S(2.W), (-1).S(2.W))
     val out_exp_full = out_exp_raw + normAdj + mantOverflow.zext
 
-    val overflow  = out_exp_full > outMaxNormalExp.S
+    val overflow  = out_exp_full > exMyMaxNormalExp.S
     // E4M3 borderline: (exp=15, mant=7) is NaN → clamp to (15, 6).
-    val borderNaN = (out_exp_full === outMaxNormalExp.S) && (out_mant > outMaxNormalMant.U)
+    val borderNaN = (out_exp_full === exMyMaxNormalExp.S) && (out_mant > exMyMaxNormalMant.U)
     val sat       = overflow || borderNaN
 
     // Subnormal element output: when out_exp_full ≤ 0, encode as
@@ -233,8 +225,8 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
     val out_exp_clamped = out_exp_full.asUInt(outExpBits - 1, 0)
     val normalResult    = Cat(sign, out_exp_clamped, out_mant)
     val maxResult       = Cat(sign,
-                              outMaxNormalExp.U(outExpBits.W),
-                              outMaxNormalMant.U(outMantBits.W))
+                              exMyMaxNormalExp.U(outExpBits.W),
+                              exMyMaxNormalMant.U(outMantBits.W))
 
     val resultPick = Mux(isSubnormalRange, subnResult, normalResult)
     io.elem_out := Mux(isTrueZero, 0.U, Mux(sat, maxResult, resultPick))
@@ -251,9 +243,9 @@ class FP32ToMXFP8(val cfg: RequantConfig) extends Module {
  *
  * UE8M0 (OCP-MX, pure power-of-2):
  *   X = clamp(max_fp32_biased_exp − emaxElem, 0, 255),
- *   with emaxElem = NVFP4Limits(outputType).max_normal_biased_exp − outBias.
- *   The max element lands at the OCP-MX max-normal biased exp of the output
- *   format (3 for E2M1/E2M3, 7 for E3M2, 15 for E4M3, 30 for E5M2).
+ *   with emaxElem = (1 << outExpBits) − 2 − outBias.
+ *   The max element lands at biased_exp = (1 << outExpBits) − 2 in the
+ *   element format (Chisel's "all-ones-minus-one" max-normal convention).
  *
  * ExMy (NVFP4-style ceil):
  *   ideal_scale = max_abs / elem_max,
@@ -269,14 +261,12 @@ class MaxScaleFinder(val cfg: RequantConfig) extends Module {
   }
 
 
-  private val outExpBits              = cfg.outputType.elementWidthExp
-  private val outBias                 = cfg.outputType.bias
-  // OCP-MX / NVFP4 max-normal (biased exp) for the output element format —
-  // must match FP32ToMXFP8.  E5M2: 30, E4M3: 15, E3M2: 7, E2M3/E2M1: 3.
-  private val (outMaxNormalExp, _)    = NVFP4Limits(cfg.outputType)
-  private val emaxElem                = outMaxNormalExp - outBias
+  private val outExpBits      = cfg.outputType.elementWidthExp
+  private val outBias         = cfg.outputType.bias
+  private val outMaxNormalExp = (1 << outExpBits) - 2
+  private val emaxElem        = outMaxNormalExp - outBias
   // Element-format emax (max representable real exponent).
-  // E5M2: 30−15 = 15;  E4M3: 15−7 = 8;  E3M2: 7−3 = 4;  E2M3/E2M1: 3−1 = 2.
+  // E5M2: 30 − 15 = 15;  E4M3: 14 − 7 = 7;  E3M2: 6 − 3 = 3;  E2M3: 2 − 1 = 1.
 
   // Input layout shared with FP32ToMXFP8.
   private val IN_W = cfg.inputWidth
@@ -500,15 +490,12 @@ class RequantFP8(val cfg: RequantConfig) extends Module {
 
   io.valid_out        := validOutReg
   // Pack row 0 in LSB so little-endian memory stores [row0, row1, …, rowN-1]
-  // in ascending byte address (matches software golden).  Within a row,
-  // col 0 sits at LSB — so slot k = row*blockSize + col occupies bits
-  // [(k+1)*elemW-1 : k*elemW].  Cat() places its first argument at the MSB,
-  // hence the .reverse.
+  // in ascending byte address (matches software golden).
   io.shared_scale_out := Cat(sharedScaleReg.reverse)
-  io.elem_out := Cat((
-    for (row <- 0 until cfg.tileRows; col <- 0 until cfg.blockSize)
+  io.elem_out := Cat(
+     for (row <- 0 until cfg.tileRows; col <- 0 until cfg.blockSize)
       yield elemOutReg(row)(col)
-  ).reverse)
+  )
 }
 
 // ============================================================

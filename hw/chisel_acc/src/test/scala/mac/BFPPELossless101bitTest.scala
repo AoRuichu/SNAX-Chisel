@@ -176,13 +176,13 @@ class BFPPELossless101bitTest extends AnyFunSuite with ChiselScalatestTester {
     val s1 = runFDPU("ours_M12          (accReg=FP12, out=FP12)",
       new FDPUPostScaleReductionTree(
         scfg, vec, K = K, accMantBits = 12,
-        treeArch = TreeArch.Generic,
+        treeArch = TreeArch.Generic, cyclesPerBlock = 1,
         noEarlyRNE = false, istest = false))
 
     val s2 = runFDPU("alt_noEarlyRNE    (accReg=FP32, out=FP32)",
       new FDPUPostScaleReductionTree(
         scfg, vec, K = K,
-        treeArch = TreeArch.Generic,
+        treeArch = TreeArch.Generic, cyclesPerBlock = 1,
         noEarlyRNE = true, istest = false))
 
     // Lossless variant emitted with outMantBits=23 → FP32 output, so the

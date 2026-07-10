@@ -441,10 +441,10 @@ class RequantINT8(val cfg: RequantINT8Config) extends Module {
   // Pack row 0 in LSB so little-endian memory stores [row0, row1, …, rowN-1]
   // in ascending byte address (matches software golden and RequantFP8).
   io.shared_scale_out := Cat(sharedScaleReg.reverse)
-  io.int8_out := Cat((
+  io.int8_out := Cat(
     for (row <- 0 until cfg.tileRows; col <- 0 until cfg.blockSize)
       yield int8OutReg(row)(col)
-  ).reverse)
+  )
 }
 
 // ============================================================

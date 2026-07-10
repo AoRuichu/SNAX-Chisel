@@ -5,7 +5,6 @@ import scala.io.Source
 
 import chisel3._
 import mx.mac.{FDPUPostScaleReductionTree, MXFormats, ScaleAddConfig, ScaleFormats, TreeArch, ElementType}
-import mx.mac.deferred_archs.FDPUFactory
 
 // ============================================================
 //  Extension of DSEFullSweepMain: emit the missing E2M1-activation
@@ -65,7 +64,7 @@ object EmitE2M1Acts extends App {
     val peDir = s"$Root/pe/$lbl"
     cleanDir(peDir)
     emitVerilog(
-      FDPUFactory(
+      new FDPUPostScaleReductionTree(
         scfg, vsize, K = Kdefault,
         treeArch = arch.treeArch, cyclesPerBlock = arch.cpb, istest = false),
       Array("--target-dir", peDir)

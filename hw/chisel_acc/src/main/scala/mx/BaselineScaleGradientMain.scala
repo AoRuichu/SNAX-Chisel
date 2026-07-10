@@ -6,7 +6,6 @@ import scala.io.Source
 import chisel3._
 import mx.array._
 import mx.mac.{FDPUPostScaleReductionTree, MXFormats, ScaleAddConfig, ScaleFormats, TreeArch, ElementType}
-import mx.mac.deferred_archs.FDPUFactory
 import mx.requant.{RequantConfig, RequantINT8Config}
 
 // ============================================================
@@ -84,7 +83,7 @@ object BaselineScaleGradientMain extends App {
     val peDir = s"$Root/pe/$lbl"
     cleanDir(peDir)
     emitVerilog(
-      FDPUFactory(
+      new FDPUPostScaleReductionTree(
         scfg, vsize, K = Kdefault,
         treeArch = archTreeArch, cyclesPerBlock = archCpb, istest = false),
       Array("--target-dir", peDir)

@@ -14,9 +14,7 @@ case class ElementType(
     // For FP types: 1 (sign) + exp + mant
     // For integer types (exp == 0): 2 + mant, the extra '1' pads to the full hardware word width (e.g. INT8: 2+6=8)
     def totalWidth: Int = if (elementWidthExp == 0) 2 + elementWidthMant else 1 + elementWidthExp + elementWidthMant
-                                  // running-case  E5M2:  1+5+2 = 8
     def bias: Int = if(elementWidthExp>0){(1<<(elementWidthExp-1))-1}else{0}
-                                  // running-case  E5M2:  (1<<4)-1 = 15
 }
 
 case class ScaleType(
@@ -25,42 +23,33 @@ case class ScaleType(
     name: String
 ){
     def totalScaleWidth: Int = expScaleWidth + mantScaleWidth
-                                  // running-case  UE6M2: 6+2 = 8
     def bias: Int = if(expScaleWidth>0){(1<<(expScaleWidth-1))-1}else{0}
-                                  // running-case  UE6M2: (1<<5)-1 = 31
 }
 
 case class OperatorConfig(
     elementTypeA: ElementType,
     elementTypeB: ElementType
 ){
-    // add implicit bit +1
+    // add implicit bit +1 
     private def getExtendedMantWidth(t: ElementType): Int = {
         t.elementWidthMant + 1 // 加上隐式位
-                                  // running-case  E5M2:  2+1 = 3
     }
     // minimum exponent for this element format(include implicit scale -6 for INT8)
     private def minAdjExp(t: ElementType): Int = {
         if (t.elementWidthExp == 0) t.implicitScaleExp //for INT8. exp=0,so worst case is only -6
         else (1 - t.bias) + t.implicitScaleExp  // for other cases, they are always subnormal (1-bias)
-                                  // running-case  E5M2:  (1-15)+0 = -14
     }
     // 容纳负值 v 所需的 SInt 位宽
     private def sIntBitsForNeg(v: Int): Int =
         if (v >= 0) 1 else BigInt(-v).bitLength + 2 //负数-v 需要bitLength(-v)+1(sign), 1bit for overflow
-                                  // running-case  v=-28:  bitLength(28)=5 → 5+2 = 7
 
     val maxElementExp = elementTypeA.elementWidthExp max elementTypeB.elementWidthExp
-                                  // running-case  E5M2²:  max(5,5) = 5
     private val minSumAdjExp = minAdjExp(elementTypeA) + minAdjExp(elementTypeB)
-                                  // running-case  E5M2²:  -14 + -14 = -28
     val resOperatorExpWidth = (maxElementExp + 2) max sIntBitsForNeg(minSumAdjExp)
-                                  // running-case  E5M2²:  max(5+2, 7) = 7
     //指数相加： expenent output width
-    //upper bound max of two exp element , + 2 for overflow
+    //upper bound max of two exp element , + 2 for overflow 
     //lower bound: 两个最小指数相加，
     val resOperatorMantWidth = getExtendedMantWidth(elementTypeA) + getExtendedMantWidth(elementTypeB)
-                                  // running-case  E5M2²:  3 + 3 = 6
     //尾数相乘： 两个尾数位宽直接相加，不用考虑溢出
 }
 
@@ -73,49 +62,35 @@ case class ScaleAddConfig(
     //For Element
     private def getExtendedMantWidth(t: ElementType): Int = {
          t.elementWidthMant + 1 // 加上隐式位
-                                  // running-case  E5M2:  2+1 = 3
     }
     //For Scale
     private def getScaleMantWidth(s: ScaleType): Int = {
         if (s.mantScaleWidth == 0) 1 else s.mantScaleWidth + 1
-                                  // running-case  UE6M2: 2+1 = 3
     }
     // 计算每种格式的最小调整指数（含隐含缩放）
     private def minAdjExp(t: ElementType): Int = {
         if (t.elementWidthExp == 0) t.implicitScaleExp
         else (1 - t.bias) + t.implicitScaleExp
-                                  // running-case  E5M2:  (1-15)+0 = -14
     }
     private def sIntBitsForNeg(v: Int): Int =
         if (v >= 0) 1 else BigInt(-v).bitLength + 2
-                                  // running-case  v=-28:  bitLength(28)=5 → 5+2 = 7
 
     //Operator
     val maxElementExp = elementTypeA.elementWidthExp max elementTypeB.elementWidthExp
-                                  // running-case  E5M2²:    max(5,5) = 5
     private val minSumAdjExp = minAdjExp(elementTypeA) + minAdjExp(elementTypeB)
-                                  // running-case  E5M2²:    -14 + -14 = -28
     val resOperatorExpWidth = (maxElementExp + 2) max sIntBitsForNeg(minSumAdjExp)
-                                  // running-case  E5M2²:    max(5+2, 7) = 7
     val resOperatorMantWidth = getExtendedMantWidth(elementTypeA) + getExtendedMantWidth(elementTypeB)
-                                  // running-case  E5M2²:    3 + 3 = 6
     //Scale
     val resScaleExpWidth = stype.expScaleWidth + 2
-                                  // running-case  UE6M2:    6 + 2 = 8
-    val resScaleMantWidth = getScaleMantWidth(stype) * 2
-                                  // running-case  UE6M2:    3 * 2 = 6
+    val resScaleMantWidth = getScaleMantWidth(stype) * 2 
     //Scale Operate
     val maxScaleAddExp = resOperatorExpWidth max resScaleExpWidth
-                                  // running-case  /UE6M2:   max(7, 8) = 8
     val resScaleAddExpWidth = maxScaleAddExp + 1
-                                  // running-case  /UE6M2:   8 + 1 = 9
     val resScaleAddMantWidth = resOperatorMantWidth + resScaleMantWidth
-                                  // running-case  E5M2²/UE6M2:  6 + 6 = 12
     //val resScaleAddMantWidth = 32
 
     // Use a custom reduction tree when mantissa is narrow enough to be cheaper than FP32 adders
     def useCustomTree: Boolean = resScaleAddMantWidth < 24
-                                  // running-case  E5M2²/UE6M2:  12 < 24 → true
 
     // Maximum possible exponent of a product (both operands at their largest value).
     //   IEEE-like FP (E5M2):   max usable encoded exp = (1<<W) − 2, top encoding reserved for Inf/NaN
@@ -128,21 +103,17 @@ case class ScaleAddConfig(
         val bias = (1 << (t.elementWidthExp - 1)) - 1
         val maxEncReserved = if (t.reservesMaxExpForSpecial) 2 else 1
         ((1 << t.elementWidthExp) - maxEncReserved) - bias + t.implicitScaleExp
-                                  // running-case  E5M2:  (32-2)-15+0 = 15
       }
     // Range of product exponents: used by FixedFPReductionTree to bound alignment shifts.
     // INT8×INT8 → 0 (all products have the same implicit exponent, no alignment needed).
     val productExpRange: Int =
       (maxExpOf(elementTypeA) + maxExpOf(elementTypeB)) - (minAdjExp(elementTypeA) + minAdjExp(elementTypeB))
-                                  // running-case  E5M2²:    (15+15) - (-14-14) = 58
 
     // Bounds on the signed product exponent (compile-time). Used by FDPU's
     // Kulisch (Arch-IV.b) path as the global anchor: every product is
     // left-shifted by (exp − minProductExp) into a wide fixed-point accumulator.
     val minProductExp: Int = minAdjExp(elementTypeA) + minAdjExp(elementTypeB)
-                                  // running-case  E5M2²:    -14 + -14 = -28
     val maxProductExp: Int = maxExpOf(elementTypeA) + maxExpOf(elementTypeB)
-                                  // running-case  E5M2²:    15 + 15 = 30
 }
 
 
@@ -199,13 +170,10 @@ object AccPrecision {
   def recommended(scfg: ScaleAddConfig, K: Int, outputType: ElementType): Int = {
     require(K >= 1)
     val kBits        = math.ceil(math.log(K.toDouble) / math.log(2.0)).toInt
-                                  // running-case  K=2048:    ⌈log2(2048)⌉ = 11
     val kBonus       = (kBits / 2).max(0)
-                                  // running-case  K=2048:    11 / 2 = 5
     val rangePenalty = if (scfg.productExpRange >= 50) 3
                        else if (scfg.productExpRange >= 30) 1
                        else 0
-                                  // running-case  R=58:      ≥50 → 3
 
     // log2(1/ulp_floor) for the output element format.  For FP outputs the
     // relative ulp is 2^(−(M_out+1)).  INT8's relative ulp is 1/127, i.e.
@@ -213,7 +181,6 @@ object AccPrecision {
     val log2InvOutputUlp: Int =
       if (outputType.elementWidthExp == 0) 7                       // INT8
       else outputType.elementWidthMant + 1                          // FP: M_out + 1
-                                  // running-case  out=E5M2:  2 + 1 = 3
 
     // floorOffset: bits above kBonus needed to bring Wilkinson noise
     // (√K · 2^(−M_acc)) below the output's relative ulp.
@@ -224,12 +191,9 @@ object AccPrecision {
     //                 headroom — empirically requires +2 more bits over
     //                 the FP rule, validated by the design-rule sweep).
     val safetyBits = if (outputType.elementWidthExp == 0) 5 else 3
-                                  // running-case  out=E5M2:  FP → 3
     val floorOffset = math.max(7, log2InvOutputUlp + safetyBits)
-                                  // running-case  out=E5M2:  max(7, 3+3) = 7
 
     math.min(23, floorOffset + kBonus + rangePenalty)
-                                  // running-case  E5M2²/UE6M2 K=2048:  min(23, 7+5+3) = 15  ← M_acc
   }
 
   /** 2-arg overload — uses scfg.elementTypeA as the output element format,
@@ -239,7 +203,6 @@ object AccPrecision {
 
   /** Full accumulator register width: 1 (sign) + 8 (exp) + mantissa bits. */
   def accRegWidth(scfg: ScaleAddConfig, K: Int): Int = 1 + 8 + recommended(scfg, K)
-                                  // running-case  E5M2²/UE6M2 K=2048:  1 + 8 + 15 = 24
 }
 
 // ============================================================
@@ -295,7 +258,6 @@ object TreeArch {
     else if (r <= 4)  SmallFixedShift
     else if (r <= 32) TwoStageBarrel
     else              KulischInner
-                                  // running-case  R=58:  KulischInner (DSE baseline forces Generic)
   }
 }
 

@@ -2,17 +2,10 @@ package mx.mac
 
 import chisel3._
 import chiseltest._
-import mx.mac.deferred_archs.FDPUBlockDeferred
 import org.scalatest.funsuite.AnyFunSuite
 import java.lang.Float.{floatToIntBits, intBitsToFloat}
-import java.io.{File, FileWriter, PrintWriter}
+import java.io.{FileWriter, PrintWriter}
 import scala.util.Random
-import scala.io.Source
-
-/** One cycle of pre-generated MX-quantised input vectors loaded from the
- *  Python-side gen_acc_truncation_vectors.py.  Trial = run index, cycle =
- *  position within the K-cycle dot product. */
-case class MXVecCycle(trial: Int, cycle: Int, sA: Int, sB: Int, a: Seq[Int], b: Seq[Int])
 
 /** Accumulator-truncation × architecture sweep.
  *
@@ -94,37 +87,6 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
       acc | (BigInt(v & ((1 << width) - 1)) << (i * width))
     }
 
-  /** Load pre-generated MX-quantised input vectors for one (workload, A, B,
-   *  scale, K) configuration produced by gen_acc_truncation_vectors.py.  Path:
-   *    acc_trunc_vectors/<workload>/<A>_<B>_<scale>_K<K>.tsv
-   *  Each row = one cycle; columns = trial, cycle, sA, sB, a0..a{V-1}, b0..b{V-1}.
-   *  Returns Some(vec) on success, None if the file is absent (caller falls
-   *  back to in-Scala random generation for backward compatibility). */
-  private def loadVectorFile(workload: String,
-                             typeA: ElementType, typeB: ElementType,
-                             sType: ScaleType, K: Int, V: Int)
-  : Option[Vector[MXVecCycle]] = {
-    val path = s"acc_trunc_vectors/$workload/${typeA.name}_${typeB.name}_${sType.name}_K$K.tsv"
-    val f = new File(path)
-    if (!f.exists) None
-    else {
-      val src = Source.fromFile(f)
-      try {
-        val lines = src.getLines().drop(1).toVector
-        Some(lines.map { line =>
-          val parts = line.split("\t")
-          val trial = parts(0).toInt
-          val cyc   = parts(1).toInt
-          val sA    = parts(2).toInt
-          val sB    = parts(3).toInt
-          val a     = (0 until V).map(i => parts(4 + i).toInt)
-          val b     = (0 until V).map(i => parts(4 + V + i).toInt)
-          MXVecCycle(trial, cyc, sA, sB, a, b)
-        })
-      } finally src.close()
-    }
-  }
-
   // Software requant: choose INT8 or FP8/FP6 based on activation type
   private sealed trait RequantTarget
   private case object RqINT8                 extends RequantTarget
@@ -190,40 +152,6 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
       }
   }
 
-  /** Map a requantized output value back to a monotonic integer "bin index",
-   *  so that |idx(a) − idx(b)| equals the number of grid points between two
-   *  values on the same MX/INT8 output grid (under the same sharedScale).
-   *
-   *  This is the bridge from continuous error metrics to the IEEE 754
-   *  "correctly rounded" criterion: bit-exact means |idx(hwQ) − idx(refQ)| = 0.
-   */
-  private def binIndexFp(rqValue: Double, ot: ElementType, sharedScale: Int): Long = {
-    if (rqValue == 0.0) return 0L
-    val mantBits = ot.elementWidthMant
-    val v = math.abs(rqValue).toFloat
-    val sign = if (rqValue < 0) -1L else 1L
-    val bits    = floatToIntBits(v)
-    val fp32Exp = (bits >>> 23) & 0xFF
-    val fp32Man = bits & 0x7FFFFF
-    val outExp  = fp32Exp - sharedScale + ot.bias
-    val mantRaw = fp32Man >>> (23 - mantBits)
-    if (outExp <= 0) return 0L
-    sign * ((outExp.toLong << mantBits) | mantRaw.toLong)
-  }
-
-  private def binIndexInt8(rqValue: Double, sharedScale: Int): Long = {
-    // INT8 output is a fixed-point grid: value = int × 2^(sharedScale - 133).
-    // So bin index = round(value × 2^(133 - sharedScale)).
-    if (rqValue == 0.0) return 0L
-    math.round(rqValue * math.pow(2.0, 133 - sharedScale)).toLong
-  }
-
-  private def binIndex(rqValue: Double, target: RequantTarget, sharedScale: Int): Long =
-    target match {
-      case RqINT8   => binIndexInt8(rqValue, sharedScale)
-      case RqFP(ot) => binIndexFp(rqValue, ot, sharedScale)
-    }
-
   /** Pick a per-block sharedScale that places the peak value near the format's max. */
   private def chooseSharedScale(peakAbs: Double, target: RequantTarget): Int = target match {
     case RqINT8 =>
@@ -238,52 +166,27 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
   }
 
   // ── DSE knob ─────────────────────────────────────────────────────────────
-  // Block-deferred is the focus architecture for the K-truncation safety study:
-  // its inner FP accumulator is sized by M_acc, so the K-derived truncation
-  // formula actually changes the design.  Long-integer-addition has a wide
-  // fixed-point inner accumulator whose width is set by R (independent of M_acc),
-  // making it a separate architectural axis covered in §arch-choice.
   private case class Arch(label: String, treeArch: TreeArch, cpb: Int)
   private val archs = Seq(
-    Arch("blockdef", TreeArch.Generic, 8),
+    Arch("baseline", TreeArch.Generic,      1),
+    Arch("blockdef", TreeArch.Generic,      8),
+    Arch("kulisch",  TreeArch.KulischInner, 8),
   )
 
-  // Seven format pairs spanning the practical narrow-precision DSE
-  // (drop INT8×INT8 — output-INT8 boundary, not a K-truncation effect).
-  // Includes FP4 (E2M1²) and W4A8 (E4M3×E2M1) for LLM-quant relevance.
   private case class Pair(typeA: ElementType, typeB: ElementType)
   private val formatPairs = Seq(
-    Pair(MXFormats.E4M3, MXFormats.INT8),  // asymmetric FP8 act × INT8 weight
-    Pair(MXFormats.E2M3, MXFormats.E2M3),  // matched FP6 mantissa-heavy
-    Pair(MXFormats.E4M3, MXFormats.E4M3),  // matched FP8 baseline
-    Pair(MXFormats.E5M2, MXFormats.E4M3),  // asymmetric FP8 mixed precision
-    Pair(MXFormats.E5M2, MXFormats.E5M2),  // matched FP8 high-range
-    Pair(MXFormats.E2M1, MXFormats.E2M1),  // matched FP4 (NVFP4-style)
-    Pair(MXFormats.E4M3, MXFormats.E2M1),  // W4A8 mixed precision
+    Pair(MXFormats.INT8, MXFormats.INT8),  // R=0
+    Pair(MXFormats.E3M2, MXFormats.E3M2),  // R=12
+    Pair(MXFormats.E4M3, MXFormats.E4M3),  // R=28
+    Pair(MXFormats.E5M2, MXFormats.E5M2),  // R=58
   )
 
-  // Two scales cover {no scale-mant, with scale-mant} modes.  Lower exp widths
-  // (UE3M5 and below) cannot represent the dynamic range of NN-realistic
-  // activations (down_proj outliers up to 4384), so they are excluded by design.
+  // Sweep dimensions kept compact (~10 min) so iterations are fast.  For the
+  // full thesis figure, expand `scales` to all three and `Ks` to four points.
   private val scales = Seq(ScaleFormats.UE8M0, ScaleFormats.UE4M4)
 
-  // Workloads matched to measured LLaMA-3 layer statistics; see
-  // gen_acc_truncation_vectors.py WORKLOADS dict.
-  private val workloads = Seq("attn_qk", "down_proj", "mlp_gate")
-
-  // K values: 512 / 2048 / 8192 bracket typical LLM-inference accumulation
-  // depths.  Phase A (calibration) sweeps full K under down_proj; Phase B
-  // (workload robustness) runs only K=8192 under the other workloads.
-  private val Ks      = Seq(512, 2048, 8192)
-  private def keepConfig(workload: String, K: Int): Boolean =
-    workload == "down_proj" || K == 8192
-  // nTrials = blockSize × nOutputBlocks.  blockSize matches the MX output-side
-  // requant block (RequantFP8.buffer is sized to blockSize PE outputs sharing
-  // one MaxScaleFinder pick).  nOutputBlocks gives multiple block-level samples
-  // for statistical confidence on the post-rq mean.
-  private val blockSize      = 32
-  private val nOutputBlocks  = 3
-  private val nTrials        = blockSize * nOutputBlocks
+  private val Ks      = Seq(32, 256, 4096)
+  private val nTrials = 3
   private val vec     = 4
 
   // ── The sweep test ───────────────────────────────────────────────────────
@@ -293,9 +196,8 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
     // letting the user watch progress without waiting for the JVM to exit.
     val csv = new PrintWriter(new FileWriter("acc_truncation_sweep.csv", false), true)
     csv.println(
-      "workload,arch,typeA,typeB,scaleType,K,vec,cpb,treeArch,accMantBitsRec," +
+      "arch,typeA,typeB,scaleType,K,vec,cpb,treeArch,accMantBitsRec," +
       "relErrFP32_mean,relErrFP32_max,relErrPostRq_mean,relErrPostRq_max," +
-      "binDist_mean,binDist_max,bitExactRate," +
       "outputType,trials,note"
     )
 
@@ -306,21 +208,19 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
       case _      => RqFP(a)
     }
 
-    for (workload <- workloads;
-         arch     <- archs;
-         pair     <- formatPairs;
-         sType    <- scales;
-         K        <- Ks
-         if keepConfig(workload, K)) {
+    for (arch <- archs;
+         pair <- formatPairs;
+         sType <- scales;
+         K    <- Ks) {
       val scfg     = ScaleAddConfig(pair.typeA, pair.typeB, sType)
       val recBits  = AccPrecision.recommended(scfg, K)
       val target   = requantTargetFor(pair.typeA)
       val rqLabel  = target match { case RqINT8 => "INT8"; case RqFP(o) => o.name }
-      val tag      = s"$workload ${arch.label} ${pair.typeA.name}×${pair.typeB.name} ${sType.name} K=$K"
+      val tag      = s"${arch.label} ${pair.typeA.name}×${pair.typeB.name} ${sType.name} K=$K"
 
       // Some configs are invalid: cpb must evenly divide K; if not, skip.
       if (K % arch.cpb != 0) {
-        csv.println(s"$workload,${arch.label},${pair.typeA.name},${pair.typeB.name},${sType.name},$K,$vec,${arch.cpb},${arch.treeArch.name},$recBits,NA,NA,NA,NA,NA,NA,NA,$rqLabel,0,K_mod_cpb_nonzero")
+        csv.println(s"${arch.label},${pair.typeA.name},${pair.typeB.name},${sType.name},$K,$vec,${arch.cpb},${arch.treeArch.name},$recBits,NA,NA,NA,NA,$rqLabel,0,K_mod_cpb_nonzero")
       } else {
         // Drive the same input stream into the HW and compare against FP64.
         var sumFp32Err   = 0.0
@@ -328,25 +228,9 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
         var sumPostRqErr = 0.0
         var maxPostRqErr = 0.0
         var counted      = 0
-        // Buffer per-trial (hwAcc, swRef) so we can apply ONE shared scale
-        // across the whole output-block (matches real HW: RequantFP8/INT8
-        // pulls one max-abs over blockSize=nTrials PE outputs and reuses it
-        // for every requant in the block — see PEArray.scala line ~145 +
-        // RequantFP8.MaxScaleFinder).
-        val blockHw  = scala.collection.mutable.ArrayBuffer[Float]()
-        val blockRef = scala.collection.mutable.ArrayBuffer[Double]()
 
-        // Try loading NN-realistic vectors generated by
-        // gen_acc_truncation_vectors.py.  When present, the K cycles for every
-        // trial are read from a TSV file; otherwise fall back to in-Scala
-        // pseudo-random generation (legacy compact-sweep behaviour).
-        val vectorFile = loadVectorFile(workload, pair.typeA, pair.typeB, sType, K, vec)
-        val perTrialVectors: Option[Vector[Vector[MXVecCycle]]] = vectorFile.map { all =>
-          // Group by trial index, preserving cycle order.
-          all.groupBy(_.trial).toVector.sortBy(_._1).map(_._2.sortBy(_.cycle))
-        }
         try {
-          test(new FDPUBlockDeferred(
+          test(new FDPUPostScaleReductionTree(
             scfg, vec, K = K,
             treeArch = arch.treeArch, cyclesPerBlock = arch.cpb,
             istest = false)) { dut =>
@@ -363,111 +247,64 @@ class AccTruncationSweepTest extends AnyFunSuite with ChiselScalatestTester {
 
               var swRef = 0.0
               // Block-stable scales (MX semantics): pick one per cpb.
-              var curScaleA = 0
-              var curScaleB = 0
+              val firstScaleA = randScale(sType, rng)
+              val firstScaleB = randScale(sType, rng)
+              var curScaleA   = firstScaleA
+              var curScaleB   = firstScaleB
 
               for (cyc <- 0 until K) {
-                val (as, bs, sA, sB) = perTrialVectors match {
-                  case Some(perTrial) =>
-                    val v = perTrial(trial)(cyc)
-                    (v.a, v.b, v.sA, v.sB)
-                  case None =>
-                    if (cyc == 0 || cyc % arch.cpb == 0) {
-                      curScaleA = randScale(sType, rng)
-                      curScaleB = randScale(sType, rng)
-                    }
-                    val a = Seq.fill(vec)(randElem(pair.typeA, rng))
-                    val b = Seq.fill(vec)(randElem(pair.typeB, rng))
-                    (a, b, curScaleA, curScaleB)
+                if (cyc % arch.cpb == 0 && cyc != 0) {
+                  curScaleA = randScale(sType, rng)
+                  curScaleB = randScale(sType, rng)
                 }
-                val sAv = decodeScale(sA, sType)
-                val sBv = decodeScale(sB, sType)
+                val as = Seq.fill(vec)(randElem(pair.typeA, rng))
+                val bs = Seq.fill(vec)(randElem(pair.typeB, rng))
+                val sAv = decodeScale(curScaleA, sType)
+                val sBv = decodeScale(curScaleB, sType)
                 swRef += as.zip(bs).map { case (a, b) =>
                   decodeElement(a, pair.typeA) * decodeElement(b, pair.typeB) * sAv * sBv
                 }.sum
 
                 dut.io.op_a_i       .poke(packElems(as, pair.typeA.totalWidth).U)
                 dut.io.op_b_i       .poke(packElems(bs, pair.typeB.totalWidth).U)
-                dut.io.share_exp_A_i.poke(sA.U)
-                dut.io.share_exp_B_i.poke(sB.U)
+                dut.io.share_exp_A_i.poke(curScaleA.U)
+                dut.io.share_exp_B_i.poke(curScaleB.U)
                 dut.io.validIn.poke(true.B); dut.clock.step(); dut.io.validIn.poke(false.B)
               }
               // Drain so the last block commit lands in outerAcc.
               dut.clock.step(1)
-              // io.accOut is narrow ({sign[1], exp[8], mant[actualAccMantBits]});
-              // left-shift the mantissa into FP32's 23-bit field for intBitsToFloat.
-              val rawAcc = dut.io.accOut.peek().litValue
-              val hwAcc  = intBitsToFloat((rawAcc << (23 - dut.actualAccMantBits)).toInt)
+              val hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
 
-              // Pre-requant relative error of HW vs FP64 reference (per-trial).
+              // Pre-requant relative error of HW vs FP64 reference.
               if (math.abs(swRef) > 1e-10) {
                 val fp32Err = math.abs(hwAcc - swRef) / math.abs(swRef)
                 sumFp32Err += fp32Err
                 if (fp32Err > maxFp32Err) maxFp32Err = fp32Err
+
+                // Post-requant: quantise both HW and FP64 ref through the
+                // same SW requantiser and compare in the quantised domain.
+                val sharedScale = chooseSharedScale(math.abs(swRef), target)
+                val hwQ  = swRequantAndDecode(hwAcc, target, sharedScale)
+                val refQ = swRequantAndDecode(swRef.toFloat, target, sharedScale)
+                val postErr =
+                  if (math.abs(refQ) > 1e-10) math.abs(hwQ - refQ) / math.abs(refQ) else 0.0
+                sumPostRqErr += postErr
+                if (postErr > maxPostRqErr) maxPostRqErr = postErr
+
                 counted += 1
               }
-              // Buffer for the output-block shared-scale post-requant pass.
-              blockHw  += hwAcc
-              blockRef += swRef
             }
           }
         } catch { case e: Exception =>
           println(s"[ERROR] $tag: ${e.getMessage}")
         }
 
-        // ── Post-requant pass: partition trials into output-blocks of size
-        //    `blockSize`, each block sharing ONE requant scale (= chooseShared-
-        //    Scale over the block's peak |swRef|).  Real HW: RequantFP8/INT8's
-        //    `buffer` collects blockSize PE outputs from successive K-cycle
-        //    accumulations, MaxScaleFinder picks one scale, and every element
-        //    gets requantised with it — an outlier in any one element
-        //    compresses the LSB precision of the others.
-        var binDistSum:  Long = 0L
-        var binDistMax:  Long = 0L
-        var bitExactCnt: Int  = 0
-        var bdSamples:   Int  = 0
-        val nBlocks = blockRef.length / blockSize
-        for (b <- 0 until nBlocks) {
-          val refs = blockRef.slice(b * blockSize, (b + 1) * blockSize)
-          val hws  = blockHw .slice(b * blockSize, (b + 1) * blockSize)
-          val peakAbs = refs.map(math.abs).max
-          val sharedScale = chooseSharedScale(peakAbs, target)
-          for ((hw, ref) <- hws.zip(refs)) {
-            // Relative-error metric (legacy, kept for backward compat).
-            if (math.abs(ref) > 1e-10) {
-              val hwQ  = swRequantAndDecode(hw,          target, sharedScale)
-              val refQ = swRequantAndDecode(ref.toFloat, target, sharedScale)
-              val postErr =
-                if (math.abs(refQ) > 1e-10) math.abs(hwQ - refQ) / math.abs(refQ) else 0.0
-              sumPostRqErr += postErr
-              if (postErr > maxPostRqErr) maxPostRqErr = postErr
-            }
-            // Bin-agreement metrics B + D (primary metric for safety claim):
-            //   B = mean |bin_idx(hwQ) - bin_idx(refQ)|  (grid-step distance)
-            //   D = fraction of trials where bin_idx equals (bit-exact)
-            val hwQ  = swRequantAndDecode(hw,          target, sharedScale)
-            val refQ = swRequantAndDecode(ref.toFloat, target, sharedScale)
-            val hwIdx  = binIndex(hwQ,  target, sharedScale)
-            val refIdx = binIndex(refQ, target, sharedScale)
-            val dist = math.abs(hwIdx - refIdx)
-            binDistSum += dist
-            if (dist > binDistMax) binDistMax = dist
-            if (dist == 0L) bitExactCnt += 1
-            bdSamples += 1
-          }
-        }
-
-        val meanFp32   = if (counted > 0) sumFp32Err   / counted else Double.NaN
-        val meanPostQ  = if (counted > 0) sumPostRqErr / counted else Double.NaN
-        val binDistMean = if (bdSamples > 0) binDistSum.toDouble / bdSamples else Double.NaN
-        val bitExactR   = if (bdSamples > 0) bitExactCnt.toDouble / bdSamples else Double.NaN
-        csv.println(f"$workload,${arch.label},${pair.typeA.name},${pair.typeB.name},${sType.name},$K,$vec,${arch.cpb}," +
+        val meanFp32  = if (counted > 0) sumFp32Err   / counted else Double.NaN
+        val meanPostQ = if (counted > 0) sumPostRqErr / counted else Double.NaN
+        csv.println(f"${arch.label},${pair.typeA.name},${pair.typeB.name},${sType.name},$K,$vec,${arch.cpb}," +
                     f"${arch.treeArch.name},$recBits,$meanFp32%.6e,$maxFp32Err%.6e," +
-                    f"$meanPostQ%.6e,$maxPostRqErr%.6e," +
-                    f"$binDistMean%.4f,$binDistMax,$bitExactR%.4f," +
-                    f"$rqLabel,$counted,")
-        println(f"[$tag] mantBits=$recBits  preRq=$meanFp32%.3e  postRq=$meanPostQ%.3e  " +
-                f"B=$binDistMean%.3f (max=$binDistMax) D=${bitExactR*100}%.1f%% ($counted trials)")
+                    f"$meanPostQ%.6e,$maxPostRqErr%.6e,$rqLabel,$counted,")
+        println(f"[$tag] mantBits=$recBits  preRq=$meanFp32%.3e  postRq=$meanPostQ%.3e  ($counted trials)")
       }
     }
 
