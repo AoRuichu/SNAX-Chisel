@@ -66,7 +66,7 @@ module CustomOperator_E4M3_to_E2M1(	// src/main/scala/mx/mac/CustomOperator.scal
     {2'h0, |(io_inA[6:3]), io_inA[2:0]} * {4'h0, |(io_inB[2:1]), io_inB[0]};	// src/main/scala/mx/mac/CustomOperator.scala:6:7, :27:19, :28:19, :29:29, :52:27
 endmodule
 
-module FixedFPTree_exp7_mant6_out9_vec4_range9(	// src/main/scala/mx/mac/CustomReduction.scala:49:7
+module FixedFPTree_exp7_mant6_out8_vec4_range8(	// src/main/scala/mx/mac/CustomReduction.scala:49:7
   input        io_inputs_0_sign,	// src/main/scala/mx/mac/CustomReduction.scala:76:14
   input  [6:0] io_inputs_0_exp,	// src/main/scala/mx/mac/CustomReduction.scala:76:14
   input  [5:0] io_inputs_0_mant,	// src/main/scala/mx/mac/CustomReduction.scala:76:14
@@ -81,7 +81,7 @@ module FixedFPTree_exp7_mant6_out9_vec4_range9(	// src/main/scala/mx/mac/CustomR
   input  [5:0] io_inputs_3_mant,	// src/main/scala/mx/mac/CustomReduction.scala:76:14
   output       io_out_sign,	// src/main/scala/mx/mac/CustomReduction.scala:76:14
   output [6:0] io_out_exp,	// src/main/scala/mx/mac/CustomReduction.scala:76:14
-  output [8:0] io_out_mant	// src/main/scala/mx/mac/CustomReduction.scala:76:14
+  output [7:0] io_out_mant	// src/main/scala/mx/mac/CustomReduction.scala:76:14
 );
 
   wire [6:0]  _maxExp_T_1 =
@@ -93,96 +93,94 @@ module FixedFPTree_exp7_mant6_out9_vec4_range9(	// src/main/scala/mx/mac/CustomR
   wire [6:0]  maxExp =
     $signed(_maxExp_T_3) > $signed(io_inputs_3_exp) ? _maxExp_T_3 : io_inputs_3_exp;	// src/main/scala/mx/mac/CustomReduction.scala:124:{61,64}
   wire [6:0]  _diffRaw_T = maxExp - io_inputs_0_exp;	// src/main/scala/mx/mac/CustomReduction.scala:124:61, :135:30
-  wire        overflowed = _diffRaw_T > 7'h9;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
-  wire [17:0] _GEN =
+  wire        overflowed = _diffRaw_T > 7'h8;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
+  wire [16:0] _GEN =
     {1'h0,
      overflowed
-       ? 17'h0
-       : {2'h0, io_inputs_0_mant, 9'h0} >> (overflowed ? 4'h9 : _diffRaw_T[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
+       ? 16'h0
+       : {2'h0, io_inputs_0_mant, 8'h0} >> (overflowed ? 4'h8 : _diffRaw_T[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
   wire [6:0]  _diffRaw_T_3 = maxExp - io_inputs_1_exp;	// src/main/scala/mx/mac/CustomReduction.scala:124:61, :135:30
-  wire        overflowed_1 = _diffRaw_T_3 > 7'h9;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
-  wire [17:0] _GEN_0 =
+  wire        overflowed_1 = _diffRaw_T_3 > 7'h8;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
+  wire [16:0] _GEN_0 =
     {1'h0,
      overflowed_1
-       ? 17'h0
-       : {2'h0, io_inputs_1_mant, 9'h0} >> (overflowed_1 ? 4'h9 : _diffRaw_T_3[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
+       ? 16'h0
+       : {2'h0, io_inputs_1_mant, 8'h0} >> (overflowed_1 ? 4'h8 : _diffRaw_T_3[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
   wire [6:0]  _diffRaw_T_6 = maxExp - io_inputs_2_exp;	// src/main/scala/mx/mac/CustomReduction.scala:124:61, :135:30
-  wire        overflowed_2 = _diffRaw_T_6 > 7'h9;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
-  wire [17:0] _GEN_1 =
+  wire        overflowed_2 = _diffRaw_T_6 > 7'h8;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
+  wire [16:0] _GEN_1 =
     {1'h0,
      overflowed_2
-       ? 17'h0
-       : {2'h0, io_inputs_2_mant, 9'h0} >> (overflowed_2 ? 4'h9 : _diffRaw_T_6[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
+       ? 16'h0
+       : {2'h0, io_inputs_2_mant, 8'h0} >> (overflowed_2 ? 4'h8 : _diffRaw_T_6[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
   wire [6:0]  _diffRaw_T_9 = maxExp - io_inputs_3_exp;	// src/main/scala/mx/mac/CustomReduction.scala:124:61, :135:30
-  wire        overflowed_3 = _diffRaw_T_9 > 7'h9;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
-  wire [17:0] _GEN_2 =
+  wire        overflowed_3 = _diffRaw_T_9 > 7'h8;	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32
+  wire [16:0] _GEN_2 =
     {1'h0,
      overflowed_3
-       ? 17'h0
-       : {2'h0, io_inputs_3_mant, 9'h0} >> (overflowed_3 ? 4'h9 : _diffRaw_T_9[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
-  wire [17:0] _rawSum_T_6 =
-    (io_inputs_0_sign ? 18'h0 - _GEN : _GEN)
-    + (io_inputs_1_sign ? 18'h0 - _GEN_0 : _GEN_0)
-    + (io_inputs_2_sign ? 18'h0 - _GEN_1 : _GEN_1)
-    + (io_inputs_3_sign ? 18'h0 - _GEN_2 : _GEN_2);	// src/main/scala/mx/mac/CustomReduction.scala:151:28, :152:{24,51}, :158:69, :165:22
-  wire        isNeg = $signed(_rawSum_T_6) < 18'sh0;	// src/main/scala/mx/mac/CustomReduction.scala:158:69, :165:22
-  wire [16:0] absMag = isNeg ? ~(_rawSum_T_6[16:0]) + 17'h1 : _rawSum_T_6[16:0];	// src/main/scala/mx/mac/CustomReduction.scala:158:69, :162:21, :165:22, :168:{21,30,36,64}
-  wire        isZero = absMag == 17'h0;	// src/main/scala/mx/mac/CustomReduction.scala:149:27, :168:21, :169:25
+       ? 16'h0
+       : {2'h0, io_inputs_3_mant, 8'h0} >> (overflowed_3 ? 4'h8 : _diffRaw_T_9[3:0])};	// src/main/scala/mx/mac/CustomReduction.scala:135:30, :136:32, :137:25, :138:45, :139:25, :148:34, :149:27, :151:28, :152:51
+  wire [16:0] _rawSum_T_6 =
+    (io_inputs_0_sign ? 17'h0 - _GEN : _GEN)
+    + (io_inputs_1_sign ? 17'h0 - _GEN_0 : _GEN_0)
+    + (io_inputs_2_sign ? 17'h0 - _GEN_1 : _GEN_1)
+    + (io_inputs_3_sign ? 17'h0 - _GEN_2 : _GEN_2);	// src/main/scala/mx/mac/CustomReduction.scala:151:28, :152:{24,51}, :158:69, :165:22
+  wire        isNeg = $signed(_rawSum_T_6) < 17'sh0;	// src/main/scala/mx/mac/CustomReduction.scala:158:69, :165:22
+  wire [15:0] absMag = isNeg ? ~(_rawSum_T_6[15:0]) + 16'h1 : _rawSum_T_6[15:0];	// src/main/scala/mx/mac/CustomReduction.scala:158:69, :162:21, :165:22, :168:{21,30,36,64}
+  wire        isZero = absMag == 16'h0;	// src/main/scala/mx/mac/CustomReduction.scala:149:27, :168:21, :169:25
   wire [3:0]  _GEN_3 =
-    {{absMag[5:4], absMag[7]} & 3'h5, 1'h0} | {absMag[7:6], absMag[9:8]} & 4'h5;	// src/main/scala/mx/mac/CustomReduction.scala:152:51, :168:21, :172:45
-  wire [4:0]  lzc =
-    absMag[16]
-      ? 5'h0
-      : absMag[15]
-          ? 5'h1
-          : absMag[14]
-              ? 5'h2
-              : absMag[13]
-                  ? 5'h3
-                  : absMag[12]
-                      ? 5'h4
-                      : absMag[11]
-                          ? 5'h5
-                          : absMag[10]
-                              ? 5'h6
-                              : absMag[9]
-                                  ? 5'h7
-                                  : _GEN_3[0]
-                                      ? 5'h8
-                                      : _GEN_3[1]
-                                          ? 5'h9
-                                          : _GEN_3[2]
-                                              ? 5'hA
-                                              : _GEN_3[3]
-                                                  ? 5'hB
-                                                  : absMag[4]
-                                                      ? 5'hC
-                                                      : absMag[3]
-                                                          ? 5'hD
-                                                          : absMag[2]
-                                                              ? 5'hE
-                                                              : absMag[1] ? 5'hF : 5'h10;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/chisel3/util/OneHot.scala:48:45, src/main/scala/mx/mac/CustomReduction.scala:168:21, :172:45
-  wire [47:0] _normalized_T = {31'h0, absMag} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/CustomReduction.scala:168:21, :173:30
-  wire [9:0]  roundedM =
-    {1'h0, _normalized_T[16:8]}
-    + {9'h0,
+    {{absMag[5:4], absMag[7]} & 3'h5, 1'h0} | {absMag[7:6], absMag[9:8]} & 4'h5;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/CustomReduction.scala:152:51, :168:21, :172:45
+  wire [3:0]  lzc =
+    absMag[15]
+      ? 4'h0
+      : absMag[14]
+          ? 4'h1
+          : absMag[13]
+              ? 4'h2
+              : absMag[12]
+                  ? 4'h3
+                  : absMag[11]
+                      ? 4'h4
+                      : absMag[10]
+                          ? 4'h5
+                          : absMag[9]
+                              ? 4'h6
+                              : _GEN_3[0]
+                                  ? 4'h7
+                                  : _GEN_3[1]
+                                      ? 4'h8
+                                      : _GEN_3[2]
+                                          ? 4'h9
+                                          : _GEN_3[3]
+                                              ? 4'hA
+                                              : absMag[4]
+                                                  ? 4'hB
+                                                  : absMag[3]
+                                                      ? 4'hC
+                                                      : absMag[2]
+                                                          ? 4'hD
+                                                          : {3'h7, ~(absMag[1])};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/chisel3/util/OneHot.scala:48:45, src/main/scala/mx/mac/CustomReduction.scala:136:32, :168:21, :172:45
+  wire [30:0] _normalized_T = {15'h0, absMag} << lzc;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/CustomReduction.scala:168:21, :173:30
+  wire [8:0]  roundedM =
+    {1'h0, _normalized_T[15:8]}
+    + {8'h0,
        _normalized_T[7]
          & (_normalized_T[8] | _normalized_T[6] | (|(_normalized_T[5:0])))};	// src/main/scala/mx/mac/CustomReduction.scala:139:25, :152:51, :173:{30,37}, :195:34, :196:34, :197:49, :198:{49,59}, :199:{33,44,67}, :200:33
-  wire [6:0]  _expBase_T_3 = maxExp - 7'h1 - {2'h0, lzc};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/CustomReduction.scala:124:61, :139:25, :212:{26,59}
+  wire [6:0]  _expBase_T_3 = maxExp - {3'h0, lzc};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/CustomReduction.scala:124:61, :212:59
   assign io_out_sign = ~isZero & isNeg;	// src/main/scala/mx/mac/CustomReduction.scala:49:7, :165:22, :169:25, :215:23
-  assign io_out_exp = roundedM[9] ? _expBase_T_3 + 7'h1 : _expBase_T_3;	// src/main/scala/mx/mac/CustomReduction.scala:49:7, :200:33, :201:32, :212:59, :213:{22,39}
-  assign io_out_mant = isZero ? 9'h0 : roundedM[9] ? 9'h100 : roundedM[8:0];	// src/main/scala/mx/mac/CustomReduction.scala:49:7, :139:25, :169:25, :200:33, :201:32, :202:23, :204:19, :216:23
+  assign io_out_exp = roundedM[8] ? _expBase_T_3 + 7'h1 : _expBase_T_3;	// src/main/scala/mx/mac/CustomReduction.scala:49:7, :200:33, :201:32, :212:59, :213:{22,39}
+  assign io_out_mant = isZero ? 8'h0 : roundedM[8] ? 8'h80 : roundedM[7:0];	// src/main/scala/mx/mac/CustomReduction.scala:49:7, :139:25, :169:25, :200:33, :201:32, :202:23, :204:19, :216:23
 endmodule
 
-module ScaleComposition_E4M3_to_E2M1_scale_UE4M4_wide9(	// src/main/scala/mx/mac/ScaleComposition.scala:13:7
+module ScaleComposition_E4M3_to_E2M1_scale_UE4M4_wide8(	// src/main/scala/mx/mac/ScaleComposition.scala:13:7
   input         io_inOpSign,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
   input  [6:0]  io_inOpExp,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
-  input  [8:0]  io_inOpMant,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
-  input  [7:0]  io_inShareScaleA,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
+  input  [7:0]  io_inOpMant,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
+                io_inShareScaleA,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
                 io_inShareScaleB,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
   output        io_outSign,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
   output [8:0]  io_outExp,	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
-  output [18:0] io_outMant	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
+  output [17:0] io_outMant	// src/main/scala/mx/mac/ScaleComposition.scala:46:14
 );
 
   wire [4:0] adjExpScaleA =
@@ -195,128 +193,124 @@ module ScaleComposition_E4M3_to_E2M1_scale_UE4M4_wide9(	// src/main/scala/mx/mac
   assign io_outSign = io_inOpSign;	// src/main/scala/mx/mac/ScaleComposition.scala:13:7
   assign io_outExp = {ExpAdd[7], ExpAdd};	// src/main/scala/mx/mac/ScaleComposition.scala:13:7, :89:28, :93:14
   assign io_outMant =
-    {9'h0,
+    {8'h0,
      {5'h0, |(io_inShareScaleA[7:4]), io_inShareScaleA[3:0]}
        * {5'h0, |(io_inShareScaleB[7:4]), io_inShareScaleB[3:0]}} * {10'h0, io_inOpMant};	// src/main/scala/mx/mac/ScaleComposition.scala:13:7, :60:17, :64:20, :65:29, :87:41, :90:38
 endmodule
 
-module FusedScaleAcc_E4M3_x_E2M1_UE4M4_acc12b(	// src/main/scala/mx/mac/FP32Common.scala:325:7
-  input  [20:0] io_accIn,	// src/main/scala/mx/mac/FP32Common.scala:337:14
+module FusedScaleAcc_E4M3_x_E2M1_UE4M4_acc11b(	// src/main/scala/mx/mac/FP32Common.scala:325:7
+  input  [19:0] io_accIn,	// src/main/scala/mx/mac/FP32Common.scala:337:14
   input         io_termSign,	// src/main/scala/mx/mac/FP32Common.scala:337:14
   input  [8:0]  io_termExp,	// src/main/scala/mx/mac/FP32Common.scala:337:14
-  input  [18:0] io_termMant,	// src/main/scala/mx/mac/FP32Common.scala:337:14
-  output [20:0] io_accOut	// src/main/scala/mx/mac/FP32Common.scala:337:14
+  input  [17:0] io_termMant,	// src/main/scala/mx/mac/FP32Common.scala:337:14
+  output [19:0] io_accOut	// src/main/scala/mx/mac/FP32Common.scala:337:14
 );
 
-  wire [1:0]    termLeadZeros = io_termMant[18] ? 2'h0 : io_termMant[17] ? 2'h1 : 2'h2;	// src/main/scala/mx/mac/FP32Common.scala:365:42, :366:42, :367:26, :368:27, :447:26
-  wire [21:0]   _termNormMant_T = {3'h0, io_termMant} << termLeadZeros;	// src/main/scala/mx/mac/FP32Common.scala:367:26, :370:35
+  wire [1:0]    termLeadZeros = io_termMant[17] ? 2'h0 : io_termMant[16] ? 2'h1 : 2'h2;	// src/main/scala/mx/mac/FP32Common.scala:365:42, :366:42, :367:26, :368:27, :447:26
+  wire [20:0]   _termNormMant_T = {3'h0, io_termMant} << termLeadZeros;	// src/main/scala/mx/mac/FP32Common.scala:367:26, :370:35
   wire [9:0]    _etBiased_T_2 =
-    {io_termExp[8], io_termExp} + 10'h85 - {8'h0, termLeadZeros};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :371:{33,49}, :376:29
-  wire [18:0]   accJust = {|(io_accIn[19:12]), io_accIn[11:0], 6'h0};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:375:26, :376:{29,42}, :394:31
-  wire [9:0]    _GEN = {2'h0, io_accIn[19:12]};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :375:26, :401:41
+    {io_termExp[8], io_termExp} + 10'h84 - {8'h0, termLeadZeros};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :371:{33,49}, :376:29
+  wire [17:0]   accJust = {|(io_accIn[18:11]), io_accIn[10:0], 6'h0};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:375:26, :376:{29,42}, :394:31
+  wire [9:0]    _GEN = {2'h0, io_accIn[18:11]};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :375:26, :401:41
   wire          aGreater =
-    io_termMant == 19'h0 | (|{|(io_accIn[19:12]), io_accIn[11:0]})
+    io_termMant == 18'h0 | (|{|(io_accIn[18:11]), io_accIn[10:0]})
     & ($signed(_GEN) > $signed(_etBiased_T_2) | _GEN == _etBiased_T_2
-       & {|(io_accIn[19:12]), io_accIn[11:0], 21'h0} >= {_termNormMant_T[18:0], 15'h0});	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :371:49, :375:26, :376:{21,29,42}, :379:30, :380:26, :395:21, :396:21, :400:27, :401:{28,41,52}, :402:{41,54,62}, :451:19
-  wire [18:0]   _GEN_0 = aGreater ? _termNormMant_T[18:0] : accJust;	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :406:21
-  wire          farSign = aGreater ? io_accIn[20] : io_termSign;	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :407:21
-  wire          nearSign = aGreater ? io_termSign : io_accIn[20];	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :408:21
+       & {|(io_accIn[18:11]), io_accIn[10:0], 20'h0} >= {_termNormMant_T[17:0], 14'h0});	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :371:49, :375:26, :376:{21,29,42}, :379:30, :380:26, :395:21, :396:21, :400:27, :401:{28,41,52}, :402:{41,54,62}, :451:19
+  wire [17:0]   _GEN_0 = aGreater ? _termNormMant_T[17:0] : accJust;	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :406:21
+  wire          farSign = aGreater ? io_accIn[19] : io_termSign;	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :407:21
+  wire          nearSign = aGreater ? io_termSign : io_accIn[19];	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :408:21
   wire [9:0]    _expDiffS_T = _GEN - _etBiased_T_2;	// src/main/scala/mx/mac/FP32Common.scala:371:49, :401:41, :411:27
   wire [9:0]    absDiff =
     $signed(_expDiffS_T) < 10'sh0 ? 10'h0 - _expDiffS_T : _expDiffS_T;	// src/main/scala/mx/mac/FP32Common.scala:411:27, :412:{21,31,39}
-  wire [9:0]    shAmt = absDiff > 10'h22 ? 10'h22 : absDiff;	// src/main/scala/mx/mac/FP32Common.scala:412:21, :413:{21,30}
+  wire [9:0]    shAmt = absDiff > 10'h20 ? 10'h20 : absDiff;	// src/main/scala/mx/mac/FP32Common.scala:412:21, :413:{21,30}
   wire [1023:0] _stickyAlign_T = 1024'h1 << shAmt;	// src/main/scala/mx/mac/FP32Common.scala:413:21, :415:38
-  wire [33:0]   _stickyAlign_T_1 = _stickyAlign_T[33:0] - 34'h1;	// src/main/scala/mx/mac/FP32Common.scala:415:{38,48}
+  wire [31:0]   _stickyAlign_T_1 = _stickyAlign_T[31:0] - 32'h1;	// src/main/scala/mx/mac/FP32Common.scala:415:{38,48}
   wire          isSub = farSign ^ nearSign;	// src/main/scala/mx/mac/FP32Common.scala:407:21, :408:21, :423:28
-  wire [34:0]   _GEN_1 = {1'h0, aGreater ? accJust : _termNormMant_T[18:0], 15'h0};	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :405:21, :412:31, :424:26
-  wire [34:0]   _GEN_2 = {1'h0, {_GEN_0, 15'h0} >> shAmt};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :413:21, :414:29, :424:26
-  wire [34:0]   _subFwd_T_2 = _GEN_1 - _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:424:26, :425:41
-  wire [34:0]   resMag =
-    isSub ? (_subFwd_T_2[34] ? ~_subFwd_T_2 + 35'h1 : _subFwd_T_2) : _GEN_1 + _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:423:28, :424:26, :425:41, :426:25, :427:{22,35,43}, :428:22
+  wire [32:0]   _GEN_1 = {1'h0, aGreater ? accJust : _termNormMant_T[17:0], 14'h0};	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :405:21, :412:31, :424:26
+  wire [32:0]   _GEN_2 = {1'h0, {_GEN_0, 14'h0} >> shAmt};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :413:21, :414:29, :424:26
+  wire [32:0]   _subFwd_T_2 = _GEN_1 - _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:424:26, :425:41
+  wire [32:0]   resMag =
+    isSub ? (_subFwd_T_2[32] ? ~_subFwd_T_2 + 33'h1 : _subFwd_T_2) : _GEN_1 + _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:423:28, :424:26, :425:41, :426:25, :427:{22,35,43}, :428:22
   wire [5:0]    resLZC =
-    resMag[34]
+    resMag[32]
       ? 6'h0
-      : resMag[33]
+      : resMag[31]
           ? 6'h1
-          : resMag[32]
+          : resMag[30]
               ? 6'h2
-              : resMag[31]
+              : resMag[29]
                   ? 6'h3
-                  : resMag[30]
+                  : resMag[28]
                       ? 6'h4
-                      : resMag[29]
+                      : resMag[27]
                           ? 6'h5
-                          : resMag[28]
+                          : resMag[26]
                               ? 6'h6
-                              : resMag[27]
+                              : resMag[25]
                                   ? 6'h7
-                                  : resMag[26]
+                                  : resMag[24]
                                       ? 6'h8
-                                      : resMag[25]
+                                      : resMag[23]
                                           ? 6'h9
-                                          : resMag[24]
+                                          : resMag[22]
                                               ? 6'hA
-                                              : resMag[23]
+                                              : resMag[21]
                                                   ? 6'hB
-                                                  : resMag[22]
+                                                  : resMag[20]
                                                       ? 6'hC
-                                                      : resMag[21]
+                                                      : resMag[19]
                                                           ? 6'hD
-                                                          : resMag[20]
+                                                          : resMag[18]
                                                               ? 6'hE
-                                                              : resMag[19]
+                                                              : resMag[17]
                                                                   ? 6'hF
-                                                                  : resMag[18]
+                                                                  : resMag[16]
                                                                       ? 6'h10
-                                                                      : resMag[17]
+                                                                      : resMag[15]
                                                                           ? 6'h11
-                                                                          : resMag[16]
+                                                                          : resMag[14]
                                                                               ? 6'h12
-                                                                              : resMag[15]
+                                                                              : resMag[13]
                                                                                   ? 6'h13
-                                                                                  : resMag[14]
+                                                                                  : resMag[12]
                                                                                       ? 6'h14
-                                                                                      : resMag[13]
+                                                                                      : resMag[11]
                                                                                           ? 6'h15
-                                                                                          : resMag[12]
+                                                                                          : resMag[10]
                                                                                               ? 6'h16
-                                                                                              : resMag[11]
+                                                                                              : resMag[9]
                                                                                                   ? 6'h17
-                                                                                                  : resMag[10]
+                                                                                                  : resMag[8]
                                                                                                       ? 6'h18
-                                                                                                      : resMag[9]
+                                                                                                      : resMag[7]
                                                                                                           ? 6'h19
-                                                                                                          : resMag[8]
+                                                                                                          : resMag[6]
                                                                                                               ? 6'h1A
-                                                                                                              : resMag[7]
+                                                                                                              : resMag[5]
                                                                                                                   ? 6'h1B
-                                                                                                                  : resMag[6]
+                                                                                                                  : resMag[4]
                                                                                                                       ? 6'h1C
-                                                                                                                      : resMag[5]
+                                                                                                                      : resMag[3]
                                                                                                                           ? 6'h1D
-                                                                                                                          : resMag[4]
+                                                                                                                          : resMag[2]
                                                                                                                               ? 6'h1E
-                                                                                                                              : resMag[3]
+                                                                                                                              : resMag[1]
                                                                                                                                   ? 6'h1F
-                                                                                                                                  : resMag[2]
-                                                                                                                                      ? 6'h20
-                                                                                                                                      : resMag[1]
-                                                                                                                                          ? 6'h21
-                                                                                                                                          : 6'h22;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:413:30, :428:22, :433:42
-  wire [97:0]   _normShift_T = {63'h0, resMag} << resLZC;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:428:22, :434:27
-  wire [12:0]   roundedM =
-    {1'h0, _normShift_T[33:22]}
-    + {12'h0,
-       _normShift_T[21]
-         & (_normShift_T[22] | _normShift_T[20] | (|(_normShift_T[19:0]))
-            | (|(_GEN_0 & _stickyAlign_T_1[33:15])))};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :415:{30,48,71}, :434:{27,37}, :437:28, :438:28, :439:28, :440:{28,50}, :442:{28,37,53}, :443:25, :452:35
+                                                                                                                                  : 6'h20;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:413:30, :428:22, :433:42
+  wire [95:0]   _normShift_T = {63'h0, resMag} << resLZC;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:428:22, :434:27
+  wire [11:0]   roundedM =
+    {1'h0, _normShift_T[31:21]}
+    + {11'h0,
+       _normShift_T[20]
+         & (_normShift_T[21] | _normShift_T[19] | (|(_normShift_T[18:0]))
+            | (|(_GEN_0 & _stickyAlign_T_1[31:14])))};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :415:{30,48,71}, :434:{27,37}, :437:28, :438:28, :439:28, :440:{28,50}, :442:{28,37,53}, :443:25, :452:35
   wire [9:0]    _finalE_T_8 =
-    (aGreater ? _GEN : _etBiased_T_2) + 10'h1 - {4'h0, resLZC} + {9'h0, roundedM[12]};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:371:49, :400:27, :401:41, :404:21, :443:25, :444:27, :447:{26,32,46}
+    (aGreater ? _GEN : _etBiased_T_2) + 10'h1 - {4'h0, resLZC} + {9'h0, roundedM[11]};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:371:49, :400:27, :401:41, :404:21, :443:25, :444:27, :447:{26,32,46}
   assign io_accOut =
-    resMag == 35'h0 | $signed(_finalE_T_8) < 10'sh1
-      ? 21'h0
-      : {isSub & _subFwd_T_2[34] ? nearSign : farSign,
-         $signed(_finalE_T_8) > 10'shFE ? 20'hFF000 : {_finalE_T_8[7:0], roundedM[11:0]}};	// src/main/scala/mx/mac/FP32Common.scala:325:7, :407:21, :408:21, :423:28, :425:41, :426:25, :427:43, :428:22, :430:{22,29}, :443:25, :445:27, :447:{26,46}, :448:{26,34,44}, :449:27, :451:19, :452:{19,35}, :453:{35,58}
+    resMag == 33'h0 | $signed(_finalE_T_8) < 10'sh1
+      ? 20'h0
+      : {isSub & _subFwd_T_2[32] ? nearSign : farSign,
+         $signed(_finalE_T_8) > 10'shFE ? 19'h7F800 : {_finalE_T_8[7:0], roundedM[10:0]}};	// src/main/scala/mx/mac/FP32Common.scala:325:7, :407:21, :408:21, :423:28, :425:41, :426:25, :427:43, :428:22, :430:{22,29}, :443:25, :445:27, :447:{26,46}, :448:{26,34,44}, :449:27, :451:19, :452:{19,35}, :453:{35,58}
 endmodule
 
 module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
@@ -329,16 +323,16 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
   input         io_validIn,	// src/main/scala/mx/mac/FDPU.scala:68:14
                 io_resetAcc,	// src/main/scala/mx/mac/FDPU.scala:68:14
   output        io_validOut,	// src/main/scala/mx/mac/FDPU.scala:68:14
-  output [20:0] io_accOut	// src/main/scala/mx/mac/FDPU.scala:68:14
+  output [19:0] io_accOut	// src/main/scala/mx/mac/FDPU.scala:68:14
 );
 
-  wire [20:0] _fusedAcc_io_accOut;	// src/main/scala/mx/mac/FDPU.scala:225:26
+  wire [19:0] _fusedAcc_io_accOut;	// src/main/scala/mx/mac/FDPU.scala:225:26
   wire        _sc_io_outSign;	// src/main/scala/mx/mac/FDPU.scala:216:20
   wire [8:0]  _sc_io_outExp;	// src/main/scala/mx/mac/FDPU.scala:216:20
-  wire [18:0] _sc_io_outMant;	// src/main/scala/mx/mac/FDPU.scala:216:20
+  wire [17:0] _sc_io_outMant;	// src/main/scala/mx/mac/FDPU.scala:216:20
   wire        _tree_io_out_sign;	// src/main/scala/mx/mac/FDPU.scala:144:20
   wire [6:0]  _tree_io_out_exp;	// src/main/scala/mx/mac/FDPU.scala:144:20
-  wire [8:0]  _tree_io_out_mant;	// src/main/scala/mx/mac/FDPU.scala:144:20
+  wire [7:0]  _tree_io_out_mant;	// src/main/scala/mx/mac/FDPU.scala:144:20
   wire        _op_3_io_outSign;	// src/main/scala/mx/mac/FDPU.scala:103:20
   wire [5:0]  _op_3_io_outExp;	// src/main/scala/mx/mac/FDPU.scala:103:20
   wire [5:0]  _op_3_io_outMant;	// src/main/scala/mx/mac/FDPU.scala:103:20
@@ -352,16 +346,16 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
   wire [5:0]  _op_io_outExp;	// src/main/scala/mx/mac/FDPU.scala:103:20
   wire [5:0]  _op_io_outMant;	// src/main/scala/mx/mac/FDPU.scala:103:20
   wire        _asyncRstN_T = ~reset;	// src/main/scala/mx/mac/FDPU.scala:173:20
-  reg  [20:0] accReg;	// src/main/scala/mx/mac/FDPU.scala:174:47
+  reg  [19:0] accReg;	// src/main/scala/mx/mac/FDPU.scala:174:47
   reg         validReg;	// src/main/scala/mx/mac/FDPU.scala:175:47
   always @(posedge clock or posedge _asyncRstN_T) begin	// src/main/scala/mx/mac/FDPU.scala:28:7, :173:20
     if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FDPU.scala:28:7, :173:20
-      accReg <= 21'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
+      accReg <= 20'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
       validReg <= 1'h0;	// src/main/scala/mx/mac/FDPU.scala:28:7, :175:47
     end
     else begin	// src/main/scala/mx/mac/FDPU.scala:28:7
       if (io_resetAcc)	// src/main/scala/mx/mac/FDPU.scala:68:14
-        accReg <= 21'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
+        accReg <= 20'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
       else if (io_validIn)	// src/main/scala/mx/mac/FDPU.scala:68:14
         accReg <= _fusedAcc_io_accOut;	// src/main/scala/mx/mac/FDPU.scala:174:47, :225:26
       validReg <= ~io_resetAcc & io_validIn;	// src/main/scala/mx/mac/FDPU.scala:175:47, :248:21, :250:14, :251:26
@@ -378,11 +372,11 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
       `endif // INIT_RANDOM_PROLOG_
       `ifdef RANDOMIZE_REG_INIT	// src/main/scala/mx/mac/FDPU.scala:28:7
         _RANDOM[/*Zero width*/ 1'b0] = `RANDOM;	// src/main/scala/mx/mac/FDPU.scala:28:7
-        accReg = _RANDOM[/*Zero width*/ 1'b0][20:0];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47
-        validReg = _RANDOM[/*Zero width*/ 1'b0][21];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47, :175:47
+        accReg = _RANDOM[/*Zero width*/ 1'b0][19:0];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47
+        validReg = _RANDOM[/*Zero width*/ 1'b0][20];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47, :175:47
       `endif // RANDOMIZE_REG_INIT
       if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FDPU.scala:28:7, :173:20
-        accReg = 21'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
+        accReg = 20'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
         validReg = 1'h0;	// src/main/scala/mx/mac/FDPU.scala:28:7, :175:47
       end
     end // initial
@@ -418,7 +412,7 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
     .io_outExp  (_op_3_io_outExp),
     .io_outMant (_op_3_io_outMant)
   );
-  FixedFPTree_exp7_mant6_out9_vec4_range9 tree (	// src/main/scala/mx/mac/FDPU.scala:144:20
+  FixedFPTree_exp7_mant6_out8_vec4_range8 tree (	// src/main/scala/mx/mac/FDPU.scala:144:20
     .io_inputs_0_sign (_op_io_outSign),	// src/main/scala/mx/mac/FDPU.scala:103:20
     .io_inputs_0_exp  ({_op_io_outExp[5], _op_io_outExp}),	// src/main/scala/mx/mac/FDPU.scala:103:20, :156:28
     .io_inputs_0_mant (_op_io_outMant),	// src/main/scala/mx/mac/FDPU.scala:103:20
@@ -435,7 +429,7 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
     .io_out_exp       (_tree_io_out_exp),
     .io_out_mant      (_tree_io_out_mant)
   );
-  ScaleComposition_E4M3_to_E2M1_scale_UE4M4_wide9 sc (	// src/main/scala/mx/mac/FDPU.scala:216:20
+  ScaleComposition_E4M3_to_E2M1_scale_UE4M4_wide8 sc (	// src/main/scala/mx/mac/FDPU.scala:216:20
     .io_inOpSign      (_tree_io_out_sign),	// src/main/scala/mx/mac/FDPU.scala:144:20
     .io_inOpExp       (_tree_io_out_exp),	// src/main/scala/mx/mac/FDPU.scala:144:20
     .io_inOpMant      (_tree_io_out_mant),	// src/main/scala/mx/mac/FDPU.scala:144:20
@@ -445,7 +439,7 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
     .io_outExp        (_sc_io_outExp),
     .io_outMant       (_sc_io_outMant)
   );
-  FusedScaleAcc_E4M3_x_E2M1_UE4M4_acc12b fusedAcc (	// src/main/scala/mx/mac/FDPU.scala:225:26
+  FusedScaleAcc_E4M3_x_E2M1_UE4M4_acc11b fusedAcc (	// src/main/scala/mx/mac/FDPU.scala:225:26
     .io_accIn    (accReg),	// src/main/scala/mx/mac/FDPU.scala:174:47
     .io_termSign (_sc_io_outSign),	// src/main/scala/mx/mac/FDPU.scala:216:20
     .io_termExp  (_sc_io_outExp),	// src/main/scala/mx/mac/FDPU.scala:216:20

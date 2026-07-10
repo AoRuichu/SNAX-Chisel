@@ -159,130 +159,129 @@ module ScaleComposition_INT8_to_INT8_scale_UE6M2_wide14(	// src/main/scala/mx/ma
        * {3'h0, |(io_inShareScaleB[7:2]), io_inShareScaleB[1:0]}} * {6'h0, io_inOpMant};	// src/main/scala/mx/mac/ScaleComposition.scala:13:7, :60:17, :64:20, :65:29, :87:41, :90:38
 endmodule
 
-module FusedScaleAcc_INT8_x_INT8_UE6M2_acc14b(	// src/main/scala/mx/mac/FP32Common.scala:325:7
-  input  [22:0] io_accIn,	// src/main/scala/mx/mac/FP32Common.scala:337:14
+module FusedScaleAcc_INT8_x_INT8_UE6M2_acc13b(	// src/main/scala/mx/mac/FP32Common.scala:325:7
+  input  [21:0] io_accIn,	// src/main/scala/mx/mac/FP32Common.scala:337:14
   input         io_termSign,	// src/main/scala/mx/mac/FP32Common.scala:337:14
   input  [8:0]  io_termExp,	// src/main/scala/mx/mac/FP32Common.scala:337:14
   input  [19:0] io_termMant,	// src/main/scala/mx/mac/FP32Common.scala:337:14
-  output [22:0] io_accOut	// src/main/scala/mx/mac/FP32Common.scala:337:14
+  output [21:0] io_accOut	// src/main/scala/mx/mac/FP32Common.scala:337:14
 );
 
   wire [1:0]    termLeadZeros = io_termMant[19] ? 2'h0 : io_termMant[18] ? 2'h1 : 2'h2;	// src/main/scala/mx/mac/FP32Common.scala:365:42, :366:42, :367:26, :368:27, :447:26
   wire [22:0]   _termNormMant_T = {3'h0, io_termMant} << termLeadZeros;	// src/main/scala/mx/mac/FP32Common.scala:367:26, :370:35
   wire [9:0]    _etBiased_T_2 =
     {io_termExp[8], io_termExp} + 10'h8E - {8'h0, termLeadZeros};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :371:{33,49}, :376:29
-  wire [19:0]   accJust = {|(io_accIn[21:14]), io_accIn[13:0], 5'h0};	// src/main/scala/mx/mac/FP32Common.scala:375:26, :376:{29,42}, :394:31
-  wire [9:0]    _GEN = {2'h0, io_accIn[21:14]};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :375:26, :401:41
+  wire [19:0]   accJust = {|(io_accIn[20:13]), io_accIn[12:0], 6'h0};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:375:26, :376:{29,42}, :394:31
+  wire [9:0]    _GEN = {2'h0, io_accIn[20:13]};	// src/main/scala/mx/mac/FP32Common.scala:367:26, :375:26, :401:41
   wire          aGreater =
-    io_termMant == 20'h0 | (|{|(io_accIn[21:14]), io_accIn[13:0]})
+    io_termMant == 20'h0 | (|{|(io_accIn[20:13]), io_accIn[12:0]})
     & ($signed(_GEN) > $signed(_etBiased_T_2) | _GEN == _etBiased_T_2
-       & {|(io_accIn[21:14]), io_accIn[13:0], 22'h0} >= {_termNormMant_T[19:0], 17'h0});	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :371:49, :375:26, :376:{21,29,42}, :379:30, :380:26, :395:21, :396:21, :400:27, :401:{28,41,52}, :402:{41,54,62}
+       & {|(io_accIn[20:13]), io_accIn[12:0], 22'h0} >= {_termNormMant_T[19:0], 16'h0});	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :371:49, :375:26, :376:{21,29,42}, :379:30, :380:26, :395:21, :396:21, :400:27, :401:{28,41,52}, :402:{41,54,62}, :451:19
   wire [19:0]   _GEN_0 = aGreater ? _termNormMant_T[19:0] : accJust;	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :406:21
-  wire          farSign = aGreater ? io_accIn[22] : io_termSign;	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :407:21
-  wire          nearSign = aGreater ? io_termSign : io_accIn[22];	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :408:21
+  wire          farSign = aGreater ? io_accIn[21] : io_termSign;	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :407:21
+  wire          nearSign = aGreater ? io_termSign : io_accIn[21];	// src/main/scala/mx/mac/FP32Common.scala:374:26, :400:27, :408:21
   wire [9:0]    _expDiffS_T = _GEN - _etBiased_T_2;	// src/main/scala/mx/mac/FP32Common.scala:371:49, :401:41, :411:27
   wire [9:0]    absDiff =
     $signed(_expDiffS_T) < 10'sh0 ? 10'h0 - _expDiffS_T : _expDiffS_T;	// src/main/scala/mx/mac/FP32Common.scala:411:27, :412:{21,31,39}
-  wire [9:0]    shAmt = absDiff > 10'h25 ? 10'h25 : absDiff;	// src/main/scala/mx/mac/FP32Common.scala:412:21, :413:{21,30}
+  wire [9:0]    shAmt = absDiff > 10'h24 ? 10'h24 : absDiff;	// src/main/scala/mx/mac/FP32Common.scala:412:21, :413:{21,30}
   wire [1023:0] _stickyAlign_T = 1024'h1 << shAmt;	// src/main/scala/mx/mac/FP32Common.scala:413:21, :415:38
-  wire [36:0]   _stickyAlign_T_1 = _stickyAlign_T[36:0] - 37'h1;	// src/main/scala/mx/mac/FP32Common.scala:415:{38,48}
+  wire [35:0]   _stickyAlign_T_1 = _stickyAlign_T[35:0] - 36'h1;	// src/main/scala/mx/mac/FP32Common.scala:415:{38,48}
   wire          isSub = farSign ^ nearSign;	// src/main/scala/mx/mac/FP32Common.scala:407:21, :408:21, :423:28
-  wire [37:0]   _GEN_1 = {1'h0, aGreater ? accJust : _termNormMant_T[19:0], 17'h0};	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :405:21, :412:31, :424:26
-  wire [37:0]   _GEN_2 = {1'h0, {_GEN_0, 17'h0} >> shAmt};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :413:21, :414:29, :424:26
-  wire [37:0]   _subFwd_T_2 = _GEN_1 - _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:424:26, :425:41
-  wire [37:0]   resMag =
-    isSub ? (_subFwd_T_2[37] ? ~_subFwd_T_2 + 38'h1 : _subFwd_T_2) : _GEN_1 + _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:423:28, :424:26, :425:41, :426:25, :427:{22,35,43}, :428:22
+  wire [36:0]   _GEN_1 = {1'h0, aGreater ? accJust : _termNormMant_T[19:0], 16'h0};	// src/main/scala/mx/mac/FP32Common.scala:370:{35,52}, :394:31, :395:21, :396:21, :400:27, :405:21, :412:31, :424:26
+  wire [36:0]   _GEN_2 = {1'h0, {_GEN_0, 16'h0} >> shAmt};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :413:21, :414:29, :424:26
+  wire [36:0]   _subFwd_T_2 = _GEN_1 - _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:424:26, :425:41
+  wire [36:0]   resMag =
+    isSub ? (_subFwd_T_2[36] ? ~_subFwd_T_2 + 37'h1 : _subFwd_T_2) : _GEN_1 + _GEN_2;	// src/main/scala/mx/mac/FP32Common.scala:423:28, :424:26, :425:41, :426:25, :427:{22,35,43}, :428:22
   wire [5:0]    resLZC =
-    resMag[37]
+    resMag[36]
       ? 6'h0
-      : resMag[36]
+      : resMag[35]
           ? 6'h1
-          : resMag[35]
+          : resMag[34]
               ? 6'h2
-              : resMag[34]
+              : resMag[33]
                   ? 6'h3
-                  : resMag[33]
+                  : resMag[32]
                       ? 6'h4
-                      : resMag[32]
+                      : resMag[31]
                           ? 6'h5
-                          : resMag[31]
+                          : resMag[30]
                               ? 6'h6
-                              : resMag[30]
+                              : resMag[29]
                                   ? 6'h7
-                                  : resMag[29]
+                                  : resMag[28]
                                       ? 6'h8
-                                      : resMag[28]
+                                      : resMag[27]
                                           ? 6'h9
-                                          : resMag[27]
+                                          : resMag[26]
                                               ? 6'hA
-                                              : resMag[26]
+                                              : resMag[25]
                                                   ? 6'hB
-                                                  : resMag[25]
+                                                  : resMag[24]
                                                       ? 6'hC
-                                                      : resMag[24]
+                                                      : resMag[23]
                                                           ? 6'hD
-                                                          : resMag[23]
+                                                          : resMag[22]
                                                               ? 6'hE
-                                                              : resMag[22]
+                                                              : resMag[21]
                                                                   ? 6'hF
-                                                                  : resMag[21]
+                                                                  : resMag[20]
                                                                       ? 6'h10
-                                                                      : resMag[20]
+                                                                      : resMag[19]
                                                                           ? 6'h11
-                                                                          : resMag[19]
+                                                                          : resMag[18]
                                                                               ? 6'h12
-                                                                              : resMag[18]
+                                                                              : resMag[17]
                                                                                   ? 6'h13
-                                                                                  : resMag[17]
+                                                                                  : resMag[16]
                                                                                       ? 6'h14
-                                                                                      : resMag[16]
+                                                                                      : resMag[15]
                                                                                           ? 6'h15
-                                                                                          : resMag[15]
+                                                                                          : resMag[14]
                                                                                               ? 6'h16
-                                                                                              : resMag[14]
+                                                                                              : resMag[13]
                                                                                                   ? 6'h17
-                                                                                                  : resMag[13]
+                                                                                                  : resMag[12]
                                                                                                       ? 6'h18
-                                                                                                      : resMag[12]
+                                                                                                      : resMag[11]
                                                                                                           ? 6'h19
-                                                                                                          : resMag[11]
+                                                                                                          : resMag[10]
                                                                                                               ? 6'h1A
-                                                                                                              : resMag[10]
+                                                                                                              : resMag[9]
                                                                                                                   ? 6'h1B
-                                                                                                                  : resMag[9]
+                                                                                                                  : resMag[8]
                                                                                                                       ? 6'h1C
-                                                                                                                      : resMag[8]
+                                                                                                                      : resMag[7]
                                                                                                                           ? 6'h1D
-                                                                                                                          : resMag[7]
+                                                                                                                          : resMag[6]
                                                                                                                               ? 6'h1E
-                                                                                                                              : resMag[6]
+                                                                                                                              : resMag[5]
                                                                                                                                   ? 6'h1F
-                                                                                                                                  : resMag[5]
+                                                                                                                                  : resMag[4]
                                                                                                                                       ? 6'h20
-                                                                                                                                      : resMag[4]
+                                                                                                                                      : resMag[3]
                                                                                                                                           ? 6'h21
-                                                                                                                                          : resMag[3]
+                                                                                                                                          : resMag[2]
                                                                                                                                               ? 6'h22
-                                                                                                                                              : resMag[2]
+                                                                                                                                              : resMag[1]
                                                                                                                                                   ? 6'h23
-                                                                                                                                                  : {5'h12,
-                                                                                                                                                     ~(resMag[1])};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:428:22, :433:42
-  wire [100:0]  _normShift_T = {63'h0, resMag} << resLZC;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:428:22, :434:27
-  wire [14:0]   roundedM =
-    {1'h0, _normShift_T[36:23]}
-    + {14'h0,
+                                                                                                                                                  : 6'h24;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:413:30, :428:22, :433:42
+  wire [99:0]   _normShift_T = {63'h0, resMag} << resLZC;	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:428:22, :434:27
+  wire [13:0]   roundedM =
+    {1'h0, _normShift_T[35:23]}
+    + {13'h0,
        _normShift_T[22]
          & (_normShift_T[23] | _normShift_T[21] | (|(_normShift_T[20:0]))
-            | (|(_GEN_0 & _stickyAlign_T_1[36:17])))};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :415:{30,48,71}, :434:{27,37}, :437:28, :438:28, :439:28, :440:{28,50}, :442:{28,37,53}, :443:25, :452:35
+            | (|(_GEN_0 & _stickyAlign_T_1[35:16])))};	// src/main/scala/mx/mac/FP32Common.scala:395:21, :396:21, :406:21, :412:31, :415:{30,48,71}, :434:{27,37}, :437:28, :438:28, :439:28, :440:{28,50}, :442:{28,37,53}, :443:25, :452:35
   wire [9:0]    _finalE_T_8 =
-    (aGreater ? _GEN : _etBiased_T_2) + 10'h1 - {4'h0, resLZC} + {9'h0, roundedM[14]};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:371:49, :400:27, :401:41, :404:21, :443:25, :444:27, :447:{26,32,46}
+    (aGreater ? _GEN : _etBiased_T_2) + 10'h1 - {4'h0, resLZC} + {9'h0, roundedM[13]};	// src/main/scala/chisel3/util/Mux.scala:50:70, src/main/scala/mx/mac/FP32Common.scala:371:49, :400:27, :401:41, :404:21, :443:25, :444:27, :447:{26,32,46}
   assign io_accOut =
-    resMag == 38'h0 | $signed(_finalE_T_8) < 10'sh1
-      ? 23'h0
-      : {isSub & _subFwd_T_2[37] ? nearSign : farSign,
+    resMag == 37'h0 | $signed(_finalE_T_8) < 10'sh1
+      ? 22'h0
+      : {isSub & _subFwd_T_2[36] ? nearSign : farSign,
          $signed(_finalE_T_8) > 10'shFE
-           ? 22'h3FC000
-           : {_finalE_T_8[7:0], roundedM[13:0]}};	// src/main/scala/mx/mac/FP32Common.scala:325:7, :407:21, :408:21, :423:28, :425:41, :426:25, :427:43, :428:22, :430:{22,29}, :443:25, :445:27, :447:{26,46}, :448:{26,34,44}, :449:27, :451:19, :452:{19,35}, :453:{35,58}
+           ? 21'h1FE000
+           : {_finalE_T_8[7:0], roundedM[12:0]}};	// src/main/scala/mx/mac/FP32Common.scala:325:7, :407:21, :408:21, :423:28, :425:41, :426:25, :427:43, :428:22, :430:{22,29}, :443:25, :445:27, :447:{26,46}, :448:{26,34,44}, :449:27, :451:19, :452:{19,35}, :453:{35,58}
 endmodule
 
 module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
@@ -295,10 +294,10 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
   input         io_validIn,	// src/main/scala/mx/mac/FDPU.scala:68:14
                 io_resetAcc,	// src/main/scala/mx/mac/FDPU.scala:68:14
   output        io_validOut,	// src/main/scala/mx/mac/FDPU.scala:68:14
-  output [22:0] io_accOut	// src/main/scala/mx/mac/FDPU.scala:68:14
+  output [21:0] io_accOut	// src/main/scala/mx/mac/FDPU.scala:68:14
 );
 
-  wire [22:0] _fusedAcc_io_accOut;	// src/main/scala/mx/mac/FDPU.scala:225:26
+  wire [21:0] _fusedAcc_io_accOut;	// src/main/scala/mx/mac/FDPU.scala:225:26
   wire        _sc_io_outSign;	// src/main/scala/mx/mac/FDPU.scala:216:20
   wire [8:0]  _sc_io_outExp;	// src/main/scala/mx/mac/FDPU.scala:216:20
   wire [19:0] _sc_io_outMant;	// src/main/scala/mx/mac/FDPU.scala:216:20
@@ -314,16 +313,16 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
   wire        _op_io_outSign;	// src/main/scala/mx/mac/FDPU.scala:103:20
   wire [13:0] _op_io_outMant;	// src/main/scala/mx/mac/FDPU.scala:103:20
   wire        _asyncRstN_T = ~reset;	// src/main/scala/mx/mac/FDPU.scala:173:20
-  reg  [22:0] accReg;	// src/main/scala/mx/mac/FDPU.scala:174:47
+  reg  [21:0] accReg;	// src/main/scala/mx/mac/FDPU.scala:174:47
   reg         validReg;	// src/main/scala/mx/mac/FDPU.scala:175:47
   always @(posedge clock or posedge _asyncRstN_T) begin	// src/main/scala/mx/mac/FDPU.scala:28:7, :173:20
     if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FDPU.scala:28:7, :173:20
-      accReg <= 23'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
+      accReg <= 22'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
       validReg <= 1'h0;	// src/main/scala/mx/mac/FDPU.scala:28:7, :175:47
     end
     else begin	// src/main/scala/mx/mac/FDPU.scala:28:7
       if (io_resetAcc)	// src/main/scala/mx/mac/FDPU.scala:68:14
-        accReg <= 23'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
+        accReg <= 22'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
       else if (io_validIn)	// src/main/scala/mx/mac/FDPU.scala:68:14
         accReg <= _fusedAcc_io_accOut;	// src/main/scala/mx/mac/FDPU.scala:174:47, :225:26
       validReg <= ~io_resetAcc & io_validIn;	// src/main/scala/mx/mac/FDPU.scala:175:47, :248:21, :250:14, :251:26
@@ -340,11 +339,11 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
       `endif // INIT_RANDOM_PROLOG_
       `ifdef RANDOMIZE_REG_INIT	// src/main/scala/mx/mac/FDPU.scala:28:7
         _RANDOM[/*Zero width*/ 1'b0] = `RANDOM;	// src/main/scala/mx/mac/FDPU.scala:28:7
-        accReg = _RANDOM[/*Zero width*/ 1'b0][22:0];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47
-        validReg = _RANDOM[/*Zero width*/ 1'b0][23];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47, :175:47
+        accReg = _RANDOM[/*Zero width*/ 1'b0][21:0];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47
+        validReg = _RANDOM[/*Zero width*/ 1'b0][22];	// src/main/scala/mx/mac/FDPU.scala:28:7, :174:47, :175:47
       `endif // RANDOMIZE_REG_INIT
       if (_asyncRstN_T) begin	// src/main/scala/mx/mac/FDPU.scala:28:7, :173:20
-        accReg = 23'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
+        accReg = 22'h0;	// src/main/scala/mx/mac/FDPU.scala:174:47
         validReg = 1'h0;	// src/main/scala/mx/mac/FDPU.scala:28:7, :175:47
       end
     end // initial
@@ -399,7 +398,7 @@ module BFP_PE(	// src/main/scala/mx/mac/FDPU.scala:28:7
     .io_outExp        (_sc_io_outExp),
     .io_outMant       (_sc_io_outMant)
   );
-  FusedScaleAcc_INT8_x_INT8_UE6M2_acc14b fusedAcc (	// src/main/scala/mx/mac/FDPU.scala:225:26
+  FusedScaleAcc_INT8_x_INT8_UE6M2_acc13b fusedAcc (	// src/main/scala/mx/mac/FDPU.scala:225:26
     .io_accIn    (accReg),	// src/main/scala/mx/mac/FDPU.scala:174:47
     .io_termSign (_sc_io_outSign),	// src/main/scala/mx/mac/FDPU.scala:216:20
     .io_termExp  (_sc_io_outExp),	// src/main/scala/mx/mac/FDPU.scala:216:20
