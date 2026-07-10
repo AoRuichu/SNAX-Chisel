@@ -1,0 +1,17 @@
+# sbt / Chisel build artifacts
+target/
+project/target/
+project/project/
+*.log
+
+# Verilator build artifacts — regenerated per config, ~1.3 MB each × 126 configs
+generated/**/obj_dir/
+
+# ChiselTest runtime dirs
+test_run_dir/
+
+# Local sweep output CSVs (regenerated per env-var invocation)
+fdpu_cyclefp_accerr_*.csv
+
+# CSV backup files
+data/*.bak_*
