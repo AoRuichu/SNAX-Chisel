@@ -106,13 +106,26 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
 
   /**
+   * OCP-MX / NVFP4 max-normal (biased_exp, mant) per output element format.
+   * Must stay in sync with RequantFP8.NVFP4Limits.
+   */
+  def maxNormalLimits(t: ElementType): (Int, Int) = t.name match {
+    case "E5M2" => (30, (1 << t.elementWidthMant) - 1)
+    case "E4M3" => (15, (1 << t.elementWidthMant) - 2)
+    case "E3M2" => (7,  (1 << t.elementWidthMant) - 1)
+    case "E2M3" => (3,  (1 << t.elementWidthMant) - 1)
+    case "E2M1" => (3,  (1 << t.elementWidthMant) - 1)
+    case _      => ((1 << t.elementWidthExp) - 2, (1 << t.elementWidthMant) - 1)
+  }
+
+  /**
    * Shared scale for one row, scale-type aware (OCP MX semantics).
-   * Subtracts emax_element = (1 << outExpBits) − 2 − outBias so that the
+   * Subtracts emax_element = max_normal_biased_exp − outBias so that the
    * block's max-magnitude element lands at the element format's max-normal
    * exponent — matches the hardware MaxScaleFinder.
    */
   def swMaxScale(fp32s: Seq[Float], t: ElementType, st: ScaleType): Int = {
-    val emaxElem = ((1 << t.elementWidthExp) - 2) - t.bias
+    val emaxElem = maxNormalLimits(t)._1 - t.bias
     if (st.mantScaleWidth == 0) {
       // UE8M0 — (max biased FP32 exp) − emax_element, clamped to [0, 255]
       val maxBiasedExp = fp32s.map(f => (floatToRawIntBits(f) >>> 23) & 0xFF).max
@@ -148,8 +161,8 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
     val outBias         = t.bias
     val outExpBits      = t.elementWidthExp
     val outMantBits     = t.elementWidthMant
-    val outMaxNormalExp = (1 << outExpBits) - 2
-    val signShift       = t.totalWidth - 1   // sign is the MSB (bit 7 for FP8, bit 5 for FP6)
+    val (outMaxNormalExp, outMaxNormalMant) = maxNormalLimits(t)
+    val signShift       = t.totalWidth - 1   // sign is the MSB
 
     val bits    = floatToRawIntBits(f)
     val sign    = (bits >>> 31) & 1
@@ -162,8 +175,7 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       val outExpFull = fp32Exp - sharedScale + outBias
       if (outExpFull <= 0) return 0
       if (outExpFull > outMaxNormalExp) {
-        val maxMant = (1 << outMantBits) - 1
-        return (sign << signShift) | (outMaxNormalExp << outMantBits) | maxMant
+        return (sign << signShift) | (outMaxNormalExp << outMantBits) | outMaxNormalMant
       }
       val outMantRaw = (fp32Man >>> (23 - outMantBits)) & ((1 << outMantBits) - 1)
       val guardBit   = (fp32Man >>> (22 - outMantBits)) & 1
@@ -172,6 +184,10 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
         else                      false
       val roundUp = guardBit == 1 && ((outMantRaw & 1) == 1 || stickyBits)
       val outMant = (outMantRaw + (if (roundUp) 1 else 0)) & ((1 << outMantBits) - 1)
+      // E4M3 borderline: (exp=max, mant>maxNormalMant) is NaN → saturate.
+      if (outExpFull == outMaxNormalExp && outMant > outMaxNormalMant) {
+        return (sign << signShift) | (outMaxNormalExp << outMantBits) | outMaxNormalMant
+      }
       val outExpC = outExpFull & ((1 << outExpBits) - 1)
       (sign << signShift) | (outExpC << outMantBits) | outMant
     } else {
@@ -228,9 +244,9 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
       val outExpFull = outExpRaw + normAdj + mantOverflow
 
       if (outExpFull <= 0) 0
-      else if (outExpFull > outMaxNormalExp) {
-        val maxMant = (1 << outMantBits) - 1
-        (sign << signShift) | (outMaxNormalExp << outMantBits) | maxMant
+      else if (outExpFull > outMaxNormalExp ||
+              (outExpFull == outMaxNormalExp && outMant > outMaxNormalMant)) {
+        (sign << signShift) | (outMaxNormalExp << outMantBits) | outMaxNormalMant
       } else {
         val outExpC = outExpFull & ((1 << outExpBits) - 1)
         (sign << signShift) | (outExpC << outMantBits) | outMant
@@ -341,9 +357,20 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
     dut.io.acc_reset_i.poke(false.B)
   }
 
-  /** Read results_o(r)(c) as Float. */
-  def peekAcc(dut: PEArrayWrapper, r: Int, c: Int): Float =
-    intBitsToFloat(dut.io.results_o.get(r)(c).peek().litValue.toInt)
+  /** Read results_o(r)(c) as Float.
+   *
+   *  results_o is now a narrow {sign[1], exp[8], mant[dstWidth-9]} word
+   *  (matches FDPUPostScaleReductionTree.io.accOut after the dstWidth
+   *  narrowing); left-shift the mantissa into FP32's 23-bit field for
+   *  intBitsToFloat. Width is read directly from the port so this works
+   *  for both the default cfg and sweep-time cfg variants.
+   */
+  def peekAcc(dut: PEArrayWrapper, r: Int, c: Int): Float = {
+    val port        = dut.io.results_o.get(r)(c)
+    val accMantBits = port.getWidth - 9
+    val raw         = port.peek().litValue
+    intBitsToFloat((raw << (23 - accMantBits)).toInt)
+  }
 
   /** Extract shared_scale_out[row] (row 0 = LSB, little-endian byte order). */
   def extractScale(packed: BigInt, tileRows: Int, row: Int): Int =
@@ -1294,10 +1321,15 @@ class PEArrayTest extends AnyFunSuite with ChiselScalatestTester {
             dut.clock.step()
             dut.io.A_valid_i.poke(false.B); dut.io.B_valid_i.poke(false.B)
 
-            // Capture HW FP32 for every PE.
-            for (r <- 0 until rows; c <- 0 until cols)
+            // Capture HW FP32 for every PE. results_o is narrow — shift the
+            // mantissa into the FP32 field before intBitsToFloat.
+            for (r <- 0 until rows; c <- 0 until cols) {
+              val port        = dut.io.results_o.get(r)(c)
+              val accMantBits = port.getWidth - 9
+              val raw         = port.peek().litValue
               hwBlock(r)(b * cols + c) =
-                intBitsToFloat(dut.io.results_o.get(r)(c).peek().litValue.toInt)
+                intBitsToFloat((raw << (23 - accMantBits)).toInt)
+            }
 
             // Per-batch corner trace
             val pe00Hw = hwBlock(0)(b * cols + 0)

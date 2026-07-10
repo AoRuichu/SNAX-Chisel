@@ -60,11 +60,10 @@ class BFPPELosslessAcc(
   private val wA = scfg.elementTypeA.totalWidth
   private val wB = scfg.elementTypeB.totalWidth
 
-  // ── Width inference (mirror FDPUPostScaleReductionTree's noEarlyRNE path) ──
-  private val SAFETY_G  = 3
-  private val log2N     = log2Ceil(vectorSize.max(2))
-  // absMagW = tree's internal magnitude width (includes guard slack)
-  private val absMagW   = scfg.resOperatorMantWidth + scfg.productExpRange + SAFETY_G + log2N
+  // ── Width inference (reuses FDPUWidthMath so any future absMagW change
+  // propagates here automatically — see G_align drop in FixedFPReductionTree). ──
+  private val _wm = FDPUWidthMath(scfg, vectorSize, K)
+  private val absMagW = _wm.absMagW
   // skipFinalRound path requires outMantW == absMagW exactly (CustomReduction.scala:64)
   private val treeOutMantW = absMagW
   private val treeExpW     = scfg.resOperatorExpWidth + 2

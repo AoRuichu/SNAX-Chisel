@@ -2,6 +2,7 @@ package mx.mac
 
 import chisel3._
 import chiseltest._
+import mx.mac.deferred_archs.FDPUBlockDeferred
 import org.scalatest.funsuite.AnyFunSuite
 import java.lang.Float.{floatToIntBits, intBitsToFloat}
 import java.io.{FileWriter, PrintWriter}
@@ -172,18 +173,21 @@ class MaccDesignRuleValidationTest extends AnyFunSuite with ChiselScalatestTeste
     ("E4M3xINT8",  MXFormats.E4M3, MXFormats.INT8),
     ("E5M2xINT8",  MXFormats.E5M2, MXFormats.INT8),
     ("E4M3xE2M1",  MXFormats.E4M3, MXFormats.E2M1),   // A8W4 LLM combo
-    // ── Added: full-mantissa-range coverage ──────────────────────────────
     ("E2M1xE2M1",  MXFormats.E2M1, MXFormats.E2M1),   // smallest M_ext = 4
     ("E2M3xE2M3",  MXFormats.E2M3, MXFormats.E2M3),   // covers E2M3 element
-    // E5M2×E2M1 disabled: no precomputed test vectors in acc_trunc_vectors/
-    // ("E5M2xE2M1",  MXFormats.E5M2, MXFormats.E2M1),
   )
   private val scaleTypes: Seq[(String, ScaleType)] = Seq(
     ("UE8M0", ScaleFormats.UE8M0),
     ("UE6M2", ScaleFormats.UE6M2),
     ("UE4M4", ScaleFormats.UE4M4),
   )
-  private val K = 8192
+  // K = inner GEMM dim (= one trial = K vector cycles).  Matches the
+  // K=2048 of Qwen2.5-3B attn/MLP projections (per layer_stats.csv).
+  private val K = 2048
+  // Workload = layer-stat preset under acc_trunc_vectors/<workload>/.
+  // Default q_proj_l0 (clean, σ_act=0.372); override with WORKLOAD env var
+  // to gate_proj_l1 (σ_act=9.42) for the heavy-variance workload.
+  private val workload = sys.env.getOrElse("WORKLOAD", "q_proj_l0")
   private val allConfigs: Seq[VCfg] = for {
     (pl, tA, tB) <- pairs
     (sl, sT)     <- scaleTypes
@@ -196,6 +200,8 @@ class MaccDesignRuleValidationTest extends AnyFunSuite with ChiselScalatestTeste
   // CONFIG_FILTER is a regex; only configs whose label matches are run.
   private val mAccOffset     = sys.env.getOrElse("M_ACC_OFFSET", "0").toInt
   private val configFilterRe = sys.env.getOrElse("CONFIG_FILTER", ".*").r
+  // Experimental: widen UE8M0 tree-exit to M_acc bits (default off = legacy)
+  private val widenUE8M0     = sys.env.getOrElse("WIDEN_UE8M0", "false").toBoolean
   private val configs = allConfigs
     .filter(c => configFilterRe.findFirstIn(c.label).isDefined)
     .zipWithIndex.collect { case (c, i) if i % shardCount == shardId => c }
@@ -218,7 +224,7 @@ class MaccDesignRuleValidationTest extends AnyFunSuite with ChiselScalatestTeste
 
   test(s"HW design-rule validation Cuyckens-style: shard $shardId of $shardCount (offset=$mAccOffset)") {
     val offsetTag = if (mAccOffset == 0) "" else s"_off${mAccOffset}"
-    val csvPath = s"macc_designrule_validation_shard${shardId}${offsetTag}.csv"
+    val csvPath = s"macc_designrule_validation_${workload}_shard${shardId}${offsetTag}.csv"
     val csv = new PrintWriter(new FileWriter(csvPath, /* append = */ false), true)
     println(s"\n=== Shard $shardId/$shardCount, M_ACC_OFFSET=$mAccOffset, " +
             s"${configs.size} configs: " +
@@ -238,7 +244,7 @@ class MaccDesignRuleValidationTest extends AnyFunSuite with ChiselScalatestTeste
       println(f"\n=== ${cfg.label}  M_acc=$M_acc%2d (rec=$recM%2d, offset=$mAccOffset%+d)" +
               f"  outElem=${cfg.tA.name} ===")
 
-      val path = s"acc_trunc_vectors/down_proj/${cfg.tA.name}_${cfg.tB.name}_${cfg.sT.name}_K${cfg.K}.tsv"
+      val path = s"acc_trunc_vectors/${workload}/${cfg.tA.name}_${cfg.tB.name}_${cfg.sT.name}_K${cfg.K}.tsv"
       val all = loadVec(path, V)
       val perTrial: Vector[Vector[Cycle]] =
         all.groupBy(_.trial).toVector.sortBy(_._1).map(_._2.sortBy(_.cyc))
@@ -249,11 +255,12 @@ class MaccDesignRuleValidationTest extends AnyFunSuite with ChiselScalatestTeste
         val blockRef = scala.collection.mutable.ArrayBuffer[Double]()
         var actualM  = 0
         try {
-          test(new FDPUPostScaleReductionTree(
+          test(new FDPUBlockDeferred(
                  scfg, V, K = cfg.K,
                  treeArch = arch.treeArch,
                  cyclesPerBlock = arch.cpb,
                  accMantBits = M_acc,
+                 widenUE8M0  = widenUE8M0,
                  istest = false)) { dut =>
             actualM = dut.actualAccMantBits
             dut.reset.poke(true.B); dut.io.validIn.poke(false.B)

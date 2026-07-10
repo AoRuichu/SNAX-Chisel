@@ -6,6 +6,7 @@ import scala.io.Source
 import chisel3._
 import mx.array._
 import mx.mac.{FDPUPostScaleReductionTree, MXFormats, ScaleAddConfig, ScaleFormats, TreeArch, ElementType}
+import mx.mac.deferred_archs.FDPUFactory
 import mx.requant.{RequantConfig, RequantINT8Config}
 
 // ============================================================
@@ -41,7 +42,7 @@ object DSEFullSweepMain extends App {
   private val Kdefault  = 16384
 
   private val activations: Seq[ElementType] =
-    Seq(MXFormats.INT8, MXFormats.E5M2, MXFormats.E4M3, MXFormats.E3M2, MXFormats.E2M3)
+    Seq(MXFormats.INT8, MXFormats.E5M2, MXFormats.E4M3, MXFormats.E3M2, MXFormats.E2M3, MXFormats.E2M1)
   private val weights: Seq[ElementType] =
     Seq(MXFormats.INT8, MXFormats.E5M2, MXFormats.E4M3, MXFormats.E3M2, MXFormats.E2M3, MXFormats.E2M1)
   private val scales = Seq(
@@ -99,7 +100,7 @@ object DSEFullSweepMain extends App {
     val peDir = s"$Root/pe/$lbl"
     cleanDir(peDir)
     emitVerilog(
-      new FDPUPostScaleReductionTree(
+      FDPUFactory(
         scfg, vsize, K = Kdefault,
         treeArch = arch.treeArch, cyclesPerBlock = arch.cpb, istest = false),
       Array("--target-dir", peDir)

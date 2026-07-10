@@ -85,18 +85,16 @@ class PEArrayWrapper(cfg: PEArrayConfig) extends Module {
   // exposed via io.results_o for testbench peeks.
   val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
-  // archOverride lets the DSE sweep force a specific (treeArch, cpb) pair
-  // (baseline / blockDeferred / Kulisch) under an otherwise-identical wrapper.
+  // archOverride lets the DSE sweep force the tree arch (baseline path only;
+  // cyclesPerBlock field is ignored — production PEArray always uses cycleFP).
   val peTreeArch = cfg.archOverride.map(_.treeArch)
                       .getOrElse(TreeArch.recommended(cfg.macCfg, cfg.vectorSize))
-  val peCpb      = cfg.archOverride.map(_.cyclesPerBlock).getOrElse(cfg.cyclesPerBlock)
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
         treeArch = peTreeArch,
-        cyclesPerBlock = peCpb,
         accMantBits = cfg.accMantBitsOverride,
         istest = false))
 
@@ -229,17 +227,15 @@ class PEArrayWrapperINT8(cfg: PEArrayINT8Config) extends Module {
   // exposed via io.results_o for testbench peeks.
   val results = Wire(Vec(cfg.tileRows, Vec(cfg.tileCols, UInt(cfg.dstWidth.W))))
 
-  // archOverride lets the DSE sweep force a specific (treeArch, cpb) pair.
+  // archOverride lets the DSE sweep force the tree arch (baseline path only).
   val peTreeArch = cfg.archOverride.map(_.treeArch)
                       .getOrElse(TreeArch.recommended(cfg.macCfg, cfg.vectorSize))
-  val peCpb      = cfg.archOverride.map(_.cyclesPerBlock).getOrElse(cfg.cyclesPerBlock)
 
   for (r <- 0 until cfg.tileRows) {
     for (c <- 0 until cfg.tileCols) {
       val pe = Module(new FDPUPostScaleReductionTree(
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
         treeArch = peTreeArch,
-        cyclesPerBlock = peCpb,
         accMantBits = cfg.accMantBitsOverride,
         istest = false))
 
@@ -366,7 +362,7 @@ class PEArrayWrapperBF16(cfg: PEArrayBF16Config) extends Module {
       val pe = Module(new FDPUPostScaleReductionTree(
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
         treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
-        cyclesPerBlock = cfg.cyclesPerBlock,
+        // baseline cycleFP (cpb=1 implicit)
         istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)
@@ -491,7 +487,7 @@ class PEArrayWrapperFP32(cfg: PEArrayFP32Config) extends Module {
       val pe = Module(new FDPUPostScaleReductionTree(
         cfg.macCfg, cfg.vectorSize, K = cfg.K,
         treeArch = TreeArch.recommended(cfg.macCfg, cfg.vectorSize),
-        cyclesPerBlock = cfg.cyclesPerBlock,
+        // baseline cycleFP (cpb=1 implicit)
         istest = false))
 
       pe.io.op_a_i        := io.op_a_i(r)

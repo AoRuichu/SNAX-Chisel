@@ -2,6 +2,7 @@ package mx.mac
 
 import chisel3._
 import chiseltest._
+import mx.mac.deferred_archs.FDPUBlockDeferred
 import org.scalatest.funsuite.AnyFunSuite
 import java.lang.Float.intBitsToFloat
 import scala.util.Random
@@ -181,8 +182,16 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
     if (mant == 0L) 0.0
     else (if (sign != 0L) -1.0 else 1.0) * mant.toDouble * Math.pow(2.0, expSigned.toDouble)
 
-  def peekFloat(dut: FDPUPostScaleReductionTree): Float =
-    intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+  // Polymorphic over the 3 FDPU variants (all expose actualAccMantBits + io.accOut).
+  // Two overloads keep type-inference happy without an awkward shared trait.
+  def peekFloat(dut: FDPUPostScaleReductionTree): Float = {
+    val raw  = dut.io.accOut.peek().litValue
+    intBitsToFloat((raw << (23 - dut.actualAccMantBits)).toInt)
+  }
+  def peekFloat(dut: mx.mac.deferred_archs.FDPUBlockDeferred): Float = {
+    val raw  = dut.io.accOut.peek().litValue
+    intBitsToFloat((raw << (23 - dut.actualAccMantBits)).toInt)
+  }
 
   def initDut(dut: FDPUPostScaleReductionTree): Unit = {
     dut.reset.poke(true.B)
@@ -589,7 +598,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
 
         driveOne(dut, defaultScfg, Seq.fill(4)(e4m3_2), Seq.fill(4)(e2m1_2), ue5m3_1, ue5m3_1)
         val before = dut.io.accOut.peek().litValue.toInt
-        log(s"Before reset: 0x${before.toHexString}  (${intBitsToFloat(before)})")
+        log(s"Before reset: 0x${before.toHexString}  (${peekFloat(dut)})")
         assert(before != 0, "accOut should be non-zero after accumulation")
 
         dut.io.resetAcc.poke(true.B); dut.clock.step()
@@ -1045,7 +1054,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          postAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          postAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label PostScale sim failed: ${e.getMessage}")
@@ -1070,6 +1079,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
+          // FDPUWithCustomReductionTree's accOut is natively 32-bit FP32.
           origAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
         }
       } catch { case e: Exception =>
@@ -1238,6 +1248,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
+          // FDPUWithCustomReductionTree's accOut is natively 32-bit FP32.
           origAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
         }
       } catch { case e: Exception =>
@@ -1263,7 +1274,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          postAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          postAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label PostScale sim failed: ${e.getMessage}")
@@ -1398,7 +1409,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          hwAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")
@@ -1475,7 +1486,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
 
       var hwAcc = 0.0f
       try {
-        test(new FDPUPostScaleReductionTree(
+        test(new FDPUBlockDeferred(
           cfg, vsize, cyclesPerBlock = cyclesPerBlock, istest = false)) { dut =>
           dut.reset.poke(true.B)
           dut.io.validIn.poke(false.B)
@@ -1491,7 +1502,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          hwAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")
@@ -1565,7 +1576,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
 
       var hwAcc = 0.0f
       try {
-        test(new FDPUPostScaleReductionTree(
+        test(new FDPUBlockDeferred(
           cfg, vsize, cyclesPerBlock = cyclesPerBlock, istest = false)) { dut =>
           dut.reset.poke(true.B)
           dut.io.validIn.poke(false.B)
@@ -1581,7 +1592,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          hwAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")
@@ -1667,7 +1678,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          hwAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")
@@ -1745,7 +1756,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
 
       var hwAcc = 0.0f
       try {
-        test(new FDPUPostScaleReductionTree(
+        test(new FDPUBlockDeferred(
           cfg, vsize,
           treeArch = TreeArch.KulischInner,
           cyclesPerBlock = cyclesPerBlock,
@@ -1764,7 +1775,7 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.clock.step()
             dut.io.validIn.poke(false.B)
           }
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          hwAcc = peekFloat(dut)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")
@@ -1884,7 +1895,9 @@ class FDPUPostScaleReductionTreeTest extends AnyFunSuite with ChiselScalatestTes
             dut.io.validIn.poke(false.B)
           }
           if (drainCycles > 0) dut.clock.step(drainCycles)
-          hwAcc = intBitsToFloat(dut.io.accOut.peek().litValue.toInt)
+          // FDPUPostScaleReductionTreePiped: narrow accOut, shift-extend.
+          val raw = dut.io.accOut.peek().litValue
+          hwAcc = intBitsToFloat((raw << (23 - dut.actualAccMantBits)).toInt)
         }
       } catch { case e: Exception =>
         logErr(s"  [ERROR] $label: ${e.getMessage}")

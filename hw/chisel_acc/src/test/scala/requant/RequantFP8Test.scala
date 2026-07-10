@@ -14,13 +14,28 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
   // =========================================================================
 
   /**
+   * OCP-MX / NVFP4 max-normal (biased_exp, mant) per output element format.
+   *   E5M2 : IEEE-like → (30, 3)     (top exp = Inf/NaN)
+   *   E4M3 : only (1111, 111) is NaN → (15, 6)
+   *   E3M2 / E2M3 / E2M1 : no Inf/NaN → top code is a value
+   */
+  def maxNormalLimits(t: ElementType): (Int, Int) = t.name match {
+    case "E5M2" => (30, (1 << t.elementWidthMant) - 1)
+    case "E4M3" => (15, (1 << t.elementWidthMant) - 2)
+    case "E3M2" => (7,  (1 << t.elementWidthMant) - 1)
+    case "E2M3" => (3,  (1 << t.elementWidthMant) - 1)
+    case "E2M1" => (3,  (1 << t.elementWidthMant) - 1)
+    case _      => ((1 << t.elementWidthExp) - 2, (1 << t.elementWidthMant) - 1)
+  }
+
+  /**
    * UE8M0 shared scale (OCP MX semantics):
    *   X = clamp(max biased FP32 exp − emax_element, 0, 255)
-   * with emax_element = (1 << outExpBits) − 2 − outBias.
+   * with emax_element = max_normal_biased_exp − outBias.
    */
   def swSharedScale(fp32s: Seq[Float], t: ElementType): Int = {
     val maxBiasedExp = fp32s.map(f => (floatToRawIntBits(f) >>> 23) & 0xFF).max
-    val emaxElem     = ((1 << t.elementWidthExp) - 2) - t.bias
+    val emaxElem     = maxNormalLimits(t)._1 - t.bias
     (maxBiasedExp - emaxElem).max(0).min(255)
   }
 
@@ -41,7 +56,7 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     val fp8ExpBits      = t.elementWidthExp
     val fp8MantBits     = t.elementWidthMant
     val fp8Bias         = t.bias
-    val fp8MaxNormalExp = (1 << fp8ExpBits) - 2   // 30 for E5M2, 14 for E4M3
+    val (fp8MaxNormalExp, fp8MaxNormalMant) = maxNormalLimits(t)
 
     if (fp32Exp == 0) return 0                     // zero / subnormal → 0
 
@@ -50,14 +65,11 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     if (fp8ExpFull <= 0) return 0                  // underflow → 0
 
     if (fp8ExpFull > fp8MaxNormalExp) {            // saturate to ±max-normal
-      val maxMant = (1 << fp8MantBits) - 1
-      return (sign << 7) | (fp8MaxNormalExp << fp8MantBits) | maxMant
+      return (sign << (fp8ExpBits + fp8MantBits)) |
+             (fp8MaxNormalExp << fp8MantBits) | fp8MaxNormalMant
     }
 
     // Truncate mantissa with RNE rounding.
-    // fp32_man[22 : 23-fp8MantBits]  — fp8 mantissa bits
-    // fp32_man[22-fp8MantBits]        — guard bit
-    // fp32_man[21-fp8MantBits : 0]    — sticky bits
     val fp8MantRaw = fp32Man >>> (23 - fp8MantBits)
     val guardBit   = (fp32Man >>> (22 - fp8MantBits)) & 1
     val stickyBits =
@@ -67,7 +79,13 @@ class RequantFP8Test extends AnyFunSuite with ChiselScalatestTester {
     val fp8Mant = (fp8MantRaw + (if (roundUp) 1 else 0)) & ((1 << fp8MantBits) - 1)
     val fp8Exp  = fp8ExpFull & ((1 << fp8ExpBits) - 1)
 
-    (sign << 7) | (fp8Exp << fp8MantBits) | fp8Mant
+    // E4M3 borderline: (exp = max, mant > maxNormalMant) is NaN → saturate.
+    if (fp8ExpFull == fp8MaxNormalExp && fp8Mant > fp8MaxNormalMant) {
+      return (sign << (fp8ExpBits + fp8MantBits)) |
+             (fp8MaxNormalExp << fp8MantBits) | fp8MaxNormalMant
+    }
+
+    (sign << (fp8ExpBits + fp8MantBits)) | (fp8Exp << fp8MantBits) | fp8Mant
   }
 
   /**
