@@ -124,7 +124,9 @@ module AccUpdate_E2M3_E2M1_UE8M0(
       else if (io_enable) begin
         automatic logic [3:0]  _GEN_1;
         automatic logic [4:0]  _lz_T_42;
+        automatic logic [84:0] _normalized_T;
         automatic logic [10:0] _GEN_2;
+        automatic logic [8:0]  gFieldPlusRnd;
         automatic logic [17:0] _finalBiased_T;
         automatic logic        _newAcc_mant_T;
         _GEN_1 =
@@ -172,8 +174,17 @@ module AccUpdate_E2M3_E2M1_UE8M0(
                                                                                         ? 5'h13
                                                                                         : {4'hA,
                                                                                            ~(sumMag[1])};
+        _normalized_T = {63'h0, sumMag} << _lz_T_42;
         _GEN_2 = _GEN + 11'h11;
-        _finalBiased_T = {{7{_GEN_2[10]}}, _GEN_2} - {13'h0, _lz_T_42} + 18'h7F;
+        gFieldPlusRnd =
+          {1'h0, _normalized_T[21:14]}
+          + {8'h0,
+             _normalized_T[13]
+               & (_normalized_T[12] | (|(_normalized_T[11:0])) | stickyLSB
+                  | _normalized_T[14])};
+        _finalBiased_T =
+          {{7{_GEN_2[10]}}, _GEN_2} - {13'h0, _lz_T_42} + {17'h0, gFieldPlusRnd[8]}
+          + 18'h7F;
         _newAcc_mant_T = ~(|sumMag) | $signed(_finalBiased_T) < 18'sh1;
         accreg_exp <=
           _newAcc_mant_T
@@ -181,16 +192,8 @@ module AccUpdate_E2M3_E2M1_UE8M0(
             : $signed(_finalBiased_T) > 18'shFE ? 8'hFE : _finalBiased_T[7:0];
         if (_newAcc_mant_T)
           accreg_mant <= 7'h0;
-        else begin
-          automatic logic [84:0] _normalized_T;
-          _normalized_T = {63'h0, sumMag} << _lz_T_42;
-          accreg_mant <=
-            _normalized_T[20:14]
-            + {6'h0,
-               _normalized_T[13]
-                 & (_normalized_T[12] | (|(_normalized_T[11:0])) | stickyLSB
-                    | _normalized_T[14])};
-        end
+        else
+          accreg_mant <= gFieldPlusRnd[8] ? gFieldPlusRnd[7:1] : gFieldPlusRnd[6:0];
       end
     end
   end // always @(posedge, posedge)

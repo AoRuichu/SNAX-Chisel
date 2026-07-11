@@ -140,25 +140,27 @@ module AccUpdate_E5M2_E5M2_UE6M2(
         accreg_mant <= 7'h0;
       end
       else if (io_enable) begin
-        automatic logic [15:0] _GEN_0;
-        automatic logic [37:0] _GEN_1;
-        automatic logic [7:0]  _GEN_2;
-        automatic logic [15:0] _GEN_3;
-        automatic logic [1:0]  _GEN_4;
-        automatic logic [7:0]  _GEN_5;
-        automatic logic [50:0] _GEN_6;
-        automatic logic [3:0]  _GEN_7;
-        automatic logic [7:0]  _GEN_8;
-        automatic logic [15:0] _GEN_9;
-        automatic logic [1:0]  _GEN_10;
-        automatic logic [3:0]  _GEN_11;
-        automatic logic [7:0]  _GEN_12;
-        automatic logic [3:0]  _GEN_13;
-        automatic logic [3:0]  _GEN_14;
-        automatic logic [6:0]  _lz_T_164;
-        automatic logic [8:0]  _GEN_15;
-        automatic logic [17:0] _finalBiased_T;
-        automatic logic        _newAcc_mant_T;
+        automatic logic [15:0]  _GEN_0;
+        automatic logic [37:0]  _GEN_1;
+        automatic logic [7:0]   _GEN_2;
+        automatic logic [15:0]  _GEN_3;
+        automatic logic [1:0]   _GEN_4;
+        automatic logic [7:0]   _GEN_5;
+        automatic logic [50:0]  _GEN_6;
+        automatic logic [3:0]   _GEN_7;
+        automatic logic [7:0]   _GEN_8;
+        automatic logic [15:0]  _GEN_9;
+        automatic logic [1:0]   _GEN_10;
+        automatic logic [3:0]   _GEN_11;
+        automatic logic [7:0]   _GEN_12;
+        automatic logic [3:0]   _GEN_13;
+        automatic logic [3:0]   _GEN_14;
+        automatic logic [6:0]   _lz_T_164;
+        automatic logic [337:0] _normalized_T;
+        automatic logic [8:0]   _GEN_15;
+        automatic logic [8:0]   gFieldPlusRnd;
+        automatic logic [17:0]  _finalBiased_T;
+        automatic logic         _newAcc_mant_T;
         _GEN_0 =
           {{sumMag[23:16], sumMag[31:28]} & 12'hF0F, 4'h0}
           | {sumMag[31:24], sumMag[39:32]} & 16'hF0F;
@@ -366,8 +368,17 @@ module AccUpdate_E5M2_E5M2_UE6M2(
                                                                                                                                                                                                                                                                                                                                             : sumMag[1]
                                                                                                                                                                                                                                                                                                                                                 ? 7'h51
                                                                                                                                                                                                                                                                                                                                                 : 7'h52;
+        _normalized_T = {255'h0, sumMag} << _lz_T_164;
         _GEN_15 = {_scaleExpSum_T_3[7], _scaleExpSum_T_3} + 9'h2E;
-        _finalBiased_T = {{9{_GEN_15[8]}}, _GEN_15} - {11'h0, _lz_T_164} + 18'h7F;
+        gFieldPlusRnd =
+          {1'h0, _normalized_T[82:75]}
+          + {8'h0,
+             _normalized_T[74]
+               & (_normalized_T[73] | (|(_normalized_T[72:0])) | stickyLSB
+                  | _normalized_T[75])};
+        _finalBiased_T =
+          {{9{_GEN_15[8]}}, _GEN_15} - {11'h0, _lz_T_164} + {17'h0, gFieldPlusRnd[8]}
+          + 18'h7F;
         _newAcc_mant_T = ~(|sumMag) | $signed(_finalBiased_T) < 18'sh1;
         accreg_exp <=
           _newAcc_mant_T
@@ -375,16 +386,8 @@ module AccUpdate_E5M2_E5M2_UE6M2(
             : $signed(_finalBiased_T) > 18'shFE ? 8'hFE : _finalBiased_T[7:0];
         if (_newAcc_mant_T)
           accreg_mant <= 7'h0;
-        else begin
-          automatic logic [337:0] _normalized_T;
-          _normalized_T = {255'h0, sumMag} << _lz_T_164;
-          accreg_mant <=
-            _normalized_T[81:75]
-            + {6'h0,
-               _normalized_T[74]
-                 & (_normalized_T[73] | (|(_normalized_T[72:0])) | stickyLSB
-                    | _normalized_T[75])};
-        end
+        else
+          accreg_mant <= gFieldPlusRnd[8] ? gFieldPlusRnd[7:1] : gFieldPlusRnd[6:0];
       end
     end
   end // always @(posedge, posedge)

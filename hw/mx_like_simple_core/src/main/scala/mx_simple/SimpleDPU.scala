@@ -171,7 +171,7 @@ class ScaleMult(cfg: DPUConfig) extends Module {
 
 /** Combines a per-cycle `scaledTerm` with the internal BF16 accreg.
   * Contains the sole state register in the whole design. */
-class AccUpdate(cfg: DPUConfig) extends Module {
+class AccUpdate(cfg: DPUConfig, debug: Boolean = false) extends Module {
   private val ww = Widths(cfg)
   private val S  = cfg.S
   override def desiredName =
@@ -184,6 +184,13 @@ class AccUpdate(cfg: DPUConfig) extends Module {
     val clearAcc   = Input(Bool())
     val enable     = Input(Bool())
     val accOut     = Output(new BF16Reg)
+    val dbg_scaleExpSum    = if (debug) Some(Output(SInt(ww.scaleExpSumW.W))) else None
+    val dbg_accShiftSigned = if (debug) Some(Output(SInt(16.W))) else None
+    val dbg_sumField       = if (debug) Some(Output(SInt(ww.finalAdderW.W))) else None
+    val dbg_lz             = if (debug) Some(Output(UInt(8.W))) else None
+    val dbg_resExpUnbiased = if (debug) Some(Output(SInt(16.W))) else None
+    val dbg_accSig         = if (debug) Some(Output(UInt(BF16.sigBits.W))) else None
+    val dbg_accShiftedInt  = if (debug) Some(Output(SInt(ww.finalAdderW.W))) else None
   })
 
   // ── State register (async active-HIGH reset).
@@ -282,7 +289,13 @@ class AccUpdate(cfg: DPUConfig) extends Module {
   private val stickyPlus = stickyBits | (stickyLSB =/= 0.S)
 
   private val roundUp = guardBit && (roundBit || stickyPlus || gField(0))
-  private val gFieldPlusRnd = (gField + roundUp.asUInt).pad(BF16.sigBits + 1)
+  // `+&` GROWS the width so a carry-out from an all-ones gField is captured
+  // in bit BF16.sigBits (the roundCarry signal below). `+` (same-width add)
+  // silently discards the carry, dropping the exp bump and producing hw ≈
+  // golden/2 whenever RNE triggers a mantissa overflow (seen on the "last
+  // cycle" of many workload configs where accumulated sums happen to have
+  // that pattern).
+  private val gFieldPlusRnd = (gField +& roundUp.asUInt).pad(BF16.sigBits + 1)
 
   private val roundCarry = gFieldPlusRnd(BF16.sigBits)
   private val mantAfterRnd = Mux(roundCarry,
@@ -313,13 +326,40 @@ class AccUpdate(cfg: DPUConfig) extends Module {
   }
 
   io.accOut := accreg
+
+  // ── Debug taps (only wired when debug=true) ──────────────
+  io.dbg_scaleExpSum.foreach(_ := scaleExpSum)
+  io.dbg_accShiftSigned.foreach(_ := accShiftSigned.pad(16))
+  io.dbg_sumField.foreach(_ := sumField)
+  io.dbg_lz.foreach(_ := lz.pad(8))
+  io.dbg_resExpUnbiased.foreach(_ := resExpUnbiased.pad(16))
+  io.dbg_accSig.foreach(_ := accSig)
+  io.dbg_accShiftedInt.foreach(_ := accAligned)
 }
 
 // ─────────────────────────────────────────────────────────────
 // Top: SimpleDPU — glues LaneMul × N + AlignSumTree + ScaleMult + AccUpdate
 // ─────────────────────────────────────────────────────────────
 
-class SimpleDPUIO(cfg: DPUConfig) extends Bundle {
+/** Debug port bundle — internal per-stage signals for offline analysis.
+  * Only elaborated when SimpleDPU is instantiated with `debug=true`. */
+class SimpleDPUDebug(cfg: DPUConfig) extends Bundle {
+  private val ww = Widths(cfg)
+  val laneMant  = Output(Vec(cfg.N, UInt(ww.prodMantW.W)))
+  val laneExp   = Output(Vec(cfg.N, SInt(ww.expSignedW.W)))
+  val laneSign  = Output(Vec(cfg.N, Bool()))
+  val sopField  = Output(SInt(ww.sopFieldW.W))
+  val scaledTerm= Output(SInt(ww.scaledTermW.W))
+  val scaleExpSum = Output(SInt(ww.scaleExpSumW.W))
+  val accShiftSigned = Output(SInt(16.W))  // signed enough
+  val sumField  = Output(SInt(ww.finalAdderW.W))
+  val lz        = Output(UInt(8.W))
+  val resExpUnbiased = Output(SInt(16.W))
+  val accSig    = Output(UInt(BF16.sigBits.W))
+  val accShiftedInt = Output(SInt(ww.finalAdderW.W))
+}
+
+class SimpleDPUIO(cfg: DPUConfig, debug: Boolean = false) extends Bundle {
   val enable   = Input(Bool())
   val clearAcc = Input(Bool())
   val a        = Input(Vec(cfg.N, new ElemOperand(cfg.A)))
@@ -327,13 +367,14 @@ class SimpleDPUIO(cfg: DPUConfig) extends Bundle {
   val scaleA   = Input(new ScaleOperand(cfg.S))
   val scaleW   = Input(new ScaleOperand(cfg.S))
   val accOut   = Output(new BF16Reg)
+  val dbg      = if (debug) Some(new SimpleDPUDebug(cfg)) else None
 }
 
-class SimpleDPU(val cfg: DPUConfig) extends Module {
+class SimpleDPU(val cfg: DPUConfig, val debug: Boolean = false) extends Module {
   override def desiredName =
     s"SimpleDPU_${cfg.A.name}_${cfg.W.name}_${cfg.S.name}"
 
-  val io = IO(new SimpleDPUIO(cfg))
+  val io = IO(new SimpleDPUIO(cfg, debug))
   private val ww = Widths(cfg)
 
   // ── LaneMul × N ────────────────────────────────────────────
@@ -363,11 +404,29 @@ class SimpleDPU(val cfg: DPUConfig) extends Module {
   }
 
   // ── AccUpdate (contains accreg register) ──────────────────
-  private val acc = Module(new AccUpdate(cfg))
+  private val acc = Module(new AccUpdate(cfg, debug))
   acc.io.scaledTerm := scaledTerm
   acc.io.scaleAexp  := io.scaleA.exp
   acc.io.scaleWexp  := io.scaleW.exp
   acc.io.clearAcc   := io.clearAcc
   acc.io.enable     := io.enable
   io.accOut         := acc.io.accOut
+
+  // ── Debug taps (only wired when debug=true) ──────────────
+  io.dbg.foreach { d =>
+    for (i <- 0 until cfg.N) {
+      d.laneMant(i) := lanes(i).mant
+      d.laneExp(i)  := lanes(i).exp
+      d.laneSign(i) := lanes(i).sign
+    }
+    d.sopField       := tree.io.sopField
+    d.scaledTerm     := scaledTerm
+    d.scaleExpSum    := acc.io.dbg_scaleExpSum.get
+    d.accShiftSigned := acc.io.dbg_accShiftSigned.get
+    d.sumField       := acc.io.dbg_sumField.get
+    d.lz             := acc.io.dbg_lz.get
+    d.resExpUnbiased := acc.io.dbg_resExpUnbiased.get
+    d.accSig         := acc.io.dbg_accSig.get
+    d.accShiftedInt  := acc.io.dbg_accShiftedInt.get
+  }
 }
