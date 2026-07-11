@@ -1,0 +1,8 @@
+target/
+project/target/
+project/project/
+project/build.properties
+project/plugins/
+compile.log
+test_run_dir/
+generated/**/obj_dir/
