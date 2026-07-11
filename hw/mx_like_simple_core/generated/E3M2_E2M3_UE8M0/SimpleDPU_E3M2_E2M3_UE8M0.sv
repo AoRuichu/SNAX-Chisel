@@ -78,8 +78,9 @@ module AccUpdate_E3M2_E2M3_UE8M0(
       accreg_mant <= 7'h0;
     end
     else begin
-      automatic logic [9:0]    _scaleExpSum_T_7 =
-        {2'h0, io_scaleWexp} + {2'h0, io_scaleAexp} - 10'hFE;
+      automatic logic [9:0]    _scaleExpSum_T_3 =
+        (io_scaleAexp == 8'h0 ? 10'h1 : {2'h0, io_scaleAexp})
+        + (io_scaleWexp == 8'h0 ? 10'h1 : {2'h0, io_scaleWexp}) - 10'hFE;
       automatic logic [8:0]    _accUnbiasedExp_T_1;
       automatic logic [10:0]   _GEN;
       automatic logic [10:0]   accShiftSigned;
@@ -96,7 +97,7 @@ module AccUpdate_E3M2_E2M3_UE8M0(
       automatic logic [26:0]   _sumField_T_3;
       automatic logic [26:0]   sumMag;
       _accUnbiasedExp_T_1 = {1'h0, accreg_exp} - 9'h7F;
-      _GEN = {_scaleExpSum_T_7[9], _scaleExpSum_T_7};
+      _GEN = {_scaleExpSum_T_3[9], _scaleExpSum_T_3};
       accShiftSigned = {{2{_accUnbiasedExp_T_1[8]}}, _accUnbiasedExp_T_1} - _GEN;
       accShiftIsRight = $signed(accShiftSigned) < 11'sh0;
       _accShiftMag_T = 11'h0 - accShiftSigned;

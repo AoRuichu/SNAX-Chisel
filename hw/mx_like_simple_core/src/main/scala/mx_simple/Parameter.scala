@@ -130,9 +130,19 @@ final case class Widths(cfg: DPUConfig) {
   /** Unsigned scale mant product (1.mS_A)(1.mS_W). 0 for UE8M0. */
   val scaleMantProdW: Int =
     if (S.m == 0) 0 else 2 * (S.m + 1)
-  /** Scaled term width. UE8M0 leaves SoP unchanged; fractional widens it. */
+  /** Scaled term width.
+    *
+    * UE8M0 (mS=0): scaledTerm = sopField unchanged, width = sopFieldW.
+    * Fractional scale: sopField (signed, sopFieldW) is multiplied by
+    * `smp.zext` (SInt of width scaleMantProdW+1, top bit is 0 = positive).
+    * Chisel signed×signed result width = a+b, so scaledTermW must be
+    * `sopFieldW + scaleMantProdW + 1` to hold the full magnitude without
+    * truncation. (An earlier off-by-one truncated the MSB and made hw output
+    * ~2^S.m× larger than the FP64 golden for m>=2 configs.)
+    */
   val scaledTermW: Int =
-    if (scaleMantProdW == 0) sopFieldW else sopFieldW + scaleMantProdW
+    if (scaleMantProdW == 0) sopFieldW
+    else sopFieldW + scaleMantProdW + 1
 
   // ── Final adder combining scaled_term with BF16 accreg ─────
   /** Lutz FIXED_SUM_WIDTH pattern: 1 sign + acc_sig + scaled_term body. */

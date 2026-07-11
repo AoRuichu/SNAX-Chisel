@@ -149,14 +149,18 @@ class ScaleMult(cfg: DPUConfig) extends Module {
     s"ScaleMult_${cfg.A.name}_${cfg.W.name}_${cfg.S.name}"
 
   val io = IO(new Bundle {
-    val sopField   = Input(SInt(ww.sopFieldW.W))
-    val scaleAmant = Input(UInt(cfg.S.m.W))
-    val scaleWmant = Input(UInt(cfg.S.m.W))
-    val scaledTerm = Output(SInt(ww.scaledTermW.W))
+    val sopField    = Input(SInt(ww.sopFieldW.W))
+    val scaleAhid   = Input(Bool())                 // = (scaleA.exp != 0)
+    val scaleAmant  = Input(UInt(cfg.S.m.W))
+    val scaleWhid   = Input(Bool())                 // = (scaleW.exp != 0)
+    val scaleWmant  = Input(UInt(cfg.S.m.W))
+    val scaledTerm  = Output(SInt(ww.scaledTermW.W))
   })
 
-  private val scaleAsig = Cat(1.U(1.W), io.scaleAmant)     // (mS+1) bits
-  private val scaleWsig = Cat(1.U(1.W), io.scaleWmant)     // (mS+1) bits
+  // Scale significand: {hidden, mant}. hidden=0 for subnormal scale (biased
+  // exp = 0), hidden=1 for normal. IEEE FP convention.
+  private val scaleAsig = Cat(io.scaleAhid, io.scaleAmant)   // (mS+1) bits
+  private val scaleWsig = Cat(io.scaleWhid, io.scaleWmant)   // (mS+1) bits
   private val smp       = (scaleAsig * scaleWsig).pad(ww.scaleMantProdW + 1)
   io.scaledTerm := (io.sopField * smp.zext).pad(ww.scaledTermW).asSInt
 }
@@ -196,11 +200,16 @@ class AccUpdate(cfg: DPUConfig) extends Module {
   }))
 
   // ── Scale exp addition ─────────────────────────────────────
-  private val scaleExpSum: SInt = (
-    io.scaleAexp.zext.pad(ww.scaleExpSumW) +
-    io.scaleWexp.zext.pad(ww.scaleExpSumW) -
-    (2 * S.bias).S(ww.scaleExpSumW.W)
-  )
+  // Subnormal fix (same as element side): biased exp == 0 → treat as biased 1
+  // so the value = 0.mant * 2^(1-bias) is computed correctly downstream.
+  private val scaleAexpFixed: SInt =
+    Mux(io.scaleAexp === 0.U, 1.S(ww.scaleExpSumW.W),
+                               io.scaleAexp.zext.pad(ww.scaleExpSumW))
+  private val scaleWexpFixed: SInt =
+    Mux(io.scaleWexp === 0.U, 1.S(ww.scaleExpSumW.W),
+                               io.scaleWexp.zext.pad(ww.scaleExpSumW))
+  private val scaleExpSum: SInt =
+    scaleAexpFixed + scaleWexpFixed - (2 * S.bias).S(ww.scaleExpSumW.W)
 
   // ── Accreg alignment ───────────────────────────────────────
   private val accHidden = accreg.exp =/= 0.U
@@ -346,7 +355,9 @@ class SimpleDPU(val cfg: DPUConfig) extends Module {
   } else {
     val sm = Module(new ScaleMult(cfg))
     sm.io.sopField   := tree.io.sopField
+    sm.io.scaleAhid  := io.scaleA.exp =/= 0.U
     sm.io.scaleAmant := io.scaleA.mant
+    sm.io.scaleWhid  := io.scaleW.exp =/= 0.U
     sm.io.scaleWmant := io.scaleW.mant
     sm.io.scaledTerm
   }

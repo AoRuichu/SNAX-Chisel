@@ -57,20 +57,22 @@ endmodule
 
 module ScaleMult_E4M3_E3M2_UE4M4(
   input  [29:0] io_sopField,
+  input         io_scaleAhid,
   input  [3:0]  io_scaleAmant,
-                io_scaleWmant,
-  output [39:0] io_scaledTerm
+  input         io_scaleWhid,
+  input  [3:0]  io_scaleWmant,
+  output [40:0] io_scaledTerm
 );
 
   assign io_scaledTerm =
-    {{10{io_sopField[29]}}, io_sopField}
-    * {30'h0, {6'h1, io_scaleAmant} * {6'h1, io_scaleWmant}};
+    {{11{io_sopField[29]}}, io_sopField}
+    * {31'h0, {5'h0, io_scaleAhid, io_scaleAmant} * {5'h0, io_scaleWhid, io_scaleWmant}};
 endmodule
 
 module AccUpdate_E4M3_E3M2_UE4M4(
   input         clock,
                 reset,
-  input  [39:0] io_scaledTerm,
+  input  [40:0] io_scaledTerm,
   input  [3:0]  io_scaleAexp,
                 io_scaleWexp,
   input         io_clearAcc,
@@ -90,7 +92,7 @@ module AccUpdate_E4M3_E3M2_UE4M4(
       accreg_mant <= 7'h0;
     end
     else begin
-      automatic logic [5:0]    _scaleExpSum_T_7;
+      automatic logic [5:0]    _scaleExpSum_T_3;
       automatic logic [8:0]    _accUnbiasedExp_T_1;
       automatic logic [9:0]    _accShiftSigned_T_5;
       automatic logic          accShiftIsRight;
@@ -102,35 +104,37 @@ module AccUpdate_E4M3_E3M2_UE4M4(
       automatic logic [9:0]    accRightShift;
       automatic logic [1023:0] _accLostMask_T;
       automatic logic          stickyLSB;
-      automatic logic [1071:0] accShiftedLeftGrown;
-      automatic logic [48:0]   _sumField_T_3;
-      automatic logic [48:0]   sumMag;
-      _scaleExpSum_T_7 = {2'h0, io_scaleWexp} + {2'h0, io_scaleAexp} - 6'hE;
+      automatic logic [1072:0] accShiftedLeftGrown;
+      automatic logic [49:0]   _sumField_T_3;
+      automatic logic [49:0]   sumMag;
+      _scaleExpSum_T_3 =
+        (io_scaleAexp == 4'h0 ? 6'h1 : {2'h0, io_scaleAexp})
+        + (io_scaleWexp == 4'h0 ? 6'h1 : {2'h0, io_scaleWexp}) - 6'hE;
       _accUnbiasedExp_T_1 = {1'h0, accreg_exp} - 9'h7F;
       _accShiftSigned_T_5 =
         {_accUnbiasedExp_T_1[8], _accUnbiasedExp_T_1} + 10'hE
-        - {{4{_scaleExpSum_T_7[5]}}, _scaleExpSum_T_7};
+        - {{4{_scaleExpSum_T_3[5]}}, _scaleExpSum_T_3};
       accShiftIsRight = $signed(_accShiftSigned_T_5) < 10'sh0;
       _accShiftMag_T = 10'h0 - _accShiftSigned_T_5;
       accShiftMag = accShiftIsRight ? _accShiftMag_T : _accShiftSigned_T_5;
-      _accShiftClamped_T = accShiftMag > 10'h30;
+      _accShiftClamped_T = accShiftMag > 10'h31;
       _GEN = {1'h0, |accreg_exp, accreg_mant};
       accSignedSig = accreg_sign ? 9'h0 - _GEN : _GEN;
       accRightShift =
-        accShiftIsRight ? (_accShiftClamped_T ? 10'h30 : _accShiftMag_T) : 10'h0;
+        accShiftIsRight ? (_accShiftClamped_T ? 10'h31 : _accShiftMag_T) : 10'h0;
       _accLostMask_T = 1024'h1 << accRightShift;
       stickyLSB = accShiftIsRight & (|(_accLostMask_T[8:0] - 9'h1 & accSignedSig));
       accShiftedLeftGrown =
-        {{1063{accSignedSig[8]}}, accSignedSig}
-        << (_accShiftClamped_T ? 10'h30 : accShiftMag);
+        {{1064{accSignedSig[8]}}, accSignedSig}
+        << (_accShiftClamped_T ? 10'h31 : accShiftMag);
       _sumField_T_3 =
-        {{9{io_scaledTerm[39]}}, io_scaledTerm}
+        {{9{io_scaledTerm[40]}}, io_scaledTerm}
         + (accShiftIsRight
-             ? $signed($signed({{40{accSignedSig[8]}}, accSignedSig}) >>> accRightShift)
-             : accShiftedLeftGrown[48:0]) + {49{stickyLSB}};
-      sumMag = _sumField_T_3[48] ? 49'h0 - _sumField_T_3 : _sumField_T_3;
+             ? $signed($signed({{41{accSignedSig[8]}}, accSignedSig}) >>> accRightShift)
+             : accShiftedLeftGrown[49:0]) + {50{stickyLSB}};
+      sumMag = _sumField_T_3[49] ? 50'h0 - _sumField_T_3 : _sumField_T_3;
       accreg_sign <=
-        ~io_clearAcc & (io_enable ? _sumField_T_3[48] & (|sumMag) : accreg_sign);
+        ~io_clearAcc & (io_enable ? _sumField_T_3[49] & (|sumMag) : accreg_sign);
       if (io_clearAcc) begin
         accreg_exp <= 8'h0;
         accreg_mant <= 7'h0;
@@ -142,7 +146,7 @@ module AccUpdate_E4M3_E3M2_UE4M4(
         automatic logic [7:0]  _GEN_3;
         automatic logic [3:0]  _GEN_4;
         automatic logic [3:0]  _GEN_5;
-        automatic logic [5:0]  _lz_T_96;
+        automatic logic [5:0]  _lz_T_98;
         automatic logic [6:0]  _GEN_6;
         automatic logic [14:0] _finalBiased_T;
         automatic logic        _newAcc_mant_T;
@@ -163,107 +167,108 @@ module AccUpdate_E4M3_E3M2_UE4M4(
         _GEN_5 =
           {{sumMag[37:36], sumMag[39]} & 3'h5, 1'h0} | {sumMag[39:38], sumMag[41:40]}
           & 4'h5;
-        _lz_T_96 =
-          sumMag[48]
+        _lz_T_98 =
+          sumMag[49]
             ? 6'h0
-            : sumMag[47]
+            : sumMag[48]
                 ? 6'h1
-                : sumMag[46]
+                : sumMag[47]
                     ? 6'h2
-                    : sumMag[45]
+                    : sumMag[46]
                         ? 6'h3
-                        : sumMag[44]
+                        : sumMag[45]
                             ? 6'h4
-                            : sumMag[43]
+                            : sumMag[44]
                                 ? 6'h5
-                                : sumMag[42]
+                                : sumMag[43]
                                     ? 6'h6
-                                    : sumMag[41]
+                                    : sumMag[42]
                                         ? 6'h7
-                                        : _GEN_5[0]
+                                        : sumMag[41]
                                             ? 6'h8
-                                            : _GEN_5[1]
+                                            : _GEN_5[0]
                                                 ? 6'h9
-                                                : _GEN_5[2]
+                                                : _GEN_5[1]
                                                     ? 6'hA
-                                                    : _GEN_5[3]
+                                                    : _GEN_5[2]
                                                         ? 6'hB
-                                                        : sumMag[36]
+                                                        : _GEN_5[3]
                                                             ? 6'hC
-                                                            : sumMag[35]
+                                                            : sumMag[36]
                                                                 ? 6'hD
-                                                                : sumMag[34]
+                                                                : sumMag[35]
                                                                     ? 6'hE
-                                                                    : sumMag[33]
+                                                                    : sumMag[34]
                                                                         ? 6'hF
-                                                                        : sumMag[32]
+                                                                        : sumMag[33]
                                                                             ? 6'h10
-                                                                            : sumMag[31]
+                                                                            : sumMag[32]
                                                                                 ? 6'h11
-                                                                                : sumMag[30]
+                                                                                : sumMag[31]
                                                                                     ? 6'h12
-                                                                                    : sumMag[29]
+                                                                                    : sumMag[30]
                                                                                         ? 6'h13
-                                                                                        : sumMag[28]
+                                                                                        : sumMag[29]
                                                                                             ? 6'h14
-                                                                                            : sumMag[27]
+                                                                                            : sumMag[28]
                                                                                                 ? 6'h15
-                                                                                                : sumMag[26]
+                                                                                                : sumMag[27]
                                                                                                     ? 6'h16
-                                                                                                    : sumMag[25]
+                                                                                                    : sumMag[26]
                                                                                                         ? 6'h17
-                                                                                                        : _GEN_4[0]
+                                                                                                        : sumMag[25]
                                                                                                             ? 6'h18
-                                                                                                            : _GEN_4[1]
+                                                                                                            : _GEN_4[0]
                                                                                                                 ? 6'h19
-                                                                                                                : _GEN_4[2]
+                                                                                                                : _GEN_4[1]
                                                                                                                     ? 6'h1A
-                                                                                                                    : _GEN_4[3]
+                                                                                                                    : _GEN_4[2]
                                                                                                                         ? 6'h1B
-                                                                                                                        : sumMag[20]
+                                                                                                                        : _GEN_4[3]
                                                                                                                             ? 6'h1C
-                                                                                                                            : sumMag[19]
+                                                                                                                            : sumMag[20]
                                                                                                                                 ? 6'h1D
-                                                                                                                                : _GEN_1[5]
-                                                                                                                                  | sumMag[18]
+                                                                                                                                : sumMag[19]
                                                                                                                                     ? 6'h1E
-                                                                                                                                    : _GEN_0[1]
+                                                                                                                                    : _GEN_1[5]
+                                                                                                                                      | sumMag[18]
                                                                                                                                         ? 6'h1F
-                                                                                                                                        : _GEN_3[0]
+                                                                                                                                        : _GEN_0[1]
                                                                                                                                             ? 6'h20
-                                                                                                                                            : _GEN_3[1]
+                                                                                                                                            : _GEN_3[0]
                                                                                                                                                 ? 6'h21
-                                                                                                                                                : _GEN_3[2]
+                                                                                                                                                : _GEN_3[1]
                                                                                                                                                     ? 6'h22
-                                                                                                                                                    : _GEN_3[3]
+                                                                                                                                                    : _GEN_3[2]
                                                                                                                                                         ? 6'h23
-                                                                                                                                                        : _GEN_3[4]
+                                                                                                                                                        : _GEN_3[3]
                                                                                                                                                             ? 6'h24
-                                                                                                                                                            : _GEN_3[5]
+                                                                                                                                                            : _GEN_3[4]
                                                                                                                                                                 ? 6'h25
-                                                                                                                                                                : _GEN_3[6]
+                                                                                                                                                                : _GEN_3[5]
                                                                                                                                                                     ? 6'h26
-                                                                                                                                                                    : _GEN_3[7]
+                                                                                                                                                                    : _GEN_3[6]
                                                                                                                                                                         ? 6'h27
-                                                                                                                                                                        : _GEN_2[0]
+                                                                                                                                                                        : _GEN_3[7]
                                                                                                                                                                             ? 6'h28
-                                                                                                                                                                            : _GEN_2[1]
+                                                                                                                                                                            : _GEN_2[0]
                                                                                                                                                                                 ? 6'h29
-                                                                                                                                                                                : _GEN_2[2]
+                                                                                                                                                                                : _GEN_2[1]
                                                                                                                                                                                     ? 6'h2A
-                                                                                                                                                                                    : _GEN_2[3]
+                                                                                                                                                                                    : _GEN_2[2]
                                                                                                                                                                                         ? 6'h2B
-                                                                                                                                                                                        : sumMag[4]
+                                                                                                                                                                                        : _GEN_2[3]
                                                                                                                                                                                             ? 6'h2C
-                                                                                                                                                                                            : sumMag[3]
+                                                                                                                                                                                            : sumMag[4]
                                                                                                                                                                                                 ? 6'h2D
-                                                                                                                                                                                                : sumMag[2]
+                                                                                                                                                                                                : sumMag[3]
                                                                                                                                                                                                     ? 6'h2E
-                                                                                                                                                                                                    : sumMag[1]
+                                                                                                                                                                                                    : sumMag[2]
                                                                                                                                                                                                         ? 6'h2F
-                                                                                                                                                                                                        : 6'h30;
-        _GEN_6 = {_scaleExpSum_T_7[5], _scaleExpSum_T_7} + 7'h1B;
-        _finalBiased_T = {{8{_GEN_6[6]}}, _GEN_6} - {9'h0, _lz_T_96} + 15'h7F;
+                                                                                                                                                                                                        : {5'h18,
+                                                                                                                                                                                                           ~(sumMag[1])};
+        _GEN_6 = {_scaleExpSum_T_3[5], _scaleExpSum_T_3} + 7'h1C;
+        _finalBiased_T = {{8{_GEN_6[6]}}, _GEN_6} - {9'h0, _lz_T_98} + 15'h7F;
         _newAcc_mant_T = ~(|sumMag) | $signed(_finalBiased_T) < 15'sh1;
         accreg_exp <=
           _newAcc_mant_T
@@ -272,14 +277,14 @@ module AccUpdate_E4M3_E3M2_UE4M4(
         if (_newAcc_mant_T)
           accreg_mant <= 7'h0;
         else begin
-          automatic logic [175:0] _normalized_T;
-          _normalized_T = {127'h0, sumMag} << _lz_T_96;
+          automatic logic [176:0] _normalized_T;
+          _normalized_T = {127'h0, sumMag} << _lz_T_98;
           accreg_mant <=
-            _normalized_T[47:41]
+            _normalized_T[48:42]
             + {6'h0,
-               _normalized_T[40]
-                 & (_normalized_T[39] | (|(_normalized_T[38:0])) | stickyLSB
-                    | _normalized_T[41])};
+               _normalized_T[41]
+                 & (_normalized_T[40] | (|(_normalized_T[39:0])) | stickyLSB
+                    | _normalized_T[42])};
         end
       end
     end
@@ -342,7 +347,7 @@ module SimpleDPU_E4M3_E3M2_UE4M4(
   output [6:0] io_accOut_mant
 );
 
-  wire [39:0] _scaledTerm_sm_io_scaledTerm;
+  wire [40:0] _scaledTerm_sm_io_scaledTerm;
   wire [29:0] _tree_io_sopField;
   wire [6:0]  _lm_3_io_out_mant;
   wire [5:0]  _lm_3_io_out_exp;
@@ -417,7 +422,9 @@ module SimpleDPU_E4M3_E3M2_UE4M4(
   );
   ScaleMult_E4M3_E3M2_UE4M4 scaledTerm_sm (
     .io_sopField   (_tree_io_sopField),
+    .io_scaleAhid  (|io_scaleA_exp),
     .io_scaleAmant (io_scaleA_mant),
+    .io_scaleWhid  (|io_scaleW_exp),
     .io_scaleWmant (io_scaleW_mant),
     .io_scaledTerm (_scaledTerm_sm_io_scaledTerm)
   );

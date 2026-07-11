@@ -104,12 +104,13 @@ object Reference {
     }
   }
 
-  /** Generate a random scale encoding — pick modest range so products don't
-    * saturate BF16. */
+  /** Generate a random scale encoding. Uses full biased range (including 0
+    * for subnormals, which are common in real MX workloads when block max is
+    * small vs element_max). Keeps exp near middle to avoid BF16 saturation
+    * for the accumulated result. */
   def randScale(sc: Scale, rng: scala.util.Random): (Int, Int) = {
-    // Pick biased exp near the middle of the range for stable magnitudes.
-    val biasedExp = sc.bias + rng.nextInt(3) - 1     // {bias-1, bias, bias+1}
+    val biasedExp = sc.bias + rng.nextInt(5) - 2     // {bias-2 .. bias+2}, can be 0
     val mant      = if (sc.m == 0) 0 else rng.nextInt(1 << sc.m)
-    (biasedExp.max(1), mant)
+    (biasedExp.max(0), mant)
   }
 }
