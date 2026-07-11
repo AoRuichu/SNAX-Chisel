@@ -9,4 +9,6 @@ generated/**/obj_dir/
 generated/**/tb_SimpleDPU.sv
 generated/**/tb_SimpleDPU_*.vcd
 generated/**/*.d
+generated/**/*_K*_bs*_vec*_seed*.json
+test/vectors/
 
