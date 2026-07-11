@@ -126,7 +126,10 @@ def derive(elA: str, elW: str, scT: str, *, N: int = 4,
     belowAnchor = abs(pMinVal)
     intBits     = pMax + 1
     sopFieldW   = 1 + log2N + intBits + belowAnchor
-    sopShift    = belowAnchor
+    # sopShift = belowAnchor - (fracBits_A + fracBits_W); fracBits=m for FP, 0 for INT.
+    fracBitsA   = A.m if A.hasHiddenBit else 0
+    fracBitsW   = W.m if W.hasHiddenBit else 0
+    sopShift    = belowAnchor - fracBitsA - fracBitsW
 
     scaleMantProdW = 0 if S.m == 0 else 2 * (S.m + 1)
     scaledTermW    = sopFieldW if scaleMantProdW == 0 else sopFieldW + scaleMantProdW

@@ -139,10 +139,21 @@ final case class Widths(cfg: DPUConfig) {
   val finalAdderW: Int = 1 + BF16.sigBits + scaledTermW
 
   // ── Placement bookkeeping (for barrel shifters in the datapath) ──
-  /** Constant left-shift applied to each product to place its LSB (weight
-    * 2^(minOpValExp_A + minOpValExp_W)) at the field bottom.
+  /** Number of fractional bits each operand's significand carries BELOW the
+    * "1" of "1.mant". For FP this is `m` (mA fractional bits under 1.);
+    * for INT8 this is 0 (the mant field IS the integer magnitude, no hidden
+    * fractional interpretation).
     */
-  val sopShift: Int = belowAnchor
+  val fracBitsA: Int = if (A.hasHiddenBit) A.m else 0
+  val fracBitsW: Int = if (W.hasHiddenBit) W.m else 0
+
+  /** Constant left-shift applied to each product to align it in the SoP field.
+    * Matches Cuyckens: SOP_SHIFT = ANCHOR - 2*SUPER_MAN_BITS. Generalized to
+    * asymmetric operands and INT8: `SOP_SHIFT = belowAnchor - fracBitsA - fracBitsW`.
+    * shiftAmt = SOP_SHIFT + prodExp puts product's "2^0" bit at field bit
+    * `belowAnchor` for FP (and `belowAnchor + impSc_A + impSc_W = 0` for INT).
+    */
+  val sopShift: Int = belowAnchor - fracBitsA - fracBitsW
 
   /** Signed product width before the barrel shift (mant + sign). */
   val signedProdW: Int = prodMantW + 1
@@ -154,6 +165,15 @@ final case class Widths(cfg: DPUConfig) {
     * mant's fractional bits (2 * mS from squaring two mS-bit fractionals).
     */
   val termUnitPos: Int = belowAnchor + 2 * S.m
+
+  /** Signed exp width covering both max and min product exp magnitudes. */
+  val expSignedW: Int = {
+    val maxAbs = math.max(math.abs(pMax), math.abs(pMinVal))
+    chisel3.util.log2Ceil(maxAbs + 1) + 2  // +1 sign, +1 headroom
+  }
+
+  /** Signed scale-exp-sum width (for accreg alignment). */
+  val scaleExpSumW: Int = S.e + 2
 
   // ── Sanity print (used by the emit main / test) ────────────
   def show(): String = {

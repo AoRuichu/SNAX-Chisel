@@ -12,6 +12,42 @@ import chisel3._
 import circt.stage.ChiselStage
 import java.io.{File, PrintWriter}
 
+/** Meta-data dumped alongside each config's Verilog so Python testbench
+  * generators know operand widths / bias without re-deriving. */
+object MetaDump {
+  def write(cfg: DPUConfig, outDir: String): Unit = {
+    val ww = Widths(cfg)
+    val pw = new PrintWriter(new File(s"$outDir/simple_dpu_meta.txt"))
+    pw.println(s"config=${cfg.A.name}_${cfg.W.name}_${cfg.S.name}")
+    pw.println(s"elA=${cfg.A.name}")
+    pw.println(s"elW=${cfg.W.name}")
+    pw.println(s"scale=${cfg.S.name}")
+    pw.println(s"N=${cfg.N}")
+    pw.println(s"elAe=${cfg.A.e}")
+    pw.println(s"elAm=${cfg.A.m}")
+    pw.println(s"elAbias=${cfg.A.bias}")
+    pw.println(s"elAisInt=${cfg.A.isInt}")
+    pw.println(s"elAimpSc=${cfg.A.impSc}")
+    pw.println(s"elWe=${cfg.W.e}")
+    pw.println(s"elWm=${cfg.W.m}")
+    pw.println(s"elWbias=${cfg.W.bias}")
+    pw.println(s"elWisInt=${cfg.W.isInt}")
+    pw.println(s"elWimpSc=${cfg.W.impSc}")
+    pw.println(s"scaleE=${cfg.S.e}")
+    pw.println(s"scaleM=${cfg.S.m}")
+    pw.println(s"scaleBias=${cfg.S.bias}")
+    pw.println(s"prodMantW=${ww.prodMantW}")
+    pw.println(s"sopFieldW=${ww.sopFieldW}")
+    pw.println(s"scaledTermW=${ww.scaledTermW}")
+    pw.println(s"finalAdderW=${ww.finalAdderW}")
+    pw.println(s"expSignedW=${ww.expSignedW}")
+    pw.println(s"BF16_expBits=${BF16.expBits}")
+    pw.println(s"BF16_mantBits=${BF16.mantBits}")
+    pw.println(s"topModule=SimpleDPU_${cfg.A.name}_${cfg.W.name}_${cfg.S.name}")
+    pw.close()
+  }
+}
+
 object EmitSimpleDPU extends App {
   val (elA, elW, sc, outDir) = args match {
     case Array(a, b, s, o) => (a, b, s, o)
@@ -33,6 +69,7 @@ object EmitSimpleDPU extends App {
     Array("--target-dir", outDir),
     firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info"),
   )
+  MetaDump.write(cfg, outDir)
 }
 
 /** Emit all 126 configs (upper triangle of 6 elem types x 6 scales). */
@@ -77,6 +114,7 @@ object EmitAllSimpleDPU extends App {
       Array("--target-dir", outDir),
       firtoolOpts = Array("-disable-all-randomization", "-strip-debug-info"),
     )
+    MetaDump.write(cfg, outDir)
 
     mpw.println(s"${a}_${w}_${s},$a,$w,$s,${ww.prodMantW},${ww.pMax},${ww.pMinVal}," +
                 s"${ww.intBits},${ww.belowAnchor},${ww.aboveAnchor}," +
